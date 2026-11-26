@@ -1,0 +1,110 @@
+<resources>
+    <style name="AppThemeBase" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="colorSurface">@color/colorSurface</item>
+        <item name="android:colorBackground">@color/colorBackground</item>
+        <item name="android:windowBackground">@color/colorBackground</item>
+        <item name="android:textColorPrimary">@color/textColorPrimary</item>
+        <item name="android:textColorSecondary">@color/textColorSecondary</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="AppTheme" parent="@style/AppThemeBase" />
+
+    <style name="AppTheme.Dark" parent="@style/AppThemeBase">
+        <item name="colorPrimary">#00E5FF</item>
+        <item name="colorAccent">#00E5FF</item>
+        <item name="colorSurface">#0D1017</item>
+        <item name="android:colorBackground">#05060A</item>
+        <item name="android:windowBackground">#05060A</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="AppTheme.Light" parent="@style/AppThemeBase">
+        <item name="colorPrimary">#0284C7</item>
+        <item name="colorAccent">#0284C7</item>
+        <item name="colorSurface">#FFFFFF</item>
+        <item name="android:colorBackground">#F1F5FA</item>
+        <item name="android:windowBackground">#F1F5FA</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <style name="AppTheme.Midnight" parent="@style/AppThemeBase">
+        <item name="colorPrimary">#A855F7</item>
+        <item name="colorAccent">#A855F7</item>
+        <item name="colorSurface">#16102B</item>
+        <item name="android:colorBackground">#0C0818</item>
+        <item name="android:windowBackground">#0C0818</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="AppTheme.Cyberpunk" parent="@style/AppThemeBase">
+        <item name="colorPrimary">#FF007F</item>
+        <item name="colorAccent">#FF007F</item>
+        <item name="colorSurface">#130E24</item>
+        <item name="android:colorBackground">#090612</item>
+        <item name="android:windowBackground">#090612</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="AppTheme.Gothic" parent="@style/AppThemeBase">
+        <item name="colorPrimary">#FF2A37</item>
+        <item name="colorAccent">#FF2A37</item>
+        <item name="colorSurface">#131115</item>
+        <item name="android:colorBackground">#080709</item>
+        <item name="android:windowBackground">#080709</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="AppTheme.Matrix" parent="@style/AppThemeBase">
+        <item name="colorPrimary">#00FF66</item>
+        <item name="colorAccent">#00FF66</item>
+        <item name="colorSurface">#08170F</item>
+        <item name="android:colorBackground">#030A06</item>
+        <item name="android:windowBackground">#030A06</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="AppTheme.Solar" parent="@style/AppThemeBase">
+        <item name="colorPrimary">#F59E0B</item>
+        <item name="colorAccent">#F59E0B</item>
+        <item name="colorSurface">#1B1308</item>
+        <item name="android:colorBackground">#0E0904</item>
+        <item name="android:windowBackground">#0E0904</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="AppTheme.Sakura" parent="@style/AppThemeBase">
+        <item name="colorPrimary">#E11D48</item>
+        <item name="colorAccent">#E11D48</item>
+        <item name="colorSurface">#FFFFFF</item>
+        <item name="android:colorBackground">#FFF5F8</item>
+        <item name="android:windowBackground">#FFF5F8</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <style name="AppTheme.ClassicOled" parent="@style/AppThemeBase">
+        <item name="colorPrimary">#00E5FF</item>
+        <item name="colorAccent">#00E5FF</item>
+        <item name="colorSurface">#050507</item>
+        <item name="android:colorBackground">#000000</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="EmulatorTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
+</resources>

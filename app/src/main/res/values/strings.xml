@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">STORM GBCA</string>
+    <string name="back">Back</string>
+    <string name="hint_search_roms">Search games...</string>
+    <string name="filter_all">All</string>
+    <string name="filter_gb">GB</string>
+    <string name="filter_gbc">GBC</string>
+    <string name="filter_gba">GBA</string>
+    <string name="filter_favorites">Favorites</string>
+    <string name="play">Play</string>
+    <string name="settings">Settings</string>
+    <string name="add_rom_folder">Add ROM Folder</string>
+    <string name="open_rom_file">Open ROM File</string>
+    <string name="refresh_library">Refresh Library</string>
+    <string name="check_updates">Check Updates</string>
+    <string name="update_dialog_title">Update Available</string>
+    <string name="update_dialog_size_mb_fmt">%.1f MB</string>
+</resources>

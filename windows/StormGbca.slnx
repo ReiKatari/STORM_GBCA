@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Storm.AuroraFluid.Kit/Storm.AuroraFluid.Kit.csproj" />
+    <Project Path="src/StormGbca.Core/StormGbca.Core.csproj" />
+    <Project Path="src/StormGbca.UI/StormGbca.UI.csproj" />
+    <Project Path="src/StormGbca.Desktop/StormGbca.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/installer/">
+    <Project Path="installer/StormGbca.Installer.csproj" />
+  </Folder>
+</Solution>

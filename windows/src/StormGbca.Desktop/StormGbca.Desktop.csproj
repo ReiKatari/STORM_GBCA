@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>STORM GBCA</AssemblyName>
+    <RootNamespace>StormGbca.Desktop</RootNamespace>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Company>STORM TEAM</Company>
+    <Product>STORM GBCA</Product>
+    <ApplicationIcon>..\..\..\assets\AppIcon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.2.999-cibuild0100943-alpha" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.2.999-cibuild0100943-alpha" />
+    <PackageReference Include="Avalonia.Skia" Version="12.2.999-cibuild0100943-alpha" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.2.999-cibuild0100943-alpha" />
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Storm.AuroraFluid.Kit\Storm.AuroraFluid.Kit.csproj" />
+    <ProjectReference Include="..\StormGbca.Core\StormGbca.Core.csproj" />
+    <ProjectReference Include="..\StormGbca.UI\StormGbca.UI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\..\core\build_win\storm_gbca_core.dll" Link="storm_gbca_core.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\..\core\build_win\storm_gbca_core.dll')" />
+    <None Include="..\..\..\assets\AppIcon.ico" Link="assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\..\assets\AppIcon.ico')" />
+    <None Include="..\..\..\assets\icon_512.png" Link="assets\icon_512.png" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\..\assets\icon_512.png')" />
+  </ItemGroup>
+
+</Project>

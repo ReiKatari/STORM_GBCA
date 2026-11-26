@@ -1,0 +1,38 @@
+# Build outputs and caches
+build/
+app/build/
+app/.cxx/
+core/build*/
+.gradle/
+.kotlin/
+.idea/
+.vs/
+*.iml
+local.properties
+
+# Windows .NET build outputs & embedded installer payload
+windows/**/bin/
+windows/**/obj/
+windows/**/publish/
+windows/installer/Payload/
+windows/installer/Payload.zip
+windows/src/StormGbca.Desktop/storm_gbca_core.dll
+
+# Packaged release artifacts (published to Releases, not committed into Git tree)
+releases/
+*.apk
+*.aab
+*.exe
+*.zip
+*.dll
+*.so
+*.pdb
+*.obj
+*.lib
+
+# OS & temporary files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+WORK/

@@ -1,0 +1,19 @@
+Mozilla Public License Version 2.0
+==================================
+
+Copyright (c) 2026 STORM TEAM (https://stormgamesworld.ru / https://github.com/ReiKatari/STORM_GBCA)
+
+This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+If a copy of the MPL was not distributed with this file, You can obtain one at
+https://mozilla.org/MPL/2.0/.
+
+Third-Party Components and Notices:
+- mGBA (https://github.com/mgba-emu/mgba): Mozilla Public License 2.0 (MPL-2.0)
+- SameBoy (https://github.com/LIJI32/SameBoy): Expat / MIT License
+- SkyEmu shader & rewind concepts (https://github.com/skylersaleh/SkyEmu): MIT License
+- NanoBoyAdvance phoenix concepts (https://codeberg.org/nba-emu/NanoBoyAdvance): BSD-2-Clause License
+- ares DRC & Run-Ahead concepts (https://github.com/ares-emulator/ares): ISC License
+- rcheevos (https://github.com/RetroAchievements/rcheevos): MIT License
+- Google Oboe (https://github.com/google/oboe): Apache License 2.0
+- Avalonia UI & SkiaSharp: MIT License
+- STORM Watermelon / AuroraFluid UI & STORM GBCA original code: MPL-2.0

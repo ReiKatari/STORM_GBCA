@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">STORM GBCA</string>
+    <string name="back">Назад</string>
+    <string name="hint_search_roms">Поиск игр...</string>
+    <string name="filter_all">Все</string>
+    <string name="filter_gb">GB</string>
+    <string name="filter_gbc">GBC</string>
+    <string name="filter_gba">GBA</string>
+    <string name="filter_favorites">Избранное</string>
+    <string name="play">Играть</string>
+    <string name="settings">Настройки</string>
+    <string name="add_rom_folder">Добавить папку ROM</string>
+    <string name="open_rom_file">Открыть файл ROM</string>
+    <string name="refresh_library">Обновить библиотеку</string>
+    <string name="check_updates">Проверить обновления</string>
+    <string name="update_dialog_title">Доступно обновление</string>
+    <string name="update_dialog_size_mb_fmt">%.1f МБ</string>
+</resources>
