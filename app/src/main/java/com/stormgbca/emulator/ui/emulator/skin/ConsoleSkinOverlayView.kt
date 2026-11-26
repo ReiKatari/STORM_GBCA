@@ -63,6 +63,12 @@ enum class GbcaSkinId(
     GBM_FAMICOM("gbm_famicom", ConsoleSystem.GBA, "Micro Famicom 20th", "Micro Famicom"),
     GBA_STORM_AURORA("gba_storm_aurora", ConsoleSystem.GBA, "STORM Aurora GBA", "STORM Aurora GBA");
 
+    fun localizedLabel(context: android.content.Context): String = when {
+        this == NONE -> context.getString(com.stormgbca.emulator.R.string.skin_none)
+        java.util.Locale.getDefault().language.equals("ru", ignoreCase = true) -> labelRu
+        else -> labelEn
+    }
+
     companion object {
         fun forSystem(system: ConsoleSystem): List<GbcaSkinId> =
             entries.filter { it.system == system } + listOf(NONE)

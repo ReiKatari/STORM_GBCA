@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.stormgbca.emulator.data.GbcaPrefs
 import com.stormgbca.emulator.model.RomEntry
 import com.stormgbca.emulator.ui.theme.AppThemeManager
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
@@ -84,7 +86,7 @@ fun formatPlayTime(seconds: Long): String {
     val mins = seconds / 60L
     val hours = mins / 60L
     val remMins = mins % 60L
-    return if (hours > 0L) "${hours}ч ${remMins}м" else "${remMins}м"
+    return if (hours > 0L) "${hours}h ${remMins}m" else "${remMins}m"
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -98,7 +100,10 @@ fun RomGridCard(
 ) {
     val colors = watermelon
     val context = LocalContext.current
+    val cfg = GbcaPrefs.coreConfigState.value
     val cardStyle = AppThemeManager.cardStyleState.value
+    val title = rom.formattedTitle(cfg.romDisplayNameMode == 1)
+
     val corner = when (cardStyle) {
         "3d_boxart" -> 6.dp
         "flat_minimal" -> 3.dp
@@ -132,7 +137,7 @@ fun RomGridCard(
             .aspectRatio(1f)
             .shadow(if (cardStyle == "flat_minimal") 0.dp else 10.dp, shape)
             .clip(shape)
-            .background(fallbackGradient(rom.displayTitle))
+            .background(fallbackGradient(title))
             .combinedClickable(
                 interactionSource = interaction,
                 indication = null,
@@ -146,16 +151,16 @@ fun RomGridCard(
                     .data(File(boxArtPath))
                     .crossfade(true)
                     .build(),
-                contentDescription = rom.displayTitle,
+                contentDescription = title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            val initials = rom.displayTitle.split(' ', '-', '_').filter { it.isNotBlank() }.take(2)
+            val initials = title.split(' ', '-', '_').filter { it.isNotBlank() }.take(2)
                 .joinToString("") { it.take(1).uppercase() }.ifBlank { "GB" }
             Text(
                 text = initials,
-                color = Color.White.copy(alpha = 0.24f),
+                color = Color.White.copy(alpha = 0.28f),
                 fontFamily = SpaceGrotesk,
                 fontSize = 42.sp,
                 fontWeight = FontWeight.ExtraBold,
@@ -163,7 +168,6 @@ fun RomGridCard(
             )
         }
 
-        // 3D Plastic Box Spine Highlight
         if (cardStyle == "3d_boxart") {
             Box(
                 modifier = Modifier
@@ -197,59 +201,86 @@ fun RomGridCard(
                 .border(if (focused) 2.5.dp else 1.2.dp, if (focused) colors.red else Color.White.copy(alpha = 0.24f), shape),
         )
 
-        // Top-left Platform & Region Badges
+        // Independent Platform & Region Badges (OFF by default, matching STORM DS!)
+        if (cfg.showPlatformBadge || cfg.showRegionBadge) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(7.dp),
+            ) {
+                if (cfg.showPlatformBadge) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(platBg)
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    ) {
+                        Text(rom.platformLabel, color = platFg, fontFamily = WatermelonMono, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+                if (cfg.showRegionBadge) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.Black.copy(alpha = 0.72f))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    ) {
+                        Text(regCode, color = Color.White, fontFamily = WatermelonMono, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Top-right Favorite Star & Optional RA Trophy Badge
         Row(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .align(Alignment.TopStart)
+                .align(Alignment.TopEnd)
                 .padding(7.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(platBg)
-                    .padding(horizontal = 5.dp, vertical = 2.dp),
-            ) {
-                Text(rom.platformLabel, color = platFg, fontFamily = WatermelonMono, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+            if (cfg.showRaBadge) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.Black.copy(alpha = 0.72f))
+                        .padding(3.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.EmojiEvents,
+                        contentDescription = null,
+                        tint = Color(0xFFFACC15),
+                        modifier = Modifier.size(12.dp),
+                    )
+                }
             }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-            ) {
-                Text(regCode, color = Color(0xFFE2E8F0), fontFamily = WatermelonMono, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+            if (rom.isFavorite) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    tint = WatermelonColors.favoriteStar,
+                    modifier = Modifier.size(15.dp),
+                )
             }
         }
 
-        if (rom.isFavorite) {
-            Icon(
-                imageVector = Icons.Filled.Star,
-                contentDescription = null,
-                tint = WatermelonColors.favoriteStar,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(7.dp)
-                    .size(15.dp),
-            )
-        }
-
-        // Bottom Title & Hardware Badges
+        // Bottom Title & Optional Hardware Badges
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f))))
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.90f))))
                 .padding(start = 8.dp, end = 8.dp, top = 22.dp, bottom = 7.dp),
         ) {
-            if (hwTags.isNotEmpty()) {
+            if (cfg.showHardwareBadges && hwTags.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(bottom = 4.dp)) {
                     hwTags.forEach { tag ->
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(3.dp))
-                                .background(Color(0xCC00E5FF).copy(alpha = 0.22f))
+                                .background(Color(0xCC00E5FF).copy(alpha = 0.24f))
                                 .border(0.7.dp, Color(0xFF00E5FF), RoundedCornerShape(3.dp))
                                 .padding(horizontal = 4.dp, vertical = 1.dp),
                         ) {
@@ -259,7 +290,7 @@ fun RomGridCard(
                 }
             }
             Text(
-                text = rom.displayTitle,
+                text = title,
                 color = Color.White,
                 fontFamily = SpaceGrotesk,
                 fontSize = 11.5.sp,
@@ -270,7 +301,7 @@ fun RomGridCard(
             )
             val pt = formatPlayTime(rom.totalPlaySeconds)
             if (pt.isNotEmpty()) {
-                Text(pt, color = Color.White.copy(alpha = 0.68f), fontFamily = WatermelonMono, fontSize = 9.sp)
+                Text(pt, color = Color.White.copy(alpha = 0.88f), fontFamily = WatermelonMono, fontSize = 9.sp)
             }
         }
     }
@@ -287,6 +318,8 @@ fun RomListRow(
 ) {
     val colors = watermelon
     val context = LocalContext.current
+    val cfg = GbcaPrefs.coreConfigState.value
+    val title = rom.formattedTitle(cfg.romDisplayNameMode == 1)
     val (platBg, platFg) = platformBadgeColors(rom.platform)
 
     Row(
@@ -303,13 +336,13 @@ fun RomListRow(
             modifier = Modifier
                 .size(54.dp)
                 .clip(RoundedCornerShape(9.dp))
-                .background(fallbackGradient(rom.displayTitle)),
+                .background(fallbackGradient(title)),
             contentAlignment = Alignment.Center,
         ) {
             if (!boxArtPath.isNullOrBlank()) {
                 AsyncImage(
                     model = ImageRequest.Builder(context).data(File(boxArtPath)).crossfade(true).build(),
-                    contentDescription = rom.displayTitle,
+                    contentDescription = title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -320,7 +353,7 @@ fun RomListRow(
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = rom.displayTitle,
+                text = title,
                 color = colors.text,
                 fontFamily = SpaceGrotesk,
                 fontSize = 14.sp,
@@ -328,19 +361,25 @@ fun RomListRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(platBg)
-                        .padding(horizontal = 5.dp, vertical = 1.5.dp),
-                ) {
-                    Text(rom.platformLabel, color = platFg, fontFamily = WatermelonMono, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                }
-                Text(shortRegionCode(rom.region), color = colors.text2, fontFamily = WatermelonMono, fontSize = 10.sp)
-                if (rom.gameCode.isNotBlank()) {
-                    Text(rom.gameCode, color = colors.text3, fontFamily = WatermelonMono, fontSize = 10.sp)
+            if (cfg.showPlatformBadge || cfg.showRegionBadge || cfg.showRaBadge) {
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (cfg.showPlatformBadge) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(platBg)
+                                .padding(horizontal = 5.dp, vertical = 1.5.dp),
+                        ) {
+                            Text(rom.platformLabel, color = platFg, fontFamily = WatermelonMono, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (cfg.showRegionBadge) {
+                        Text(shortRegionCode(rom.region), color = colors.text2, fontFamily = WatermelonMono, fontSize = 10.sp)
+                    }
+                    if (cfg.showRaBadge) {
+                        Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFFACC15), modifier = Modifier.size(13.dp))
+                    }
                 }
             }
         }

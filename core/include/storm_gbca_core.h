@@ -20,7 +20,7 @@ extern "C" {
   #define STORM_GBCA_API __attribute__((visibility("default")))
 #endif
 
-#define STORM_GBCA_VERSION_STRING "1.1.0"
+#define STORM_GBCA_VERSION_STRING "1.2.0"
 
 /* Key bitmask */
 enum {
@@ -130,6 +130,50 @@ enum {
     STORM_MEM_SYSTEM_BUS = 9,
 };
 
+/* Resolution upscale algorithms (1x..4x internal upscaling) */
+enum {
+    STORM_UPSCALE_NONE      = 0,
+    STORM_UPSCALE_XBRZ      = 1,
+    STORM_UPSCALE_SCALE_EPX = 2,
+    STORM_UPSCALE_MMPX      = 3,
+    STORM_UPSCALE_LCD_HD    = 4,
+    STORM_UPSCALE_CRT_HD    = 5,
+};
+
+/* RAM Cheat Finder comparison operators */
+enum {
+    STORM_SEARCH_EQ        = 0,
+    STORM_SEARCH_NEQ       = 1,
+    STORM_SEARCH_GT        = 2,
+    STORM_SEARCH_LT        = 3,
+    STORM_SEARCH_CHANGED   = 4,
+    STORM_SEARCH_UNCHANGED = 5,
+    STORM_SEARCH_INCREASED = 6,
+    STORM_SEARCH_DECREASED = 7,
+};
+
+/* Device Optimization Profiles (v1.2.0: old & new device tuning) */
+enum {
+    STORM_OPT_LITE          = 0, /* Old / low-RAM / 32-bit devices */
+    STORM_OPT_BALANCED      = 1, /* Balanced default */
+    STORM_OPT_PERFORMANCE   = 2, /* High performance modern devices */
+    STORM_OPT_HIGH_ACCURACY = 3, /* Maximum cycle accuracy */
+};
+
+/* Multiplayer & Link Cable Modes (v1.2.0) */
+enum {
+    STORM_LINK_NONE            = 0,
+    STORM_LINK_LAN_HOST        = 1, /* GB/GBC 2P Serial or GBA 2-4P Multi-SIO TCP Host + UDP Discovery */
+    STORM_LINK_LAN_CLIENT      = 2, /* Connect to LAN/Wi-Fi Host by IP:Port */
+    STORM_LINK_WIRELESS_HOST   = 3, /* GBA Wireless Adapter (AGB-015 RFU) Host over LAN */
+    STORM_LINK_WIRELESS_CLIENT = 4, /* GBA Wireless Adapter (AGB-015 RFU) Client over LAN */
+    STORM_LINK_IR_HOST         = 5, /* GBC Infrared Link Host over LAN */
+    STORM_LINK_IR_CLIENT       = 6, /* GBC Infrared Link Client over LAN */
+    STORM_LINK_DOLPHIN_JOYBUS  = 7, /* Dolphin Emulator GameCube <-> GBA JoyBus Link */
+    STORM_LINK_GB_PRINTER      = 8, /* Game Boy Printer (captures RGBA sheet for PNG export) */
+    STORM_LINK_LOCAL_LOOPBACK  = 9, /* Local loopback / dual-window link test */
+};
+
 typedef struct StormGbcaContext StormGbcaContext;
 
 typedef struct StormGbcaRomInfo {
@@ -182,6 +226,29 @@ typedef struct StormGbcaConfig {
     int      dynamic_rate_control;
     float    drc_max_skew;
 } StormGbcaConfig;
+
+typedef struct StormGbcaLinkStatus {
+    int  mode;
+    int  connected;
+    int  player_id;
+    int  player_count;
+    int  ping_ms;
+    int  port;
+    char room_name[64];
+    char peer_info[128];
+    char status_text[128];
+} StormGbcaLinkStatus;
+
+typedef struct StormGbcaLanRoom {
+    char host_ip[64];
+    int  port;
+    int  mode;
+    int  platform;
+    int  player_count;
+    int  max_players;
+    char room_name[64];
+    char game_title[64];
+} StormGbcaLanRoom;
 
 /* Lifecycle */
 STORM_GBCA_API const char* storm_gbca_version(void);
@@ -247,28 +314,6 @@ STORM_GBCA_API void storm_gbca_set_rtc(StormGbcaContext* ctx, int use_host, int6
 STORM_GBCA_API void storm_gbca_cheats_clear(StormGbcaContext* ctx);
 STORM_GBCA_API int storm_gbca_cheat_add(StormGbcaContext* ctx, const char* name, const char* code, int enabled);
 
-/* Resolution upscale algorithms (1x..4x internal upscaling) */
-enum {
-    STORM_UPSCALE_NONE      = 0,
-    STORM_UPSCALE_XBRZ      = 1,
-    STORM_UPSCALE_SCALE_EPX = 2,
-    STORM_UPSCALE_MMPX      = 3,
-    STORM_UPSCALE_LCD_HD    = 4,
-    STORM_UPSCALE_CRT_HD    = 5,
-};
-
-/* RAM Cheat Finder comparison operators */
-enum {
-    STORM_SEARCH_EQ        = 0,
-    STORM_SEARCH_NEQ       = 1,
-    STORM_SEARCH_GT        = 2,
-    STORM_SEARCH_LT        = 3,
-    STORM_SEARCH_CHANGED   = 4,
-    STORM_SEARCH_UNCHANGED = 5,
-    STORM_SEARCH_INCREASED = 6,
-    STORM_SEARCH_DECREASED = 7,
-};
-
 /* Memory & RetroAchievements */
 STORM_GBCA_API size_t storm_gbca_read_memory(const StormGbcaContext* ctx, int region, uint32_t addr, uint8_t* dst, size_t len);
 STORM_GBCA_API int storm_gbca_write_memory(StormGbcaContext* ctx, int region, uint32_t addr, const uint8_t* src, size_t len);
@@ -285,6 +330,14 @@ STORM_GBCA_API void storm_gbca_set_performance(StormGbcaContext* ctx, int cpu_ov
 STORM_GBCA_API int storm_gbca_mem_search_reset(StormGbcaContext* ctx, int region, int value_size_bytes);
 STORM_GBCA_API int storm_gbca_mem_search_filter(StormGbcaContext* ctx, int cmp_op, uint32_t target_value);
 STORM_GBCA_API int storm_gbca_mem_search_get_results(const StormGbcaContext* ctx, uint32_t* out_addrs, uint32_t* out_vals, int max_count);
+
+/* Device Optimization & Full Multiplayer / Link Cable / Wireless / JoyBus / GB Printer (v1.2.0) */
+STORM_GBCA_API void storm_gbca_set_optimization_profile(StormGbcaContext* ctx, int profile);
+STORM_GBCA_API int storm_gbca_link_start(StormGbcaContext* ctx, int mode, const char* host_ip, int port, int clock_port, const char* room_name);
+STORM_GBCA_API void storm_gbca_link_stop(StormGbcaContext* ctx);
+STORM_GBCA_API int storm_gbca_link_get_status(const StormGbcaContext* ctx, StormGbcaLinkStatus* out_status);
+STORM_GBCA_API int storm_gbca_lan_discover(StormGbcaLanRoom* out_rooms, int max_rooms, int timeout_ms);
+STORM_GBCA_API int storm_gbca_printer_poll_image(StormGbcaContext* ctx, uint32_t* dst_rgba, int max_pixels, int* out_w, int* out_h);
 
 /* Palette Info */
 STORM_GBCA_API int storm_gbca_get_dmg_palette_count(void);

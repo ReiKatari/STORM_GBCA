@@ -46,14 +46,16 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
+import com.stormgbca.emulator.R
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.WatermelonMono
 import kotlinx.coroutines.delay
 
 @Composable
 fun Console3DBootScreen(
-    statusText: String = "Инициализация STORM GBCA...",
+    statusText: String = stringResource(R.string.boot_initializing),
     onFinished: () -> Unit,
 ) {
     val revealAnim = remember { Animatable(0f) }

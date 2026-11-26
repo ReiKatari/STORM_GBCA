@@ -20,11 +20,20 @@ public sealed record RaAchievementInfo(
     bool UnlockedHardcore
 );
 
+public sealed record RaLeaderboardInfo(
+    int Id,
+    string Title,
+    string Description,
+    string Format
+);
+
 public sealed record RaGameSessionInfo(
     int GameId,
     string GameTitle,
     string GameIconUrl,
-    IReadOnlyList<RaAchievementInfo> Achievements
+    string BoxArtUrl,
+    IReadOnlyList<RaAchievementInfo> Achievements,
+    IReadOnlyList<RaLeaderboardInfo> Leaderboards
 )
 {
     public int TotalCount => Achievements.Count;
@@ -58,11 +67,17 @@ public sealed class RetroAchievementsService
     public string ActiveGameHash { get; private set; } = string.Empty;
     public RaGameSessionInfo? ActiveSession { get; private set; }
     public string LastStatusMessage { get; private set; } = string.Empty;
+    public bool IsEnabled { get; set; } = true;
+    public bool IsEncoreMode { get; set; }
+    public bool IsUnofficialEnabled { get; set; }
+    public bool NotificationsEnabled { get; set; } = true;
+    public bool LeaderboardsEnabled { get; set; } = true;
+    public int PendingOfflineCount { get { lock (_lock) return _offlineQueue.Count; } }
 
     public RetroAchievementsService(HttpClient? httpClient = null)
     {
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM_GBCA/1.1.0");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM_GBCA/1.2.0");
         LoadOfflineQueue();
     }
 
@@ -164,6 +179,45 @@ public sealed class RetroAchievementsService
         }
     }
 
+    public async Task<(bool Ok, int LatencyMs, string Details)> TestConnectionAsync(CancellationToken ct = default)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            if (IsLoggedIn)
+            {
+                string url = $"https://retroachievements.org/dorequest.php?r=login2&u={Uri.EscapeDataString(Username)}&t={Uri.EscapeDataString(Token)}";
+                using var resp = await _httpClient.GetAsync(url, ct).ConfigureAwait(false);
+                sw.Stop();
+                string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                using var doc = JsonDocument.Parse(body);
+                bool ok = doc.RootElement.TryGetProperty("Success", out var p) && p.GetBoolean();
+                if (ok)
+                {
+                    Points = ReadInt(doc.RootElement, "Score");
+                    SoftcorePoints = ReadInt(doc.RootElement, "SoftcoreScore");
+                    Rank = ReadInt(doc.RootElement, "Rank");
+                    return (true, (int)sw.ElapsedMilliseconds, $"OK ({sw.ElapsedMilliseconds} ms) - {Username} | HC: {Points} | SC: {SoftcorePoints}");
+                }
+                return (false, (int)sw.ElapsedMilliseconds, $"Token rejected ({sw.ElapsedMilliseconds} ms)");
+            }
+            else
+            {
+                using var resp = await _httpClient.GetAsync("https://retroachievements.org/dorequest.php?r=gameid&m=00000000000000000000000000000000", ct).ConfigureAwait(false);
+                sw.Stop();
+                return (resp.IsSuccessStatusCode, (int)sw.ElapsedMilliseconds,
+                    resp.IsSuccessStatusCode
+                        ? $"Server reachable ({sw.ElapsedMilliseconds} ms) - Sign in to track trophies"
+                        : $"HTTP {(int)resp.StatusCode} ({sw.ElapsedMilliseconds} ms)");
+            }
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            return (false, (int)sw.ElapsedMilliseconds, $"Error: {ex.Message}");
+        }
+    }
+
     public async Task<bool> RefreshProfileAsync(CancellationToken ct = default)
     {
         if (!IsLoggedIn) return false;
@@ -214,6 +268,8 @@ public sealed class RetroAchievementsService
             string title = patchData.TryGetProperty("Title", out var tEl) ? (tEl.GetString() ?? $"Game #{gameId}") : $"Game #{gameId}";
             string iconName = patchData.TryGetProperty("ImageIcon", out var iEl) ? (iEl.GetString() ?? string.Empty) : string.Empty;
             string gameIconUrl = string.IsNullOrWhiteSpace(iconName) ? string.Empty : $"https://media.retroachievements.org{iconName}";
+            string boxArtName = patchData.TryGetProperty("ImageBoxArt", out var baEl) ? (baEl.GetString() ?? string.Empty) : string.Empty;
+            string boxArtUrl = string.IsNullOrWhiteSpace(boxArtName) ? gameIconUrl : $"https://media.retroachievements.org{boxArtName}";
 
             var softUnlocks = await FetchUnlocksSetAsync(gameId, hardcore: false, ct).ConfigureAwait(false);
             var hardUnlocks = await FetchUnlocksSetAsync(gameId, hardcore: true, ct).ConfigureAwait(false);
@@ -238,7 +294,19 @@ public sealed class RetroAchievementsService
                 }
             }
 
-            var session = new RaGameSessionInfo(gameId, title, gameIconUrl, list);
+            var lbs = new List<RaLeaderboardInfo>();
+            if (patchData.TryGetProperty("Leaderboards", out var lbArr) && lbArr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var lb in lbArr.EnumerateArray())
+                {
+                    lbs.Add(new RaLeaderboardInfo(
+                        ReadInt(lb, "ID"),
+                        lb.TryGetProperty("Title", out var lbt) ? (lbt.GetString() ?? "") : "",
+                        lb.TryGetProperty("Description", out var lbd) ? (lbd.GetString() ?? "") : "",
+                        lb.TryGetProperty("Format", out var lbf) ? (lbf.GetString() ?? "VALUE") : "VALUE"));
+                }
+            }
+            var session = new RaGameSessionInfo(gameId, title, gameIconUrl, boxArtUrl, list, lbs);
             ActiveSession = session;
             return session;
         }

@@ -1,9 +1,13 @@
 package com.stormgbca.emulator.data
 
+import android.app.ActivityManager
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.core.os.LocaleListCompat
 import androidx.preference.PreferenceManager
 import com.stormgbca.emulator.model.CheatItem
 import com.stormgbca.emulator.model.ConsoleSystem
@@ -33,6 +37,13 @@ object GbcaPrefs {
     val gbcOverlayState = mutableStateOf(defaultOverlayFor(ConsoleSystem.GBC))
     val gbaOverlayState = mutableStateOf(defaultOverlayFor(ConsoleSystem.GBA))
 
+    var detectedTotalRamMb: Long = 4096L
+        private set
+    var detectedPrimaryAbi: String = "arm64-v8a"
+        private set
+    var isLowEndDevice: Boolean = false
+        private set
+
     fun defaultOverlayFor(system: ConsoleSystem): SystemOverlayProfile = when (system) {
         ConsoleSystem.GB -> SystemOverlayProfile(
             buttonStyle = "dmg_magenta",
@@ -53,9 +64,35 @@ object GbcaPrefs {
 
     fun init(context: Context) {
         if (::prefs.isInitialized) return
-        prefs = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+        val appCtx = context.applicationContext
+        prefs = PreferenceManager.getDefaultSharedPreferences(appCtx)
 
-        coreConfigState.value = loadCoreConfig()
+        detectDeviceCapabilities(appCtx)
+
+        var loaded = loadCoreConfig()
+        // Auto-select optimal profile on first run for old vs modern devices
+        if (loaded.optimizationProfile < 0) {
+            val autoProfile = if (isLowEndDevice) NativeCore.OPT_LITE else NativeCore.OPT_BALANCED
+            loaded = if (autoProfile == NativeCore.OPT_LITE) {
+                loaded.copy(
+                    optimizationProfile = NativeCore.OPT_LITE,
+                    rewindBufferMb = 4,
+                    rewindInterval = 2,
+                    audioInterpMode = NativeCore.INTERP_NEAREST,
+                    lcdGhosting = 0,
+                    runAheadFrames = 0,
+                    resolutionScale = 1,
+                )
+            } else {
+                loaded.copy(optimizationProfile = NativeCore.OPT_BALANCED)
+            }
+            prefs.edit().putString("core_config_json", json.encodeToString(loaded)).apply()
+        }
+        coreConfigState.value = loaded
+
+        // Apply saved app language immediately
+        applyAppLanguage(loaded.appLanguage)
+
         gbSkinState.value = prefs.getString("gb_console_skin", "gb_storm_aurora") ?: "gb_storm_aurora"
         gbcSkinState.value = prefs.getString("gbc_console_skin", "gbc_storm_aurora") ?: "gbc_storm_aurora"
         gbaSkinState.value = prefs.getString("gba_console_skin", "gba_storm_aurora") ?: "gba_storm_aurora"
@@ -67,6 +104,34 @@ object GbcaPrefs {
         gbOverlayState.value = loadOverlayProfile(ConsoleSystem.GB)
         gbcOverlayState.value = loadOverlayProfile(ConsoleSystem.GBC)
         gbaOverlayState.value = loadOverlayProfile(ConsoleSystem.GBA)
+    }
+
+    private fun detectDeviceCapabilities(context: Context) {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val mi = ActivityManager.MemoryInfo()
+        if (am != null) {
+            am.getMemoryInfo(mi)
+            detectedTotalRamMb = (mi.totalMem / (1024L * 1024L)).coerceAtLeast(512L)
+        }
+        detectedPrimaryAbi = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
+        val is32BitOnly = Build.SUPPORTED_64_BIT_ABIS.isEmpty()
+        isLowEndDevice = is32BitOnly || detectedTotalRamMb < 3200L || (am?.isLowRamDevice == true)
+    }
+
+    fun applyAppLanguage(tag: String) {
+        val locales = if (tag.isBlank() || tag == "system") {
+            LocaleListCompat.getEmptyLocaleList()
+        } else {
+            LocaleListCompat.forLanguageTags(tag)
+        }
+        if (AppCompatDelegate.getApplicationLocales() != locales) {
+            AppCompatDelegate.setApplicationLocales(locales)
+        }
+    }
+
+    fun getEffectiveOptimizationProfile(): Int {
+        val p = coreConfigState.value.optimizationProfile
+        return if (p in 0..3) p else if (isLowEndDevice) NativeCore.OPT_LITE else NativeCore.OPT_BALANCED
     }
 
     private fun loadCoreConfig(): GbcaCoreConfig {
@@ -232,12 +297,33 @@ object GbcaPrefs {
         edit.apply()
     }
 
+    // --- Pause Menu Tile Customization (STORM DS parity) ---
+    fun getHiddenPauseTiles(): Set<String> = prefs.getStringSet("pause_menu_hidden_tiles", emptySet()) ?: emptySet()
+    fun setHiddenPauseTiles(keys: Set<String>) {
+        prefs.edit().putStringSet("pause_menu_hidden_tiles", keys).apply()
+    }
+    fun getActiveQuickSlot(): Int = prefs.getInt("active_quick_slot", 1).coerceIn(1, 10)
+    fun setActiveQuickSlot(slot: Int) {
+        prefs.edit().putInt("active_quick_slot", slot.coerceIn(1, 10)).apply()
+    }
+
+    // --- RetroAchievements full settings (STORM DS parity) ---
     fun getRaUsername(): String = prefs.getString("ra_username", "") ?: ""
     fun getRaToken(): String = prefs.getString("ra_token", "") ?: ""
+    fun isRaEnabled(): Boolean = prefs.getBoolean("ra_enabled", true)
     fun isRaHardcore(): Boolean = prefs.getBoolean("ra_hardcore", false)
+    fun isRaRichPresence(): Boolean = prefs.getBoolean("ra_rich_presence", true)
     fun isRaEncore(): Boolean = prefs.getBoolean("ra_encore", false)
     fun isRaUnofficial(): Boolean = prefs.getBoolean("ra_unofficial", false)
     fun isRaNotifications(): Boolean = prefs.getBoolean("ra_notifications", true)
+    fun isRaOfflineSoftcore(): Boolean = prefs.getBoolean("ra_offline_softcore", true)
+    fun isRaChallengeIndicators(): Boolean = prefs.getBoolean("ra_challenge_indicators", true)
+    fun isRaProgressIndicators(): Boolean = prefs.getBoolean("ra_progress_indicators", true)
+    fun isRaLeaderboardIndicators(): Boolean = prefs.getBoolean("ra_leaderboard_indicators", true)
+    fun getRaNotifPosition(): String = prefs.getString("ra_notif_position", "top") ?: "top"
+    fun getRaNotifStyle(): String = prefs.getString("ra_notif_style", "detailed") ?: "detailed"
+    fun getRaNotifSound(): String = prefs.getString("ra_notif_sound", "chime") ?: "chime"
+    fun getRaPendingQueueCount(): Int = prefs.getStringSet("ra_pending_queue", emptySet())?.size ?: 0
     fun getRaPoints(): Int = prefs.getInt("ra_points", 0)
     fun getRaSoftcorePoints(): Int = prefs.getInt("ra_softcore_points", 0)
     fun getRaRank(): Int = prefs.getInt("ra_rank", 0)
@@ -254,18 +340,23 @@ object GbcaPrefs {
             .putString("ra_motto", motto)
             .apply()
     }
-    fun setRaHardcore(hardcore: Boolean) {
-        prefs.edit().putBoolean("ra_hardcore", hardcore).apply()
-    }
-    fun setRaEncore(encore: Boolean) {
-        prefs.edit().putBoolean("ra_encore", encore).apply()
-    }
-    fun setRaUnofficial(unofficial: Boolean) {
-        prefs.edit().putBoolean("ra_unofficial", unofficial).apply()
-    }
-    fun setRaNotifications(enabled: Boolean) {
-        prefs.edit().putBoolean("ra_notifications", enabled).apply()
-    }
+    fun setRaEnabled(v: Boolean) { prefs.edit().putBoolean("ra_enabled", v).apply() }
+    fun setRaHardcore(v: Boolean) { prefs.edit().putBoolean("ra_hardcore", v).apply() }
+    fun setRaRichPresence(v: Boolean) { prefs.edit().putBoolean("ra_rich_presence", v).apply() }
+    fun setRaEncore(v: Boolean) { prefs.edit().putBoolean("ra_encore", v).apply() }
+    fun setRaUnofficial(v: Boolean) { prefs.edit().putBoolean("ra_unofficial", v).apply() }
+    fun setRaNotifications(v: Boolean) { prefs.edit().putBoolean("ra_notifications", v).apply() }
+    fun setRaOfflineSoftcore(v: Boolean) { prefs.edit().putBoolean("ra_offline_softcore", v).apply() }
+    fun setRaChallengeIndicators(v: Boolean) { prefs.edit().putBoolean("ra_challenge_indicators", v).apply() }
+    fun setRaProgressIndicators(v: Boolean) { prefs.edit().putBoolean("ra_progress_indicators", v).apply() }
+    fun setRaLeaderboardIndicators(v: Boolean) { prefs.edit().putBoolean("ra_leaderboard_indicators", v).apply() }
+    fun setRaNotifPosition(v: String) { prefs.edit().putString("ra_notif_position", v).apply() }
+    fun setRaNotifStyle(v: String) { prefs.edit().putString("ra_notif_style", v).apply() }
+    fun setRaNotifSound(v: String) { prefs.edit().putString("ra_notif_sound", v).apply() }
+
+    fun getRaPendingQueue(): Set<String> = prefs.getStringSet("ra_pending_queue", emptySet()) ?: emptySet()
+    fun clearRaPendingQueue() { prefs.edit().remove("ra_pending_queue").apply() }
+
     fun clearRaAccount() {
         prefs.edit()
             .remove("ra_username")

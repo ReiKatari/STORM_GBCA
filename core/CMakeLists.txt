@@ -127,6 +127,7 @@ set(STORM_CORE_SRC
     src/storm_cheats.cpp
     src/storm_upscaler.cpp
     src/storm_mem_search.cpp
+    src/storm_multiplayer.cpp
 )
 
 if(ANDROID)

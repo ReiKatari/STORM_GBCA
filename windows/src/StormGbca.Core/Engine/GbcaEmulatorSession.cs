@@ -1,7 +1,9 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
+using System.Buffers.Binary;
 using System.Diagnostics;
+using System.IO.Compression;
 using StormGbca.Core.Audio;
 using StormGbca.Core.Configuration;
 using StormGbca.Core.Input;
@@ -10,6 +12,29 @@ using StormGbca.Core.Paths;
 using StormGbca.Core.Subsystems;
 
 namespace StormGbca.Core.Engine;
+
+public readonly record struct GbcaLinkStatusInfo(
+    StormLinkMode Mode,
+    bool Connected,
+    int PlayerId,
+    int PlayerCount,
+    int PingMs,
+    int Port,
+    string RoomName,
+    string PeerInfo,
+    string StatusText
+);
+
+public readonly record struct GbcaLanRoomInfo(
+    string HostIp,
+    int Port,
+    StormLinkMode Mode,
+    StormPlatform Platform,
+    int PlayerCount,
+    int MaxPlayers,
+    string RoomName,
+    string GameTitle
+);
 
 public readonly record struct GbcaFrameMetrics(
     int Width,
@@ -144,6 +169,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         {
             NativeCoreBindings.storm_gbca_set_config(_ctx, &cfg);
             NativeCoreBindings.storm_gbca_set_upscale(_ctx, Math.Clamp(settings.ResolutionScale, 1, 4), (int)settings.UpscaleMode);
+            NativeCoreBindings.storm_gbca_set_optimization_profile(_ctx, (int)settings.OptimizationProfile);
             NativeCoreBindings.storm_gbca_set_performance(_ctx, Math.Clamp(settings.CpuOverclockPct, 50, 400), Math.Clamp(settings.FrameSkip, 0, 4));
             NativeCoreBindings.storm_gbca_set_solar_lux(_ctx, settings.SolarLuxLevel);
             NativeCoreBindings.storm_gbca_set_rtc(_ctx, settings.UseHostRtc ? 1 : 0, 0);
@@ -505,6 +531,10 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
                 rwAvail = NativeCoreBindings.storm_gbca_rewind_available_frames(_ctx);
 
                 sramFlushTick++;
+                if (sramFlushTick % 30 == 0)
+                {
+                    PollGbPrinterLocked();
+                }
                 if (sramFlushTick >= 180)
                 {
                     sramFlushTick = 0;
@@ -557,6 +587,184 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
                 }
             }
         }
+    }
+
+
+    // -----------------------------------------------------------------------
+    // v1.2.0 Multiplayer / Link Cable / Wireless RFU / IR / Dolphin JoyBus / GB Printer
+    // -----------------------------------------------------------------------
+    public bool StartLink(StormLinkMode mode, string hostIp, int port, int clockPort, string roomName)
+    {
+        lock (_coreLock)
+        {
+            if (_ctx == nint.Zero || !NativeCoreBindings.IsAvailable) return false;
+            int rc = NativeCoreBindings.storm_gbca_link_start(
+                _ctx,
+                (int)mode,
+                hostIp ?? string.Empty,
+                port,
+                clockPort,
+                roomName ?? "STORM GBCA Room");
+            if (rc == 0)
+            {
+                StatusMessage?.Invoke($"Link active: {mode}");
+                return true;
+            }
+            StatusMessage?.Invoke($"Link error ({rc}): {mode}");
+            return false;
+        }
+    }
+
+    public void StopLink()
+    {
+        lock (_coreLock)
+        {
+            if (_ctx != nint.Zero && NativeCoreBindings.IsAvailable)
+            {
+                NativeCoreBindings.storm_gbca_link_stop(_ctx);
+            }
+        }
+        StatusMessage?.Invoke("Link disconnected");
+    }
+
+    public GbcaLinkStatusInfo GetLinkStatus()
+    {
+        lock (_coreLock)
+        {
+            if (_ctx == nint.Zero || !NativeCoreBindings.IsAvailable)
+            {
+                return new GbcaLinkStatusInfo(StormLinkMode.None, false, 0, 0, 0, 0, "", "", "Disconnected");
+            }
+            StormGbcaLinkStatus st = default;
+            if (NativeCoreBindings.storm_gbca_link_get_status(_ctx, &st) == 0)
+            {
+                return new GbcaLinkStatusInfo(
+                    (StormLinkMode)st.mode,
+                    st.connected != 0,
+                    st.player_id,
+                    st.player_count,
+                    st.ping_ms,
+                    st.port,
+                    st.GetRoomName(),
+                    st.GetPeerInfo(),
+                    st.GetStatusText());
+            }
+            return new GbcaLinkStatusInfo(StormLinkMode.None, false, 0, 0, 0, 0, "", "", "Disconnected");
+        }
+    }
+
+    public List<GbcaLanRoomInfo> DiscoverLanRooms(int timeoutMs = 1200)
+    {
+        var result = new List<GbcaLanRoomInfo>();
+        if (!NativeCoreBindings.IsAvailable) return result;
+        StormGbcaLanRoom[] rooms = new StormGbcaLanRoom[16];
+        fixed (StormGbcaLanRoom* p = rooms)
+        {
+            int count = NativeCoreBindings.storm_gbca_lan_discover(p, rooms.Length, Math.Clamp(timeoutMs, 200, 4000));
+            for (int i = 0; i < count; i++)
+            {
+                result.Add(new GbcaLanRoomInfo(
+                    rooms[i].GetHostIp(),
+                    rooms[i].port,
+                    (StormLinkMode)rooms[i].mode,
+                    (StormPlatform)rooms[i].platform,
+                    rooms[i].player_count,
+                    rooms[i].max_players,
+                    rooms[i].GetRoomName(),
+                    rooms[i].GetGameTitle()));
+            }
+        }
+        return result;
+    }
+
+    private uint[]? _printerBuf;
+    private void PollGbPrinterLocked()
+    {
+        if (_ctx == nint.Zero || !NativeCoreBindings.IsAvailable) return;
+        _printerBuf ??= new uint[160 * 512];
+        int w = 0, h = 0;
+        fixed (uint* p = _printerBuf)
+        {
+            int got = NativeCoreBindings.storm_gbca_printer_poll_image(_ctx, p, _printerBuf.Length, &w, &h);
+            if (got > 0 && w > 0 && h > 0 && w * h <= _printerBuf.Length)
+            {
+                try
+                {
+                    string dir = Path.Combine(StormGbcaPaths.ScreenshotsDirectory, "GBPrinter");
+                    Directory.CreateDirectory(dir);
+                    string file = Path.Combine(dir, $"gb_printer_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
+                    WriteRgbaPng(file, _printerBuf, w, h);
+                    StatusMessage?.Invoke($"Game Boy Printer PNG: {Path.GetFileName(file)}");
+                }
+                catch { }
+            }
+        }
+    }
+
+    private static void WriteRgbaPng(string path, uint[] rgbaPixels, int w, int h)
+    {
+        using var fs = File.Create(path);
+        fs.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+
+        byte[] ihdr = new byte[13];
+        BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(0, 4), w);
+        BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(4, 4), h);
+        ihdr[8] = 8; // bit depth
+        ihdr[9] = 6; // RGBA
+        WritePngChunk(fs, "IHDR", ihdr);
+
+        byte[] raw = new byte[h * (1 + w * 4)];
+        for (int y = 0; y < h; y++)
+        {
+            int rowOff = y * (1 + w * 4);
+            raw[rowOff] = 0; // filter None
+            for (int x = 0; x < w; x++)
+            {
+                uint px = rgbaPixels[y * w + x];
+                int o = rowOff + 1 + x * 4;
+                raw[o] = (byte)(px & 0xFF);
+                raw[o + 1] = (byte)((px >> 8) & 0xFF);
+                raw[o + 2] = (byte)((px >> 16) & 0xFF);
+                raw[o + 3] = (byte)((px >> 24) & 0xFF);
+            }
+        }
+        using var compMs = new MemoryStream();
+        using (var zs = new ZLibStream(compMs, CompressionLevel.Fastest, leaveOpen: true))
+        {
+            zs.Write(raw, 0, raw.Length);
+        }
+        WritePngChunk(fs, "IDAT", compMs.ToArray());
+        WritePngChunk(fs, "IEND", []);
+    }
+
+    private static void WritePngChunk(Stream s, string type, byte[] data)
+    {
+        Span<byte> len = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(len, data.Length);
+        s.Write(len);
+        byte[] t = System.Text.Encoding.ASCII.GetBytes(type);
+        s.Write(t);
+        if (data.Length > 0) s.Write(data);
+        uint crc = 0xFFFFFFFFu;
+        crc = UpdateCrc32(crc, t);
+        crc = UpdateCrc32(crc, data);
+        crc ^= 0xFFFFFFFFu;
+        Span<byte> cb = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(cb, crc);
+        s.Write(cb);
+    }
+
+    private static uint UpdateCrc32(uint crc, ReadOnlySpan<byte> buf)
+    {
+        foreach (byte b in buf)
+        {
+            crc ^= b;
+            for (int k = 0; k < 8; k++)
+            {
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : (crc >> 1);
+            }
+        }
+        return crc;
     }
 
     public int MemSearchReset(StormMemoryRegion region, int valueSizeBytes)

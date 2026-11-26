@@ -17,19 +17,19 @@ enum class ConsoleSystem(val label: String) {
     }
 }
 
-enum class RomFilter(val labelRu: String, val labelEn: String) {
-    ALL("Все", "All"),
-    GB("GB", "GB"),
-    GBC("GBC", "GBC"),
-    GBA("GBA", "GBA"),
-    FAVORITES("Избранное", "Favorites"),
+enum class RomFilter {
+    ALL,
+    GB,
+    GBC,
+    GBA,
+    FAVORITES,
 }
 
-enum class RomSortMode(val labelRu: String, val labelEn: String) {
-    TITLE("По названию", "By Title"),
-    RECENT("Недавние", "Recently Played"),
-    PLATFORM("По платформе", "By Platform"),
-    PLAY_TIME("По времени игры", "By Play Time"),
+enum class RomSortMode {
+    TITLE,
+    RECENT,
+    PLATFORM,
+    PLAY_TIME,
 }
 
 enum class RomViewMode {
@@ -37,12 +37,12 @@ enum class RomViewMode {
     LIST,
 }
 
-enum class OverlayLayoutPreset(val key: String, val labelRu: String, val labelEn: String) {
-    CLASSIC_HANDHELD("classic_handheld", "Классическая консоль", "Classic Handheld"),
-    WIDE_GRIP("wide_grip", "Широкий хват", "Wide Grip"),
-    COMPACT_MINIMAL("compact_minimal", "Компактный минимал", "Compact Minimal"),
-    FLOATING_GLASS("floating_glass", "Парящее стекло", "Floating Glass"),
-    CUSTOM("custom", "Пользовательская раскладка", "Custom Layout");
+enum class OverlayLayoutPreset(val key: String) {
+    CLASSIC_HANDHELD("classic_handheld"),
+    WIDE_GRIP("wide_grip"),
+    COMPACT_MINIMAL("compact_minimal"),
+    FLOATING_GLASS("floating_glass"),
+    CUSTOM("custom");
 
     companion object {
         fun fromKey(key: String?): OverlayLayoutPreset =
@@ -134,6 +134,9 @@ data class RomEntry(
         return if (base.isNotBlank()) base else internalTitle.ifBlank { fileName }
     }
 
+    fun formattedTitle(useInternalTitle: Boolean): String =
+        if (useInternalTitle && internalTitle.isNotBlank()) internalTitle else displayTitle
+
     val hasRtc: Boolean get() = (hwFlags and NativeCore.HW_RTC) != 0
     val hasRumble: Boolean get() = (hwFlags and NativeCore.HW_RUMBLE) != 0
     val hasSolar: Boolean get() = (hwFlags and NativeCore.HW_SOLAR) != 0
@@ -175,30 +178,54 @@ data class GbcaCoreConfig(
     val rumbleEnabled: Boolean = true,
     val solarLux: Int = 5,
     val showBootSplash: Boolean = false,
-    val autoFetchCovers: Boolean = true,
+
+    // v1.2.0: Separate Cover & Badge toggles (ALL OFF by default, identical to STORM DS!)
+    val showLibretroCovers: Boolean = false,
+    val showRaCovers: Boolean = false,
+    val showPlatformBadge: Boolean = false,
+    val showRegionBadge: Boolean = false,
+    val showHardwareBadges: Boolean = false,
+    val showRaBadge: Boolean = false,
+    val romDisplayNameMode: Int = 0, // 0=File name, 1=Internal ROM header
+
+    // v1.2.0: Graphics, Vulkan, Upscaling & Device Optimization (Old + New devices)
     val graphicsBackend: Int = 0, // 0=OpenGL ES 3.2, 1=Vulkan 1.1
     val customVulkanDriverPath: String = "",
     val resolutionScale: Int = 1, // 1..4x internal upscaling
-    val upscaleMode: Int = NativeCore.UPSCALE_NONE, // 0=None, 1=xBRZ, 2=Scale2x, 3=MMPX, 4=LCD HD, 5=CRT HD
+    val upscaleMode: Int = NativeCore.UPSCALE_NONE,
     val cpuOverclockPct: Int = 100, // 50..400%
     val frameSkip: Int = 0, // 0..4
+    val optimizationProfile: Int = -1, // -1=Auto-detect hardware, 0=Lite, 1=Balanced, 2=Performance, 3=High Accuracy
+
+    // v1.2.0: App language, Pause Menu, Auto-Update
+    val appLanguage: String = "system",
+    val extendedPauseMenu: Boolean = false,
+    val autoCheckUpdates: Boolean = true,
+
+    // v1.2.0: Multiplayer defaults
+    val mpRoomName: String = "STORM GBCA Room",
+    val mpPort: Int = 54320,
+    val mpLastHostIp: String = "192.168.1.2",
+    val mpDolphinIp: String = "127.0.0.1",
+    val mpDolphinDataPort: Int = 54970,
+    val mpDolphinClockPort: Int = 49420,
 )
 
-enum class PhysicalAction(val labelRu: String, val labelEn: String, val defaultKeyCode: Int, val coreKeyMask: Int = 0) {
-    UP("Вверх", "Up", android.view.KeyEvent.KEYCODE_DPAD_UP, NativeCore.KEY_UP),
-    DOWN("Вниз", "Down", android.view.KeyEvent.KEYCODE_DPAD_DOWN, NativeCore.KEY_DOWN),
-    LEFT("Влево", "Left", android.view.KeyEvent.KEYCODE_DPAD_LEFT, NativeCore.KEY_LEFT),
-    RIGHT("Вправо", "Right", android.view.KeyEvent.KEYCODE_DPAD_RIGHT, NativeCore.KEY_RIGHT),
-    A("Кнопка A", "Button A", android.view.KeyEvent.KEYCODE_BUTTON_A, NativeCore.KEY_A),
-    B("Кнопка B", "Button B", android.view.KeyEvent.KEYCODE_BUTTON_B, NativeCore.KEY_B),
-    L("Триггер L", "Shoulder L", android.view.KeyEvent.KEYCODE_BUTTON_L1, NativeCore.KEY_L),
-    R("Триггер R", "Shoulder R", android.view.KeyEvent.KEYCODE_BUTTON_R1, NativeCore.KEY_R),
-    START("Старт", "Start", android.view.KeyEvent.KEYCODE_BUTTON_START, NativeCore.KEY_START),
-    SELECT("Выбор", "Select", android.view.KeyEvent.KEYCODE_BUTTON_SELECT, NativeCore.KEY_SELECT),
-    FAST_FORWARD("Ускорение", "Fast Forward", android.view.KeyEvent.KEYCODE_BUTTON_R2),
-    REWIND("Перемотка назад", "Rewind", android.view.KeyEvent.KEYCODE_BUTTON_L2),
-    QUICK_SAVE("Быстрое сохранение", "Quick Save", android.view.KeyEvent.KEYCODE_BUTTON_X),
-    QUICK_LOAD("Быстрая загрузка", "Quick Load", android.view.KeyEvent.KEYCODE_BUTTON_Y),
-    SOLAR_UP("Датчик солнца +", "Solar Sensor +", android.view.KeyEvent.KEYCODE_PLUS),
-    SOLAR_DOWN("Датчик солнца -", "Solar Sensor -", android.view.KeyEvent.KEYCODE_MINUS),
+enum class PhysicalAction(val defaultKeyCode: Int, val coreKeyMask: Int = 0) {
+    UP(android.view.KeyEvent.KEYCODE_DPAD_UP, NativeCore.KEY_UP),
+    DOWN(android.view.KeyEvent.KEYCODE_DPAD_DOWN, NativeCore.KEY_DOWN),
+    LEFT(android.view.KeyEvent.KEYCODE_DPAD_LEFT, NativeCore.KEY_LEFT),
+    RIGHT(android.view.KeyEvent.KEYCODE_DPAD_RIGHT, NativeCore.KEY_RIGHT),
+    A(android.view.KeyEvent.KEYCODE_BUTTON_A, NativeCore.KEY_A),
+    B(android.view.KeyEvent.KEYCODE_BUTTON_B, NativeCore.KEY_B),
+    L(android.view.KeyEvent.KEYCODE_BUTTON_L1, NativeCore.KEY_L),
+    R(android.view.KeyEvent.KEYCODE_BUTTON_R1, NativeCore.KEY_R),
+    START(android.view.KeyEvent.KEYCODE_BUTTON_START, NativeCore.KEY_START),
+    SELECT(android.view.KeyEvent.KEYCODE_BUTTON_SELECT, NativeCore.KEY_SELECT),
+    FAST_FORWARD(android.view.KeyEvent.KEYCODE_BUTTON_R2),
+    REWIND(android.view.KeyEvent.KEYCODE_BUTTON_L2),
+    QUICK_SAVE(android.view.KeyEvent.KEYCODE_BUTTON_X),
+    QUICK_LOAD(android.view.KeyEvent.KEYCODE_BUTTON_Y),
+    SOLAR_UP(android.view.KeyEvent.KEYCODE_PLUS),
+    SOLAR_DOWN(android.view.KeyEvent.KEYCODE_MINUS),
 }

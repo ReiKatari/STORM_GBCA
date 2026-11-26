@@ -2,6 +2,7 @@ package com.stormgbca.emulator.data
 
 import android.content.Context
 import android.net.Uri
+import com.stormgbca.emulator.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -16,19 +17,19 @@ data class RetroArchShaderPreset(
 )
 
 object ShaderRepository {
-    private data class BuiltInDef(val file: String, val name: String, val desc: String)
+    private data class BuiltInDef(val file: String, val name: String, val descRes: Int)
 
     private val BUILT_INS = listOf(
-        BuiltInDef("lcd-gba-grid.slangp", "LCD GBA Grid", "Аутентичная матрица GBA с RGB-субпикселями"),
-        BuiltInDef("lcd-dmg-olive.slangp", "LCD DMG Olive", "Классический зеленый Dot-Matrix экран Game Boy"),
-        BuiltInDef("lcd3x-sharp.slangp", "LCD 3x Sharp", "Четкая субпиксельная сетка LCD 3x"),
-        BuiltInDef("gba-color-ags101.slangp", "GBA Color AGS-101", "Калиброванная цветопередача GBA SP AGS-101"),
-        BuiltInDef("gbc-color-accurate.slangp", "GBC Color Accurate", "Точная гамма и палитра Game Boy Color"),
-        BuiltInDef("xbrz-smooth.slangp", "xBRZ Smooth HD", "Сглаживание диагональных контуров пиксель-арта"),
-        BuiltInDef("sharp-bilinear.slangp", "Sharp Bilinear", "Четкое масштабирование без мерцания"),
-        BuiltInDef("crt-scanlines.slangp", "CRT Scanlines", "Ретро-эффект ЭЛТ со строчной разверткой"),
-        BuiltInDef("vibrant-hd.slangp", "Vibrant HD", "Повышенный контраст и насыщенность цветов"),
-        BuiltInDef("grayscale-pocket.slangp", "Game Boy Pocket", "Монохромный серебристый LCD Game Boy Pocket"),
+        BuiltInDef("lcd-gba-grid.slangp", "LCD GBA Grid", R.string.shader_desc_lcd_gba),
+        BuiltInDef("lcd-dmg-olive.slangp", "LCD DMG Olive", R.string.shader_desc_lcd_dmg),
+        BuiltInDef("lcd3x-sharp.slangp", "LCD 3x Sharp", R.string.shader_desc_lcd3x),
+        BuiltInDef("gba-color-ags101.slangp", "GBA Color AGS-101", R.string.shader_desc_ags101),
+        BuiltInDef("gbc-color-accurate.slangp", "GBC Color Accurate", R.string.shader_desc_gbc_color),
+        BuiltInDef("xbrz-smooth.slangp", "xBRZ Smooth HD", R.string.shader_desc_xbrz),
+        BuiltInDef("sharp-bilinear.slangp", "Sharp Bilinear", R.string.shader_desc_sharp_bilinear),
+        BuiltInDef("crt-scanlines.slangp", "CRT Scanlines", R.string.shader_desc_crt),
+        BuiltInDef("vibrant-hd.slangp", "Vibrant HD", R.string.shader_desc_vibrant),
+        BuiltInDef("grayscale-pocket.slangp", "Game Boy Pocket", R.string.shader_desc_pocket),
     )
 
     fun shadersDir(context: Context): File = File(context.filesDir, "shaders").apply { mkdirs() }
@@ -56,8 +57,8 @@ object ShaderRepository {
         result.add(
             RetroArchShaderPreset(
                 id = "",
-                name = "Отключен (Встроенный шейдер)",
-                description = "Использовать встроенный шейдер STORM / SkyEmu LCD",
+                name = context.getString(R.string.shader_off_name),
+                description = context.getString(R.string.shader_off_desc),
                 path = "",
                 isBuiltIn = true,
             )
@@ -65,7 +66,7 @@ object ShaderRepository {
         for (def in BUILT_INS) {
             val f = File(dir, def.file)
             if (f.exists()) {
-                result.add(RetroArchShaderPreset(def.file, def.name, def.desc, f.absolutePath, true))
+                result.add(RetroArchShaderPreset(def.file, def.name, context.getString(def.descRes), f.absolutePath, true))
             }
         }
         customShadersDir(context).listFiles()?.sortedBy { it.name.lowercase() }?.forEach { f ->
@@ -74,7 +75,7 @@ object ShaderRepository {
                     RetroArchShaderPreset(
                         id = "custom/${f.name}",
                         name = f.nameWithoutExtension,
-                        description = "Пользовательский пресет RetroArch (.slangp)",
+                        description = context.getString(R.string.shader_custom_desc),
                         path = f.absolutePath,
                         isBuiltIn = false,
                     )
@@ -99,14 +100,13 @@ object ShaderRepository {
                     FileOutputStream(dst).use { output -> input.copyTo(output) }
                 }
                 if (dst.name.endsWith(".slang", ignoreCase = true)) {
-                    // Auto-wrap single .slang file into a valid .slangp preset for librashader!
                     val wrapper = File(customShadersDir(context), "${dst.nameWithoutExtension}.slangp")
                     wrapper.writeText(
                         "shaders = \"1\"\nshader0 = \"${dst.name}\"\nfilter_linear0 = \"false\"\nscale_type0 = \"viewport\"\n"
                     )
-                    RetroArchShaderPreset("custom/${wrapper.name}", wrapper.nameWithoutExtension, "Импортированный шейдер RetroArch", wrapper.absolutePath, false)
+                    RetroArchShaderPreset("custom/${wrapper.name}", wrapper.nameWithoutExtension, context.getString(R.string.shader_imported_shader), wrapper.absolutePath, false)
                 } else {
-                    RetroArchShaderPreset("custom/${dst.name}", dst.nameWithoutExtension, "Импортированный пресет RetroArch", dst.absolutePath, false)
+                    RetroArchShaderPreset("custom/${dst.name}", dst.nameWithoutExtension, context.getString(R.string.shader_imported_preset), dst.absolutePath, false)
                 }
             }.getOrNull()
         }

@@ -1,5 +1,6 @@
 #include "storm_gbca_core.h"
 #include "storm_internal.hpp"
+#include "storm_multiplayer.hpp"
 #include "storm_sameboy_bridge.h"
 
 extern "C" {
@@ -407,6 +408,8 @@ struct StormGbcaContext {
     int cpu_overclock_pct = 100;
     int frame_skip = 0;
     int frame_skip_counter = 0;
+    int optimization_profile = STORM_OPT_BALANCED;
+    storm::MultiplayerManager mp;
 };
 
 namespace {
@@ -544,6 +547,7 @@ static void apply_sameboy_frame_cheats(StormGbcaContext* ctx) {
 }
 
 static void unload_active_cores(StormGbcaContext* ctx) {
+    ctx->mp.stop(ctx->mgba);
     if (ctx->mgba) {
         ctx->mgba->unloadROM(ctx->mgba);
         mCoreConfigDeinit(&ctx->mgba->config);
@@ -658,6 +662,9 @@ static int init_core_with_loaded_rom(StormGbcaContext* ctx) {
     ctx->audio_dsp.reset();
     ctx->video_pp.reset();
     rebuild_cheats_on_core(ctx);
+    if (!ctx->using_sameboy && ctx->mgba) {
+        ctx->mp.on_core_reloaded(ctx->mgba, ctx->rom_info.platform, ctx->rom_info.title);
+    }
     return 0;
 }
 
@@ -997,6 +1004,7 @@ STORM_GBCA_API int storm_gbca_run_frame(StormGbcaContext* ctx) {
             ctx->rewind.push_state(ctx->scratch_state.data(), ctx->scratch_state.size());
         }
     }
+    ctx->mp.tick_frame();
     return 0;
 }
 
@@ -1525,6 +1533,94 @@ STORM_GBCA_API int storm_gbca_mem_search_get_results(const StormGbcaContext* ctx
     std::vector<uint8_t> snap;
     read_region_snapshot(ctx, ctx->mem_search.region(), snap);
     return ctx->mem_search.get_results(out_addrs, out_vals, max_count, snap.data(), snap.size());
+}
+
+STORM_GBCA_API void storm_gbca_set_optimization_profile(StormGbcaContext* ctx, int profile) {
+    if (!ctx) return;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    ctx->optimization_profile = std::clamp<int>(profile, STORM_OPT_LITE, STORM_OPT_HIGH_ACCURACY);
+    switch (ctx->optimization_profile) {
+        case STORM_OPT_LITE:
+            // Old / low-RAM / 32-bit devices: minimal memory footprint & lowest CPU overhead
+            ctx->cfg.run_ahead_frames = 0;
+            ctx->cfg.audio_interp_mode = STORM_AUDIO_INTERP_NEAREST;
+            ctx->cfg.audio_highpass_mode = STORM_AUDIO_HIGHPASS_REMOVE_DC;
+            ctx->cfg.rewind_buffer_mb = std::min(ctx->cfg.rewind_buffer_mb, 4);
+            ctx->cfg.rewind_interval = std::max(ctx->cfg.rewind_interval, 2);
+            ctx->cfg.lcd_ghosting = 0;
+            if (ctx->upscale_scale > 1) ctx->upscale_scale = 1;
+            break;
+        case STORM_OPT_BALANCED:
+            ctx->cfg.audio_interp_mode = STORM_AUDIO_INTERP_LINEAR;
+            ctx->cfg.audio_highpass_mode = STORM_AUDIO_HIGHPASS_ACCURATE;
+            if (ctx->cfg.rewind_buffer_mb < 8) ctx->cfg.rewind_buffer_mb = 12;
+            ctx->cfg.rewind_interval = 1;
+            break;
+        case STORM_OPT_PERFORMANCE:
+            ctx->cfg.run_ahead_frames = 0;
+            ctx->cfg.audio_interp_mode = STORM_AUDIO_INTERP_LINEAR;
+            if (ctx->cfg.rewind_buffer_mb < 16) ctx->cfg.rewind_buffer_mb = 16;
+            ctx->cfg.rewind_interval = 1;
+            break;
+        case STORM_OPT_HIGH_ACCURACY:
+            ctx->cfg.audio_interp_mode = STORM_AUDIO_INTERP_HERMITE;
+            ctx->cfg.audio_highpass_mode = STORM_AUDIO_HIGHPASS_ACCURATE;
+            if (ctx->cfg.rewind_buffer_mb < 24) ctx->cfg.rewind_buffer_mb = 24;
+            ctx->cfg.rewind_interval = 1;
+            break;
+    }
+    ctx->rewind.configure(ctx->cfg.rewind_enabled != 0, ctx->cfg.rewind_buffer_mb, ctx->cfg.rewind_interval);
+    if (ctx->rom_loaded) {
+        if (ctx->using_sameboy) apply_sameboy_config(ctx);
+        else apply_mgba_config(ctx);
+    }
+}
+
+STORM_GBCA_API int storm_gbca_link_start(StormGbcaContext* ctx, int mode, const char* host_ip,
+                                         int port, int clock_port, const char* room_name) {
+    if (!ctx) return -1;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    // If SameBoy is active for GB/GBC and user attaches Link Cable or GB Printer,
+    // transparently switch active session to mGBA so SIO hardware drivers attach seamlessly.
+    if (ctx->rom_loaded && ctx->using_sameboy && mode != STORM_LINK_NONE) {
+        std::vector<uint8_t> rom_copy = ctx->rom_data;
+        std::string name_copy = ctx->rom_virtual_name;
+        int prev_gb = ctx->cfg.preferred_core_gb;
+        int prev_gbc = ctx->cfg.preferred_core_gbc;
+        ctx->cfg.preferred_core_gb = STORM_CORE_MGBA;
+        ctx->cfg.preferred_core_gbc = STORM_CORE_MGBA;
+        unload_active_cores(ctx);
+        ctx->rom_data = std::move(rom_copy);
+        ctx->rom_virtual_name = std::move(name_copy);
+        init_core_with_loaded_rom(ctx);
+        ctx->cfg.preferred_core_gb = prev_gb;
+        ctx->cfg.preferred_core_gbc = prev_gbc;
+    }
+    int plat = ctx->rom_loaded ? ctx->rom_info.platform : STORM_PLATFORM_GBA;
+    const char* title = ctx->rom_loaded ? ctx->rom_info.title : "STORM GBCA";
+    return ctx->mp.start(ctx->mgba, plat, title, mode, host_ip, port, clock_port, room_name);
+}
+
+STORM_GBCA_API void storm_gbca_link_stop(StormGbcaContext* ctx) {
+    if (!ctx) return;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    ctx->mp.stop(ctx->mgba);
+}
+
+STORM_GBCA_API int storm_gbca_link_get_status(const StormGbcaContext* ctx, StormGbcaLinkStatus* out_status) {
+    if (!ctx || !out_status) return -1;
+    ctx->mp.get_status(out_status);
+    return 0;
+}
+
+STORM_GBCA_API int storm_gbca_lan_discover(StormGbcaLanRoom* out_rooms, int max_rooms, int timeout_ms) {
+    return storm::MultiplayerManager::discover_lan_rooms(out_rooms, max_rooms, timeout_ms);
+}
+
+STORM_GBCA_API int storm_gbca_printer_poll_image(StormGbcaContext* ctx, uint32_t* dst_rgba,
+                                                 int max_pixels, int* out_w, int* out_h) {
+    if (!ctx) return 0;
+    return ctx->mp.poll_printer_image(dst_rgba, max_pixels, out_w, out_h);
 }
 
 } // extern "C"

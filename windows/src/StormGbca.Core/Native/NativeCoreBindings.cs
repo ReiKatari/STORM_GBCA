@@ -140,6 +140,63 @@ public enum StormSearchCmp : int
     Decreased = 7,
 }
 
+public enum StormOptimizationProfile : int
+{
+    Lite = 0,
+    Balanced = 1,
+    Performance = 2,
+    HighAccuracy = 3,
+}
+
+public enum StormLinkMode : int
+{
+    None = 0,
+    LanHost = 1,
+    LanClient = 2,
+    WirelessHost = 3,
+    WirelessClient = 4,
+    IrHost = 5,
+    IrClient = 6,
+    DolphinJoyBus = 7,
+    GbPrinter = 8,
+    LocalLoopback = 9,
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct StormGbcaLinkStatus
+{
+    public int mode;
+    public int connected;
+    public int player_id;
+    public int player_count;
+    public int ping_ms;
+    public int port;
+    public fixed byte room_name[64];
+    public fixed byte peer_info[128];
+    public fixed byte status_text[128];
+
+    public readonly string GetRoomName() { fixed (byte* p = room_name) return StormGbcaRomInfo.ReadFixedUtf8(p, 64); }
+    public readonly string GetPeerInfo() { fixed (byte* p = peer_info) return StormGbcaRomInfo.ReadFixedUtf8(p, 128); }
+    public readonly string GetStatusText() { fixed (byte* p = status_text) return StormGbcaRomInfo.ReadFixedUtf8(p, 128); }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct StormGbcaLanRoom
+{
+    public fixed byte host_ip[64];
+    public int port;
+    public int mode;
+    public int platform;
+    public int player_count;
+    public int max_players;
+    public fixed byte room_name[64];
+    public fixed byte game_title[64];
+
+    public readonly string GetHostIp() { fixed (byte* p = host_ip) return StormGbcaRomInfo.ReadFixedUtf8(p, 64); }
+    public readonly string GetRoomName() { fixed (byte* p = room_name) return StormGbcaRomInfo.ReadFixedUtf8(p, 64); }
+    public readonly string GetGameTitle() { fixed (byte* p = game_title) return StormGbcaRomInfo.ReadFixedUtf8(p, 64); }
+}
+
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct StormGbcaRomInfo
 {
@@ -502,4 +559,29 @@ public static unsafe class NativeCoreBindings
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern int storm_gbca_mem_search_get_results(nint ctx, uint* out_addrs, uint* out_vals, int max_results);
+
+    // v1.2.0 Device Optimization & Full Multiplayer / Link Cable / Wireless / JoyBus / GB Printer
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void storm_gbca_set_optimization_profile(nint ctx, int profile);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_link_start(
+        nint ctx,
+        int mode,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string host_ip,
+        int port,
+        int clock_port,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string room_name);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void storm_gbca_link_stop(nint ctx);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_link_get_status(nint ctx, StormGbcaLinkStatus* out_status);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_lan_discover(StormGbcaLanRoom* out_rooms, int max_rooms, int timeout_ms);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_printer_poll_image(nint ctx, uint* dst_rgba, int max_pixels, int* out_w, int* out_h);
 }

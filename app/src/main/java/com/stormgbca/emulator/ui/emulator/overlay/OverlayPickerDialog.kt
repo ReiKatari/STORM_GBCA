@@ -30,7 +30,6 @@ import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.runtime.Composable
@@ -46,15 +45,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.documentfile.provider.DocumentFile
+import com.stormgbca.emulator.R
 import com.stormgbca.emulator.data.GbcaPrefs
 import com.stormgbca.emulator.data.ShaderRepository
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.OverlayLayoutPreset
+import com.stormgbca.emulator.ui.common.UnifiedBackButton
 import com.stormgbca.emulator.ui.common.WatermelonSwitch
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.WatermelonMono
@@ -63,14 +65,22 @@ import kotlinx.coroutines.launch
 import ru.stormgames.gbca.NativeCore
 
 private val SHADER_OPTIONS = listOf(
-    NativeCore.FILTER_RGB_SUBPIXEL to "SkyEmu ЖК-субпиксели",
-    NativeCore.FILTER_LCD_GRID to "DMG Оливковая матрица / Сетка",
-    NativeCore.FILTER_SHARP_BILINEAR to "Четкий билинейный (AGS-101)",
-    NativeCore.FILTER_CRT_SCANLINES to "CRT Строки развертки",
-    NativeCore.FILTER_XBRZ_LITE to "xBRZ-Lite Сглаживание",
-    NativeCore.FILTER_NEAREST to "Четкие пиксели (Nearest)",
-    NativeCore.FILTER_BILINEAR to "Мягкое сглаживание (Bilinear)",
+    NativeCore.FILTER_RGB_SUBPIXEL to R.string.filter_rgb_subpixel,
+    NativeCore.FILTER_LCD_GRID to R.string.filter_lcd_grid,
+    NativeCore.FILTER_SHARP_BILINEAR to R.string.filter_sharp_bilinear,
+    NativeCore.FILTER_CRT_SCANLINES to R.string.filter_crt_scanlines,
+    NativeCore.FILTER_XBRZ_LITE to R.string.filter_xbrz_lite,
+    NativeCore.FILTER_NEAREST to R.string.filter_nearest,
+    NativeCore.FILTER_BILINEAR to R.string.filter_bilinear,
 )
+
+private fun OverlayLayoutPreset.labelRes(): Int = when (this) {
+    OverlayLayoutPreset.CLASSIC_HANDHELD -> R.string.preset_classic_handheld
+    OverlayLayoutPreset.WIDE_GRIP -> R.string.preset_wide_grip
+    OverlayLayoutPreset.COMPACT_MINIMAL -> R.string.preset_compact_minimal
+    OverlayLayoutPreset.FLOATING_GLASS -> R.string.preset_floating_glass
+    OverlayLayoutPreset.CUSTOM -> R.string.preset_custom
+}
 
 @Composable
 fun OverlayPickerDialog(
@@ -96,9 +106,9 @@ fun OverlayPickerDialog(
                     GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(retroArchShaderPath = imported.path) }
                     onShaderChanged?.invoke(activeTab, imported.path)
                     shaderListTick++
-                    Toast.makeText(context, "Шейдер RetroArch добавлен: ${imported.name}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.overlay_shader_added_fmt, imported.name), Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, "Не удалось импортировать шейдер", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.overlay_shader_import_fail), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -138,18 +148,8 @@ fun OverlayPickerDialog(
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Экран, оверлей и шейдеры", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Независимые профили для GB, GBC и GBA", color = colors.text2, fontSize = 11.sp)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.surface2)
-                            .clickable(onClick = onDismiss),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(16.dp))
+                        Text(stringResource(R.string.overlay_title), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.overlay_subtitle), color = colors.text2, fontSize = 11.sp)
                     }
                 }
 
@@ -186,7 +186,7 @@ fun OverlayPickerDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 510.dp)
+                        .heightIn(max = 460.dp)
                         .verticalScroll(rememberScrollState())
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -209,7 +209,13 @@ fun OverlayPickerDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.OpenWith, contentDescription = null, tint = Color(0xFF05060A), modifier = Modifier.size(17.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Редактор экрана и кнопок (${activeTab.label})", color = Color(0xFF05060A), fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(
+                                stringResource(R.string.overlay_editor_btn_fmt, activeTab.label),
+                                color = Color(0xFF05060A),
+                                fontFamily = SpaceGrotesk,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                            )
                         }
                     }
 
@@ -217,15 +223,15 @@ fun OverlayPickerDialog(
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Шейдер RetroArch .slangp (${activeTab.label})",
+                                stringResource(R.string.overlay_ra_shader_fmt, activeTab.label),
                                 color = colors.text2,
                                 fontFamily = WatermelonMono,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                             )
                             Text(
-                                if (librashaderReady) "librashader активен (GLES3 + Vulkan)" else "Встроенный fallback",
-                                color = if (librashaderReady) Color(0xFF22C55E) else colors.text3,
+                                if (librashaderReady) stringResource(R.string.overlay_librashader_active) else stringResource(R.string.overlay_builtin_fallback),
+                                color = if (librashaderReady) Color(0xFF22C55E) else colors.text2,
                                 fontSize = 10.sp,
                             )
                         }
@@ -240,7 +246,7 @@ fun OverlayPickerDialog(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Add, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Импорт .slangp", color = colors.green, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.vid_import_shader), color = colors.green, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -263,7 +269,7 @@ fun OverlayPickerDialog(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(preset.name, color = if (selected) colors.green else colors.text, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(preset.description, color = colors.text3, fontSize = 10.sp)
+                                    Text(preset.description, color = colors.text2, fontSize = 10.sp)
                                 }
                                 if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = colors.green, modifier = Modifier.size(16.dp))
                             }
@@ -271,7 +277,7 @@ fun OverlayPickerDialog(
                     }
 
                     // Layout Presets
-                    Text("Раскладка кнопок", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.overlay_layout_presets), color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         OverlayLayoutPreset.entries.forEach { preset ->
                             val selected = profile.layoutPreset.equals(preset.key, ignoreCase = true)
@@ -287,14 +293,14 @@ fun OverlayPickerDialog(
                                     }
                                     .padding(horizontal = 12.dp, vertical = 9.dp),
                             ) {
-                                Text(preset.labelRu, color = if (selected) colors.green else colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                Text(stringResource(preset.labelRes()), color = if (selected) colors.green else colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                                 if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = colors.green, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
 
                     // Button Styles
-                    Text("Стиль кнопок (${activeTab.label})", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.overlay_button_style_fmt, activeTab.label), color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         ButtonThemeManager.STYLES.forEach { st ->
                             val selected = profile.buttonStyle.equals(st.key, ignoreCase = true)
@@ -327,16 +333,16 @@ fun OverlayPickerDialog(
                                     )
                                 }
                                 Spacer(Modifier.width(10.dp))
-                                Text(st.labelRu, color = if (selected) colors.green else colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                Text(st.localizedLabel(), color = if (selected) colors.green else colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                                 if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = colors.green, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
 
-                    // Built-in GLSL Shader Overlay (used when RetroArch preset is Off)
-                    Text("Встроенный фильтр (${activeTab.label})", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    // Built-in GLSL Shader Overlay
+                    Text(stringResource(R.string.overlay_builtin_filter_fmt, activeTab.label), color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        SHADER_OPTIONS.forEach { (mode, title) ->
+                        SHADER_OPTIONS.forEach { (mode, titleRes) ->
                             val selected = profile.shaderOverlay == mode
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -350,7 +356,7 @@ fun OverlayPickerDialog(
                                     }
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                             ) {
-                                Text(title, color = if (selected) colors.green else colors.text, fontSize = 12.5.sp, modifier = Modifier.weight(1f))
+                                Text(stringResource(titleRes), color = if (selected) colors.green else colors.text, fontSize = 12.5.sp, modifier = Modifier.weight(1f))
                                 if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = colors.green, modifier = Modifier.size(16.dp))
                             }
                         }
@@ -358,7 +364,7 @@ fun OverlayPickerDialog(
 
                     // Sliders & Toggles
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Прозрачность кнопок", color = colors.text, fontSize = 13.sp)
+                        Text(stringResource(R.string.overlay_opacity), color = colors.text, fontSize = 13.sp)
                         Text("${profile.opacityPercent}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
                     }
                     Slider(
@@ -369,7 +375,7 @@ fun OverlayPickerDialog(
                     )
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Масштаб кнопок", color = colors.text, fontSize = 13.sp)
+                        Text(stringResource(R.string.overlay_scale), color = colors.text, fontSize = 13.sp)
                         Text("${profile.scalePercent}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
                     }
                     Slider(
@@ -380,7 +386,7 @@ fun OverlayPickerDialog(
                     )
 
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Виброотклик при нажатии", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.overlay_haptics), color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         WatermelonSwitch(
                             checked = profile.hapticsEnabled,
                             onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(hapticsEnabled = c) } },
@@ -388,7 +394,7 @@ fun OverlayPickerDialog(
                     }
 
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Показывать триггеры L / R", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.overlay_shoulders), color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         WatermelonSwitch(
                             checked = profile.showShoulders,
                             onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(showShoulders = c) } },
@@ -396,12 +402,22 @@ fun OverlayPickerDialog(
                     }
 
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Панель быстрого доступа", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.overlay_quick_strip), color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         WatermelonSwitch(
                             checked = profile.showQuickStrip,
                             onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(showQuickStrip = c) } },
                         )
                     }
+                }
+
+                // Bottom-centered STORM DS Back Button
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    UnifiedBackButton(onClick = onDismiss)
                 }
             }
         }

@@ -121,7 +121,26 @@ public sealed class GbcaAppSettings
     public bool AutoCheckUpdates { get; set; } = true;
     public string SkippedUpdateVersion { get; set; } = string.Empty;
     public bool Show3DBootSplash { get; set; } = false;
-    public bool AutoFetchCovers { get; set; } = true;
+    public bool AutoFetchCovers { get; set; } = false;
+
+    // v1.2.0: Separate Cover & Badge toggles (ALL OFF by default, identical to STORM DS!)
+    public bool ShowLibretroCovers { get; set; } = false;
+    public bool ShowRaCovers { get; set; } = false;
+    public bool ShowPlatformBadge { get; set; } = false;
+    public bool ShowRegionBadge { get; set; } = false;
+    public bool ShowHardwareBadges { get; set; } = false;
+    public bool ShowRaBadge { get; set; } = false;
+
+    // v1.2.0: Hardware Optimization Profile (Old & New PCs)
+    public StormOptimizationProfile OptimizationProfile { get; set; } = StormOptimizationProfile.Balanced;
+
+    // v1.2.0: Network & Local Multiplayer (Link Cable, Wireless RFU, IR, Dolphin JoyBus, GB Printer)
+    public string MultiplayerRoomName { get; set; } = "STORM GBCA Room";
+    public int MultiplayerPort { get; set; } = 54320;
+    public string MultiplayerLastHostIp { get; set; } = "192.168.1.2";
+    public string DolphinIp { get; set; } = "127.0.0.1";
+    public int DolphinDataPort { get; set; } = 54970;
+    public int DolphinClockPort { get; set; } = 49420;
 
     // Emulation Cores & Hardware
     public StormCoreBackend PreferredCoreGb { get; set; } = StormCoreBackend.SameBoy;
@@ -232,7 +251,14 @@ public sealed class GbcaAppSettings
     public string RetroAchievementsUsername { get; set; } = string.Empty;
     public string RetroAchievementsToken { get; set; } = string.Empty;
     public bool RetroAchievementsHardcoreMode { get; set; } = false;
+    public bool RetroAchievementsEnabled { get; set; } = true;
     public bool RetroAchievementsRichPresence { get; set; } = true;
+    public bool RetroAchievementsEncoreMode { get; set; } = false;
+    public bool RetroAchievementsUnofficial { get; set; } = false;
+    public bool RetroAchievementsNotifications { get; set; } = true;
+    public bool RetroAchievementsLeaderboards { get; set; } = true;
+    public bool RetroAchievementsProgressIndicators { get; set; } = true;
+    public bool RetroAchievementsChallengeIndicators { get; set; } = true;
     public int RetroAchievementsPoints { get; set; } = 0;
     public int RetroAchievementsSoftcorePoints { get; set; } = 0;
     public int RetroAchievementsRank { get; set; } = 0;

@@ -103,13 +103,15 @@ public class SettingsView : Grid
 
         var tabsScroll = new ScrollViewer { Padding = new Thickness(0, 0, 10, 0), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         _tabsRail = new StackPanel { Spacing = 4 };
-        AddTabHeader(0, AuroraIconKind.SettingsCore, "Ядра, BIOS и Run-Ahead");
-        AddTabHeader(1, AuroraIconKind.ShaderPrism, "Видео, палитры и LCD");
-        AddTabHeader(2, AuroraIconKind.AudioWaveDsp, "Звук и 6-канальный микшер");
-        AddTabHeader(3, AuroraIconKind.DualScreenLayout, "3D-корпусы и оверлеи");
-        AddTabHeader(4, AuroraIconKind.GamepadController, "Клавиатура, XInput и сенсоры");
-        AddTabHeader(5, AuroraIconKind.TrophyCrown, "RetroAchievements");
-        AddTabHeader(6, AuroraIconKind.ThemePalette, "Темы, шрифты и обновления");
+        AddTabHeader(0, AuroraIconKind.SettingsCore, "TabCoreOpt");
+        AddTabHeader(1, AuroraIconKind.ShaderPrism, "TabVideo");
+        AddTabHeader(2, AuroraIconKind.RomCartridge, "TabCoversBadges");
+        AddTabHeader(3, AuroraIconKind.SyncDevices, "TabMultiplayer");
+        AddTabHeader(4, AuroraIconKind.AudioWaveDsp, "TabAudio");
+        AddTabHeader(5, AuroraIconKind.DualScreenLayout, "TabSkins");
+        AddTabHeader(6, AuroraIconKind.GamepadController, "TabInput");
+        AddTabHeader(7, AuroraIconKind.TrophyCrown, "TabRA");
+        AddTabHeader(8, AuroraIconKind.ThemePalette, "TabThemes");
         tabsScroll.Content = _tabsRail;
         Children.Add(tabsScroll);
         Grid.SetRow(tabsScroll, 1);
@@ -122,7 +124,8 @@ public class SettingsView : Grid
         Grid.SetColumn(glassCard, 1);
 
         KeyDown += OnKeyCaptureKeyDown;
-        StormThemeBrushes.BindTheme(this, () => LoadTab(_activeTabIndex));
+        GbcaLoc.LanguageChanged += _ => Dispatcher.UIThread.Post(RefreshTabLabelsAndContent);
+        StormThemeBrushes.BindTheme(this, RefreshTabLabelsAndContent);
         LoadTab(0);
     }
 
@@ -132,6 +135,18 @@ public class SettingsView : Grid
         _savedFeedbackText.Text = GbcaLoc.T("SettingsSavedMsg");
         _savedFeedbackText.IsVisible = true;
         DispatcherTimer.RunOnce(() => _savedFeedbackText.IsVisible = false, TimeSpan.FromSeconds(2));
+    }
+
+    private void RefreshTabLabelsAndContent()
+    {
+        foreach (var item in _tabButtons)
+        {
+            if (item.Button.Child is Grid g && g.Children.Count > 1 && g.Children[1] is TextBlock tb)
+            {
+                tb.Text = GbcaLoc.T(item.Title);
+            }
+        }
+        LoadTab(_activeTabIndex);
     }
 
     private void AddTabHeader(int idx, AuroraIconKind icon, string title)
@@ -146,7 +161,7 @@ public class SettingsView : Grid
         };
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
         row.Children.Add(new AuroraVectorIcon { Kind = icon, Size = 18, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
-        var tb = new TextBlock { Text = title, FontSize = 12, FontWeight = FontWeight.Medium, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        var tb = new TextBlock { Text = GbcaLoc.T(title), FontSize = 12, FontWeight = FontWeight.Medium, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         row.Children.Add(tb);
         Grid.SetColumn(tb, 1);
         btn.Child = row;
@@ -185,6 +200,8 @@ public class SettingsView : Grid
             var all = new StackPanel { Spacing = 12 };
             BuildCoreTab(all);
             BuildVideoTab(all);
+            BuildCoversBadgesTab(all);
+            BuildMultiplayerTab(all);
             BuildAudioTab(all);
             BuildSkinsSummaryTab(all);
             BuildInputTab(all);
@@ -209,11 +226,13 @@ public class SettingsView : Grid
             {
                 case 0: BuildCoreTab(container); break;
                 case 1: BuildVideoTab(container); break;
-                case 2: BuildAudioTab(container); break;
-                case 3: BuildSkinsSummaryTab(container); break;
-                case 4: BuildInputTab(container); break;
-                case 5: BuildRaTab(container); break;
-                case 6: BuildThemesTab(container); break;
+                case 2: BuildCoversBadgesTab(container); break;
+                case 3: BuildMultiplayerTab(container); break;
+                case 4: BuildAudioTab(container); break;
+                case 5: BuildSkinsSummaryTab(container); break;
+                case 6: BuildInputTab(container); break;
+                case 7: BuildRaTab(container); break;
+                case 8: BuildThemesTab(container); break;
             }
         }
 
@@ -234,6 +253,40 @@ public class SettingsView : Grid
     private void BuildCoreTab(StackPanel p)
     {
         var s = StormGbcaUiState.Instance.Settings;
+        p.Children.Add(CreateSectionTitle(GbcaLoc.T("OptProfileTitle")));
+        p.Children.Add(CreateCombo(GbcaLoc.T("OptProfileTitle") + ":",
+        [
+            GbcaLoc.T("OptLite"),
+            GbcaLoc.T("OptBalanced"),
+            GbcaLoc.T("OptPerformance"),
+            GbcaLoc.T("OptAccuracy")
+        ], (int)s.OptimizationProfile, i =>
+        {
+            s.OptimizationProfile = (StormOptimizationProfile)i;
+            if (s.OptimizationProfile == StormOptimizationProfile.Lite)
+            {
+                s.ResolutionScale = 1;
+                s.UpscaleMode = StormUpscaleMode.None;
+                s.RewindEnabled = false;
+                s.RunAheadFrames = 0;
+            }
+            else if (s.OptimizationProfile == StormOptimizationProfile.Balanced)
+            {
+                s.RewindEnabled = true;
+            }
+            else if (s.OptimizationProfile == StormOptimizationProfile.Performance)
+            {
+                s.RewindEnabled = true;
+                s.RunAheadFrames = Math.Max(s.RunAheadFrames, 1);
+            }
+        }));
+        p.Children.Add(new TextBlock
+        {
+            Text = $"CPU Cores: {Environment.ProcessorCount} | 64-bit OS: {Environment.Is64BitOperatingSystem} | Recommended: {(Environment.ProcessorCount <= 4 ? "Lite" : "Balanced")}",
+            FontSize = 11,
+            Foreground = StormThemeBrushes.SecondaryText
+        });
+
         p.Children.Add(CreateSectionTitle("Выбор эмулирующих ядер, BIOS и перемотки"));
         p.Children.Add(CreateCombo("Ядро для Game Boy (GB):", ["mGBA (Высокая скорость)", "SameBoy (Максимальная точность)"], (int)s.PreferredCoreGb, i => s.PreferredCoreGb = (StormCoreBackend)i));
         p.Children.Add(CreateCombo("Ядро для Game Boy Color (GBC):", ["mGBA (Высокая скорость)", "SameBoy (Максимальная точность)"], (int)s.PreferredCoreGbc, i => s.PreferredCoreGbc = (StormCoreBackend)i));
@@ -326,8 +379,207 @@ public class SettingsView : Grid
 
         p.Children.Add(CreateSlider("Инерционность матрицы LCD (Ghosting):", 0, 100, s.LcdGhosting, "%", v => s.LcdGhosting = (int)v));
         p.Children.Add(CreateCheck("Отображать декоративные рамки Super Game Boy (SGB)", s.SgbBorders, v => s.SgbBorders = v));
-        p.Children.Add(CreateCheck("Автоматически загружать обложки игр (Libretro Thumbnails)", s.AutoFetchCovers, v => s.AutoFetchCovers = v));
         p.Children.Add(CreateCheck("Показывать 3D-заставку STORM при запуске игры", s.Show3DBootSplash, v => s.Show3DBootSplash = v));
+    }
+
+
+    private StormLinkMode _mpSelectedMode = StormLinkMode.LanHost;
+    private readonly List<GbcaLanRoomInfo> _discoveredRooms = [];
+    private string _mpFeedback = string.Empty;
+
+    private void BuildCoversBadgesTab(StackPanel p)
+    {
+        var s = StormGbcaUiState.Instance.Settings;
+        p.Children.Add(CreateSectionTitle(GbcaLoc.T("SecCoversTitle")));
+        p.Children.Add(CreateCheck(GbcaLoc.T("OptLibretroCovers"), s.ShowLibretroCovers, v =>
+        {
+            s.ShowLibretroCovers = v;
+            s.AutoFetchCovers = v;
+            if (v) _ = StormGbcaUiState.Instance.Library.PreloadAllMissingCoversAsync();
+        }));
+        p.Children.Add(CreateCheck(GbcaLoc.T("OptRaCovers"), s.ShowRaCovers, v => s.ShowRaCovers = v));
+
+        var covActions = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 4) };
+        var fetchBtn = new AuroraVolumetricButton { IsHero = true, Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 10, 4) };
+        fetchBtn.Content = new TextBlock { Text = GbcaLoc.T("BtnFetchCoversNow"), FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+        fetchBtn.Click += (_, _) =>
+        {
+            s.ShowLibretroCovers = true;
+            s.AutoFetchCovers = true;
+            CommitSave();
+            _ = StormGbcaUiState.Instance.Library.PreloadAllMissingCoversAsync();
+            StormGbcaUiState.Instance.NotifyStatus("Downloading covers from Libretro 9,132-title index...");
+            LoadTab(_activeTabIndex);
+        };
+        covActions.Children.Add(fetchBtn);
+
+        var clearBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 0, 4) };
+        clearBtn.Content = new TextBlock { Text = GbcaLoc.T("BtnClearCoverCache"), FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+        clearBtn.Click += (_, _) =>
+        {
+            int removed = StormGbcaUiState.Instance.Library.ClearCoverCache();
+            StormGbcaUiState.Instance.NotifyStatus($"Cover cache cleared ({removed} files)");
+            CommitSave();
+        };
+        covActions.Children.Add(clearBtn);
+        p.Children.Add(covActions);
+
+        p.Children.Add(CreateSectionTitle(GbcaLoc.T("SecBadgesTitle")));
+        p.Children.Add(CreateCheck(GbcaLoc.T("OptPlatformBadge"), s.ShowPlatformBadge, v => s.ShowPlatformBadge = v));
+        p.Children.Add(CreateCheck(GbcaLoc.T("OptRegionBadge"), s.ShowRegionBadge, v => s.ShowRegionBadge = v));
+        p.Children.Add(CreateCheck(GbcaLoc.T("OptHardwareBadges"), s.ShowHardwareBadges, v => s.ShowHardwareBadges = v));
+        p.Children.Add(CreateCheck(GbcaLoc.T("OptRaBadge"), s.ShowRaBadge, v => s.ShowRaBadge = v));
+    }
+
+    private void BuildMultiplayerTab(StackPanel p)
+    {
+        var s = StormGbcaUiState.Instance.Settings;
+        var emu = StormGbcaUiState.Instance.Emulator;
+        var status = emu.GetLinkStatus();
+
+        p.Children.Add(CreateSectionTitle(GbcaLoc.T("MpSectionTitle")));
+
+        var stBanner = new Border
+        {
+            Padding = new Thickness(12, 9),
+            CornerRadius = new CornerRadius(10),
+            Background = status.Connected ? new SolidColorBrush(Color.FromArgb(45, 16, 185, 129)) : StormThemeBrushes.RowSurface,
+            BorderBrush = status.Connected ? new SolidColorBrush(Color.Parse("#10B981")) : StormThemeBrushes.SubtleBorder,
+            BorderThickness = new Thickness(1)
+        };
+        var stCol = new StackPanel { Spacing = 2 };
+        stCol.Children.Add(new TextBlock
+        {
+            Text = status.Mode == StormLinkMode.None
+                ? $"Status: {GbcaLoc.T("MpDisconnected")}"
+                : $"Mode: {status.Mode} | Players: {status.PlayerCount} | Port: {status.Port} | Ping: {status.PingMs} ms",
+            FontSize = 12.5,
+            FontWeight = FontWeight.Bold,
+            Foreground = status.Connected ? new SolidColorBrush(Color.Parse("#34D399")) : StormThemeBrushes.PrimaryText
+        });
+        stCol.Children.Add(new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(status.StatusText) ? "Supports GB/GBC 2P Link, GBA 2-4P Multi-SIO, AGB-015 Wireless RFU, GBC IR, Dolphin GameCube JoyBus & Game Boy Printer PNG." : status.StatusText,
+            FontSize = 11,
+            Foreground = StormThemeBrushes.SecondaryText,
+            TextWrapping = TextWrapping.Wrap
+        });
+        stBanner.Child = stCol;
+        p.Children.Add(stBanner);
+
+        StormLinkMode[] modes =
+        [
+            StormLinkMode.LanHost, StormLinkMode.LanClient,
+            StormLinkMode.WirelessHost, StormLinkMode.WirelessClient,
+            StormLinkMode.IrHost, StormLinkMode.IrClient,
+            StormLinkMode.DolphinJoyBus, StormLinkMode.GbPrinter, StormLinkMode.LocalLoopback
+        ];
+        string[] modeLabels =
+        [
+            GbcaLoc.T("MpModeLanHost"), GbcaLoc.T("MpModeLanClient"),
+            GbcaLoc.T("MpModeWirelessHost"), GbcaLoc.T("MpModeWirelessClient"),
+            GbcaLoc.T("MpModeIrHost"), GbcaLoc.T("MpModeIrClient"),
+            GbcaLoc.T("MpModeDolphin"), GbcaLoc.T("MpModePrinter"), GbcaLoc.T("MpModeLoopback")
+        ];
+        int mIdx = Math.Max(0, Array.IndexOf(modes, _mpSelectedMode));
+        p.Children.Add(CreateCombo("Link Mode:", modeLabels, mIdx, i => { _mpSelectedMode = modes[i]; LoadTab(_activeTabIndex); }));
+        p.Children.Add(CreateTextRow("Room Name:", s.MultiplayerRoomName, t => s.MultiplayerRoomName = t));
+        p.Children.Add(CreateTextRow("Host / Dolphin IP:", _mpSelectedMode == StormLinkMode.DolphinJoyBus ? s.DolphinIp : s.MultiplayerLastHostIp, t =>
+        {
+            if (_mpSelectedMode == StormLinkMode.DolphinJoyBus) s.DolphinIp = t;
+            else s.MultiplayerLastHostIp = t;
+        }));
+        p.Children.Add(CreateTextRow("Port (Data / TCP):", (_mpSelectedMode == StormLinkMode.DolphinJoyBus ? s.DolphinDataPort : s.MultiplayerPort).ToString(), t =>
+        {
+            if (int.TryParse(t, out int pv) && pv is >= 1024 and <= 65535)
+            {
+                if (_mpSelectedMode == StormLinkMode.DolphinJoyBus) s.DolphinDataPort = pv;
+                else s.MultiplayerPort = pv;
+            }
+        }));
+
+        var btnWrap = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 2) };
+        var startBtn = new AuroraVolumetricButton { IsHero = true, Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 8, 6) };
+        startBtn.Content = new TextBlock { Text = GbcaLoc.T("MpBtnConnect"), FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+        startBtn.Click += (_, _) =>
+        {
+            CommitSave();
+            string ip = _mpSelectedMode == StormLinkMode.DolphinJoyBus ? s.DolphinIp : s.MultiplayerLastHostIp;
+            int port = _mpSelectedMode == StormLinkMode.DolphinJoyBus ? s.DolphinDataPort : s.MultiplayerPort;
+            int clk = _mpSelectedMode == StormLinkMode.DolphinJoyBus ? s.DolphinClockPort : 0;
+            bool ok = emu.StartLink(_mpSelectedMode, ip, port, clk, s.MultiplayerRoomName);
+            _mpFeedback = ok ? $"Link started: {_mpSelectedMode}" : "Start a game first or verify host IP/port";
+            LoadTab(_activeTabIndex);
+        };
+        btnWrap.Children.Add(startBtn);
+
+        var stopBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 8, 6) };
+        stopBtn.Content = new TextBlock { Text = GbcaLoc.T("MpBtnDisconnect"), FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+        stopBtn.Click += (_, _) =>
+        {
+            emu.StopLink();
+            _mpFeedback = GbcaLoc.T("MpDisconnected");
+            LoadTab(_activeTabIndex);
+        };
+        btnWrap.Children.Add(stopBtn);
+
+        var scanBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 0, 6) };
+        scanBtn.Content = new TextBlock { Text = GbcaLoc.T("MpBtnScanLan"), FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+        scanBtn.Click += async (_, _) =>
+        {
+            _mpFeedback = "Scanning local network (UDP 54321)...";
+            LoadTab(_activeTabIndex);
+            var found = await Task.Run(() => emu.DiscoverLanRooms(1200));
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                _discoveredRooms.Clear();
+                _discoveredRooms.AddRange(found);
+                _mpFeedback = found.Count > 0 ? $"Found {found.Count} LAN room(s)" : "No active LAN rooms found";
+                LoadTab(_activeTabIndex);
+            });
+        };
+        btnWrap.Children.Add(scanBtn);
+        p.Children.Add(btnWrap);
+
+        if (!string.IsNullOrWhiteSpace(_mpFeedback))
+        {
+            p.Children.Add(new TextBlock { Text = _mpFeedback, FontSize = 11.5, Foreground = StormThemeBrushes.AccentSecondary });
+        }
+
+        foreach (var room in _discoveredRooms)
+        {
+            var rBorder = new Border
+            {
+                Padding = new Thickness(10, 7),
+                CornerRadius = new CornerRadius(8),
+                Background = StormThemeBrushes.RowSurface,
+                BorderBrush = StormThemeBrushes.Accent,
+                BorderThickness = new Thickness(1),
+                Cursor = new Cursor(StandardCursorType.Hand)
+            };
+            var rg = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            rg.Children.Add(new TextBlock
+            {
+                Text = $"{room.RoomName} ({room.HostIp}:{room.Port}) - {room.GameTitle} [{room.PlayerCount}/{room.MaxPlayers}]",
+                FontSize = 11.5,
+                Foreground = StormThemeBrushes.PrimaryText,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            var joinLbl = new TextBlock { Text = "Join ->", FontSize = 11, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.Accent, VerticalAlignment = VerticalAlignment.Center };
+            rg.Children.Add(joinLbl);
+            Grid.SetColumn(joinLbl, 1);
+            rBorder.Child = rg;
+            rBorder.PointerPressed += (_, _) =>
+            {
+                s.MultiplayerLastHostIp = room.HostIp;
+                s.MultiplayerPort = room.Port;
+                _mpSelectedMode = room.Mode == StormLinkMode.WirelessHost ? StormLinkMode.WirelessClient : (room.Mode == StormLinkMode.IrHost ? StormLinkMode.IrClient : StormLinkMode.LanClient);
+                emu.StartLink(_mpSelectedMode, room.HostIp, room.Port, 0, room.RoomName);
+                CommitSave();
+                LoadTab(_activeTabIndex);
+            };
+            p.Children.Add(rBorder);
+        }
     }
 
     private void BuildAudioTab(StackPanel p)
@@ -584,6 +836,22 @@ public class SettingsView : Grid
 
         p.Children.Add(CreateCheck("Режим Hardcore (запрещает загрузку состояний, перемотку и читы)", s.RetroAchievementsHardcoreMode, v => s.RetroAchievementsHardcoreMode = v));
         p.Children.Add(CreateCheck("Rich Presence статус активности", s.RetroAchievementsRichPresence, v => s.RetroAchievementsRichPresence = v));
+        p.Children.Add(CreateCheck("Enable RetroAchievements", s.RetroAchievementsEnabled, v => s.RetroAchievementsEnabled = v));
+        p.Children.Add(CreateCheck("Encore Mode (re-trigger unlocked trophies)", s.RetroAchievementsEncoreMode, v => s.RetroAchievementsEncoreMode = v));
+        p.Children.Add(CreateCheck("Unofficial Achievements", s.RetroAchievementsUnofficial, v => s.RetroAchievementsUnofficial = v));
+        p.Children.Add(CreateCheck("In-Game Unlock Notifications", s.RetroAchievementsNotifications, v => s.RetroAchievementsNotifications = v));
+        p.Children.Add(CreateCheck("Leaderboards & Indicators", s.RetroAchievementsLeaderboards, v => s.RetroAchievementsLeaderboards = v));
+        p.Children.Add(CreateCheck("Progress & Challenge Indicators", s.RetroAchievementsProgressIndicators, v => { s.RetroAchievementsProgressIndicators = v; s.RetroAchievementsChallengeIndicators = v; }));
+
+        var testBtn = new AuroraVolumetricButton { Height = 34, Width = 220, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
+        testBtn.Content = new TextBlock { Text = GbcaLoc.T("RaTestConn"), FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        testBtn.Click += async (_, _) =>
+        {
+            statusTxt.Text = "Testing RetroAchievements server...";
+            var (ok, _, details) = await ra.TestConnectionAsync();
+            await Dispatcher.UIThread.InvokeAsync(() => statusTxt.Text = (ok ? "[OK] " : "[FAIL] ") + details);
+        };
+        p.Children.Add(testBtn);
     }
 
     private void BuildThemesTab(StackPanel p)

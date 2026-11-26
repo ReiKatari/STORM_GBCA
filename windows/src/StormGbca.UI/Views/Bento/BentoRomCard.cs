@@ -29,6 +29,9 @@ public class BentoRomCard : AuroraGlassCard
     private readonly TextBlock _sizeText;
     private readonly Border _starButton;
     private readonly Border _selectionBorder;
+    private readonly Border _platPill;
+    private readonly WrapPanel _hwRow;
+    private readonly Border _raPill;
 
     public GbcaRomRecord Rom => _rom;
 
@@ -135,12 +138,19 @@ public class BentoRomCard : AuroraGlassCard
         };
         artLayer.Children.Add(topGloss);
 
-        // Top-left Platform Badge inside boxart
-        var platPill = CreateTagBadge(rom.PlatformShortName, platColor, isSolid: true);
-        platPill.HorizontalAlignment = HorizontalAlignment.Left;
-        platPill.VerticalAlignment = VerticalAlignment.Top;
-        platPill.Margin = new Thickness(8, 8, 0, 0);
-        artLayer.Children.Add(platPill);
+        // Top-left Platform Badge inside boxart (independent toggle, OFF by default)
+        _platPill = CreateTagBadge(rom.PlatformShortName, platColor, isSolid: true);
+        _platPill.HorizontalAlignment = HorizontalAlignment.Left;
+        _platPill.VerticalAlignment = VerticalAlignment.Top;
+        _platPill.Margin = new Thickness(8, 8, 0, 0);
+        artLayer.Children.Add(_platPill);
+
+        // Bottom-right RetroAchievements Trophy Badge (independent toggle, OFF by default)
+        _raPill = CreateTagBadge("RA", Color.Parse("#F59E0B"), isSolid: true);
+        _raPill.HorizontalAlignment = HorizontalAlignment.Right;
+        _raPill.VerticalAlignment = VerticalAlignment.Bottom;
+        _raPill.Margin = new Thickness(0, 0, 7, 7);
+        artLayer.Children.Add(_raPill);
 
         // Top-right Favorite Star
         _starButton = new Border
@@ -191,10 +201,8 @@ public class BentoRomCard : AuroraGlassCard
         };
         titleStack.Children.Add(_titleText);
 
-        var hwRow = new WrapPanel { Orientation = Orientation.Horizontal };
-        hwRow.Children.Add(CreateTagBadge(rom.RegionBadgeCode, Color.Parse("#38BDF8"), isSolid: false));
-        AddHardwareBadges(hwRow, rom.HardwareFlags);
-        titleStack.Children.Add(hwRow);
+        _hwRow = new WrapPanel { Orientation = Orientation.Horizontal };
+        titleStack.Children.Add(_hwRow);
 
         rootGrid.Children.Add(titleStack);
         Grid.SetRow(titleStack, 1);
@@ -265,12 +273,39 @@ public class BentoRomCard : AuroraGlassCard
             UpdateSelectionVisual();
         });
 
+        StormGbcaUiState.Instance.SettingsSaved += () => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshBadgesAndCover);
+        RefreshBadgesAndCover();
         UpdateFavoriteVisual();
         UpdateSelectionVisual();
     }
 
+    private void RefreshBadgesAndCover()
+    {
+        var s = StormGbcaUiState.Instance.Settings;
+        _platPill.IsVisible = s.ShowPlatformBadge;
+        _raPill.IsVisible = s.ShowRaBadge;
+        _hwRow.Children.Clear();
+        if (s.ShowRegionBadge)
+        {
+            _hwRow.Children.Add(CreateTagBadge(_rom.RegionBadgeCode, Color.Parse("#38BDF8"), isSolid: false));
+        }
+        if (s.ShowHardwareBadges)
+        {
+            AddHardwareBadges(_hwRow, _rom.HardwareFlags);
+        }
+        _hwRow.IsVisible = _hwRow.Children.Count > 0;
+        LoadCoverIfPresent();
+    }
+
     private void LoadCoverIfPresent()
     {
+        var s = StormGbcaUiState.Instance.Settings;
+        if (!s.ShowLibretroCovers && !s.ShowRaCovers)
+        {
+            _coverImage.Source = null;
+            _fallbackArt.IsVisible = true;
+            return;
+        }
         var bmp = BitmapHelper.LoadBitmapCached(_rom.CoverLocalPath);
         _coverImage.Source = bmp;
         _fallbackArt.IsVisible = bmp == null;
@@ -297,7 +332,7 @@ public class BentoRomCard : AuroraGlassCard
             Text = string.IsNullOrWhiteSpace(rom.Title) ? rom.PlatformShortName : rom.Title,
             FontSize = 10,
             FontWeight = FontWeight.Bold,
-            Foreground = new SolidColorBrush(Color.Parse("#E2E8F0")),
+            Foreground = Brushes.White,
             TextAlignment = TextAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 116
@@ -339,8 +374,8 @@ public class BentoRomCard : AuroraGlassCard
 
     public static string FormatRomSize(uint bytes)
     {
-        if (bytes >= 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):0.1} МБ";
-        return $"{Math.Max(1, bytes / 1024.0):0} КБ";
+        if (bytes >= 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):0.1} MB";
+        return $"{Math.Max(1, bytes / 1024.0):0} KB";
     }
 
     private void UpdateFavoriteVisual()

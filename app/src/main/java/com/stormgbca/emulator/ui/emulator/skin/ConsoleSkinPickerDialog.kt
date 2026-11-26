@@ -45,7 +45,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import com.stormgbca.emulator.R
+import com.stormgbca.emulator.ui.common.UnifiedBackButton
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +68,7 @@ fun ConsoleSkinPickerDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = watermelon
+    val context = LocalContext.current
     var activeTab by remember { mutableStateOf(initialSystem) }
 
     val selectedKey = when (activeTab) {
@@ -107,8 +112,8 @@ fun ConsoleSkinPickerDialog(
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Корпус консоли", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Независимые профили для GB, GBC и GBA", color = colors.text2, fontSize = 11.sp)
+                        Text(stringResource(R.string.skin_title), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.skin_subtitle), color = colors.text2, fontSize = 11.sp)
                     }
                     Box(
                         modifier = Modifier
@@ -158,7 +163,7 @@ fun ConsoleSkinPickerDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text("Яркость корпуса (${activeTab.label})", color = colors.text2, fontSize = 12.sp)
+                        Text(stringResource(R.string.skin_brightness_fmt, activeTab.label), color = colors.text2, fontSize = 12.sp)
                         Text("$dimming%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     Slider(
@@ -231,7 +236,7 @@ fun ConsoleSkinPickerDialog(
                             }
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                text = skin.labelRu,
+                                text = skin.localizedLabel(context),
                                 color = if (isSelected) colors.green else colors.text,
                                 fontFamily = SpaceGrotesk,
                                 fontSize = 11.sp,
@@ -245,6 +250,12 @@ fun ConsoleSkinPickerDialog(
                             )
                         }
                     }
+                }
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    UnifiedBackButton(onClick = onDismiss)
                 }
             }
         }

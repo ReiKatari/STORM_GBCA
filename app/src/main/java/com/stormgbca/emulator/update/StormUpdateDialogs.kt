@@ -36,11 +36,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.stormgbca.emulator.BuildConfig
+import com.stormgbca.emulator.R
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.WatermelonMono
 import com.stormgbca.emulator.ui.theme.watermelon
@@ -86,7 +88,7 @@ fun StormUpdateDialog(
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Доступно обновление", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.update_dialog_title), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Text("STORM GBCA", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp)
                     }
                     Box(
@@ -97,7 +99,7 @@ fun StormUpdateDialog(
                             .clickable(onClick = onDismiss),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close), tint = colors.text, modifier = Modifier.size(16.dp))
                     }
                 }
 
@@ -123,31 +125,26 @@ fun StormUpdateDialog(
                         Text("v${release.version}", color = colors.green, fontFamily = WatermelonMono, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
                         if (sizeMb > 0.0) {
-                            Text(String.format("%.1f МБ", sizeMb), color = colors.text3, fontFamily = WatermelonMono, fontSize = 11.sp)
+                            Text(stringResource(R.string.update_dialog_size_mb_fmt, sizeMb), color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp)
                         }
                     }
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.surface2)
+                            .border(1.dp, colors.line, RoundedCornerShape(8.dp))
+                            .clickable {
+                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.releasePageUrl))) }
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(colors.surface2)
-                                .border(1.dp, colors.line, RoundedCornerShape(8.dp))
-                                .clickable {
-                                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.releasePageUrl))) }
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                        ) {
-                            Icon(Icons.Filled.Public, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(release.sourceLabel, color = colors.text, fontFamily = WatermelonMono, fontSize = 11.sp)
-                            Spacer(Modifier.width(4.dp))
-                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = colors.text3, modifier = Modifier.size(12.dp))
-                        }
+                        Icon(Icons.Filled.Public, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(release.sourceLabel, color = colors.text, fontFamily = WatermelonMono, fontSize = 11.sp)
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = colors.text2, modifier = Modifier.size(12.dp))
                     }
 
                     if (release.changelogMd.isNotBlank()) {
@@ -183,7 +180,7 @@ fun StormUpdateDialog(
                                     modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
                                 )
                                 Text(
-                                    text = String.format("Загрузка: %.0f%% (%.2f МБ/с)", progress * 100f, mbSpeed),
+                                    text = stringResource(R.string.update_downloading_fmt, progress * 100f, mbSpeed),
                                     color = colors.text2,
                                     fontFamily = WatermelonMono,
                                     fontSize = 11.sp,
@@ -200,11 +197,11 @@ fun StormUpdateDialog(
                                     .padding(vertical = 12.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text("Установить обновление", color = Color(0xFF05060A), fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.update_install), color = Color(0xFF05060A), fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold)
                             }
                         }
                         is UpdateDownloadState.Error -> {
-                            Text("Ошибка загрузки: ${downloadState.message}", color = colors.red, fontSize = 12.sp)
+                            Text(stringResource(R.string.update_error_fmt, downloadState.message), color = colors.red, fontSize = 12.sp)
                         }
                         UpdateDownloadState.Idle -> {}
                     }
@@ -223,7 +220,7 @@ fun StormUpdateDialog(
                                     .padding(vertical = 11.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text("Пропустить", color = colors.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(stringResource(R.string.update_skip), color = colors.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                             Box(
                                 modifier = Modifier
@@ -237,7 +234,7 @@ fun StormUpdateDialog(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.CloudDownload, contentDescription = null, tint = Color(0xFF05060A), modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("Обновить сейчас", color = Color(0xFF05060A), fontFamily = SpaceGrotesk, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.update_now), color = Color(0xFF05060A), fontFamily = SpaceGrotesk, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

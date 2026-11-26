@@ -29,6 +29,10 @@ data class WatermelonColors(
     }
 }
 
+// Strict High-Contrast Global Rule:
+// Dark themes ALWAYS use pure/crisp WHITE text (ZERO dim gray).
+// Light themes ALWAYS use pure/crisp BLACK text (ZERO washed-out gray).
+
 // 1. STORM NIGHT - Deep OLED Black + Neon Cyan
 val DarkWatermelonColors = WatermelonColors(
     isDark = true,
@@ -36,34 +40,34 @@ val DarkWatermelonColors = WatermelonColors(
     surface = Color(0xFF0D1017),
     surface2 = Color(0xFF151A25),
     surface3 = Color(0xFF22293A),
-    line = Color(0x3300E5FF),
-    text = Color(0xFFF8FAFC),
-    text2 = Color(0xFFA8B3C7),
-    text3 = Color(0xFF6B778D),
-    red = Color(0xFFFF2E55),
+    line = Color(0x3D00E5FF),
+    text = Color(0xFFFFFFFF),
+    text2 = Color(0xFFF1F5F9),
+    text3 = Color(0xFFE2E8F0),
+    red = Color(0xFFFF3B63),
     redGlow = Color(0x59FF2E55),
     green = Color(0xFF00E5FF),
     greenDim = Color(0x2E00E5FF),
-    switchOff = Color(0x2EFFFFFF),
+    switchOff = Color(0x3DFFFFFF),
     shadow = Color(0xA6000000),
 )
 
-// 2. STORM DAY - Clean Alabaster + Vivid Cobalt Blue
+// 2. STORM DAY - Clean Alabaster + Vivid Cobalt Blue (Pure Black Text)
 val LightWatermelonColors = WatermelonColors(
     isDark = false,
     bg = Color(0xFFF1F5FA),
     surface = Color(0xFFFFFFFF),
     surface2 = Color(0xFFE6ECF5),
     surface3 = Color(0xFFD3DFEE),
-    line = Color(0x2E0284C7),
-    text = Color(0xFF0F172A),
-    text2 = Color(0xFF334155),
-    text3 = Color(0xFF64748B),
+    line = Color(0x380284C7),
+    text = Color(0xFF000000),
+    text2 = Color(0xFF0F172A),
+    text3 = Color(0xFF1E293B),
     red = Color(0xFFDC2626),
     redGlow = Color(0x40DC2626),
     green = Color(0xFF0284C7),
     greenDim = Color(0x1F0284C7),
-    switchOff = Color(0x2E0F172A),
+    switchOff = Color(0x38000000),
     shadow = Color(0x240F172A),
 )
 
@@ -74,15 +78,15 @@ val MidnightWatermelonColors = WatermelonColors(
     surface = Color(0xFF16102B),
     surface2 = Color(0xFF221942),
     surface3 = Color(0xFF332661),
-    line = Color(0x47A855F7),
-    text = Color(0xFFFAF5FF),
-    text2 = Color(0xFFD8B4FE),
-    text3 = Color(0xFF9F7AEA),
+    line = Color(0x4DA855F7),
+    text = Color(0xFFFFFFFF),
+    text2 = Color(0xFFF5F3FF),
+    text3 = Color(0xFFE9D5FF),
     red = Color(0xFFF43F5E),
     redGlow = Color(0x59F43F5E),
     green = Color(0xFFA855F7),
     greenDim = Color(0x33A855F7),
-    switchOff = Color(0x2EE9D5FF),
+    switchOff = Color(0x3DE9D5FF),
     shadow = Color(0xA604020A),
 )
 
@@ -94,14 +98,14 @@ val CyberpunkWatermelonColors = WatermelonColors(
     surface2 = Color(0xFF1E1638),
     surface3 = Color(0xFF2E2252),
     line = Color(0x52FF007F),
-    text = Color(0xFFF8FAFC),
-    text2 = Color(0xFF67E8F9),
-    text3 = Color(0xFF9E8CC0),
+    text = Color(0xFFFFFFFF),
+    text2 = Color(0xFFF0F9FF),
+    text3 = Color(0xFFE0F2FE),
     red = Color(0xFFFF1E56),
     redGlow = Color(0x66FF1E56),
     green = Color(0xFFFF007F),
     greenDim = Color(0x36FF007F),
-    switchOff = Color(0x2EFFFFFF),
+    switchOff = Color(0x3DFFFFFF),
     shadow = Color(0xB3000000),
 )
 
@@ -113,14 +117,14 @@ val GothicWatermelonColors = WatermelonColors(
     surface2 = Color(0xFF1E1A20),
     surface3 = Color(0xFF2F2832),
     line = Color(0x4DE50914),
-    text = Color(0xFFF6F2F3),
-    text2 = Color(0xFFD4B6BC),
-    text3 = Color(0xFF947D83),
-    red = Color(0xFFE50914),
+    text = Color(0xFFFFFFFF),
+    text2 = Color(0xFFF8F4F5),
+    text3 = Color(0xFFEFE4E6),
+    red = Color(0xFFFF3B47),
     redGlow = Color(0x66E50914),
     green = Color(0xFFFF2A37),
     greenDim = Color(0x36FF2A37),
-    switchOff = Color(0x2EFFFFFF),
+    switchOff = Color(0x3DFFFFFF),
     shadow = Color(0xB3000000),
 )
 
@@ -132,14 +136,14 @@ val MatrixWatermelonColors = WatermelonColors(
     surface2 = Color(0xFF10281B),
     surface3 = Color(0xFF1A3F2B),
     line = Color(0x4D00FF66),
-    text = Color(0xFFE6FFF0),
-    text2 = Color(0xFF4ADE80),
-    text3 = Color(0xFF10B981),
-    red = Color(0xFFFF2A55),
+    text = Color(0xFFFFFFFF),
+    text2 = Color(0xFFECFDF5),
+    text3 = Color(0xFFD1FAE5),
+    red = Color(0xFFFF3B63),
     redGlow = Color(0x59FF2A55),
     green = Color(0xFF00FF66),
     greenDim = Color(0x3000FF66),
-    switchOff = Color(0x2EBBF7D0),
+    switchOff = Color(0x3DBBF7D0),
     shadow = Color(0xB3000000),
 )
 
@@ -151,18 +155,18 @@ val SolarWatermelonColors = WatermelonColors(
     surface2 = Color(0xFF2B1E0D),
     surface3 = Color(0xFF422E15),
     line = Color(0x4DF59E0B),
-    text = Color(0xFFFFFBEB),
-    text2 = Color(0xFFFCD34D),
-    text3 = Color(0xFFB89252),
-    red = Color(0xFFFF3D00),
+    text = Color(0xFFFFFFFF),
+    text2 = Color(0xFFFFFBEB),
+    text3 = Color(0xFFFEF3C7),
+    red = Color(0xFFFF4D1A),
     redGlow = Color(0x66FF3D00),
     green = Color(0xFFF59E0B),
     greenDim = Color(0x33F59E0B),
-    switchOff = Color(0x2EFFF8E1),
+    switchOff = Color(0x3DFFF8E1),
     shadow = Color(0xB3000000),
 )
 
-// 8. SAKURA - Soft Blossom Ivory + Vivid Cherry Rose
+// 8. SAKURA - Soft Blossom Ivory + Vivid Cherry Rose (Pure Black Text)
 val SakuraWatermelonColors = WatermelonColors(
     isDark = false,
     bg = Color(0xFFFFF5F8),
@@ -170,14 +174,14 @@ val SakuraWatermelonColors = WatermelonColors(
     surface2 = Color(0xFFFCE7F3),
     surface3 = Color(0xFFFBCFE8),
     line = Color(0x3BE11D48),
-    text = Color(0xFF2D121C),
-    text2 = Color(0xFF7B2445),
-    text3 = Color(0xFFA25270),
+    text = Color(0xFF000000),
+    text2 = Color(0xFF1A0810),
+    text3 = Color(0xFF2D121C),
     red = Color(0xFFBE123C),
     redGlow = Color(0x38BE123C),
     green = Color(0xFFE11D48),
     greenDim = Color(0x24E11D48),
-    switchOff = Color(0x2E2D121C),
+    switchOff = Color(0x38000000),
     shadow = Color(0x1F881337),
 )
 
@@ -188,15 +192,15 @@ val ClassicOledWatermelonColors = WatermelonColors(
     surface = Color(0xFF06080C),
     surface2 = Color(0xFF0E121A),
     surface3 = Color(0xFF181F2C),
-    line = Color(0x3D38BDF8),
+    line = Color(0x4238BDF8),
     text = Color(0xFFFFFFFF),
-    text2 = Color(0xFFCBD5E1),
-    text3 = Color(0xFF64748B),
-    red = Color(0xFFFF2E55),
+    text2 = Color(0xFFF8FAFC),
+    text3 = Color(0xFFE2E8F0),
+    red = Color(0xFFFF3B63),
     redGlow = Color(0x59FF2E55),
     green = Color(0xFF38BDF8),
     greenDim = Color(0x2E38BDF8),
-    switchOff = Color(0x2EFFFFFF),
+    switchOff = Color(0x3DFFFFFF),
     shadow = Color(0xCC000000),
 )
 
@@ -265,7 +269,7 @@ fun resolveCustomAccentColor(accentKey: String, isDark: Boolean): Color? {
             "mint_frost" -> Color(0xFF0F766E)
             "toxic_lime" -> Color(0xFF4D7C0F)
             "hot_pink" -> Color(0xFFDB2777)
-            "oled_white" -> Color(0xFF334155)
+            "oled_white" -> Color(0xFF0F172A)
             else -> null
         }
     }
@@ -273,8 +277,8 @@ fun resolveCustomAccentColor(accentKey: String, isDark: Boolean): Color? {
 
 fun getCustomizedAccentColors(base: WatermelonColors, accentKey: String): WatermelonColors {
     val accent = resolveCustomAccentColor(accentKey, base.isDark) ?: return base
-    val accentDim = accent.copy(alpha = if (base.isDark) 0.22f else 0.14f)
-    val accentLine = accent.copy(alpha = if (base.isDark) 0.30f else 0.24f)
+    val accentDim = accent.copy(alpha = if (base.isDark) 0.24f else 0.14f)
+    val accentLine = accent.copy(alpha = if (base.isDark) 0.34f else 0.26f)
     return base.copy(
         green = accent,
         greenDim = accentDim,

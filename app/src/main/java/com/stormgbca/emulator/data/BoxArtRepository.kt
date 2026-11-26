@@ -11,25 +11,33 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.net.URLDecoder
 import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
+/**
+ * Dual-source boxart repository (STORM DS parity):
+ * 1. Libretro Thumbnails via bundled 9,132-title offline index (GB / GBC / GBA)
+ *    with raw.githubusercontent.com primary + cdn.jsdelivr.net mirror fallback.
+ * 2. RetroAchievements official boxart / title art via independent toggle.
+ * 3. Custom user-selected cover image.
+ *
+ * All automatic cover sources default to OFF in GbcaCoreConfig (matching STORM DS).
+ */
 object BoxArtRepository {
     private const val TAG = "BoxArtRepository"
-    private const val INDEX_MAX_AGE_MS = 30L * 24 * 60 * 60 * 1000
-    private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+    private const val USER_AGENT = "STORM-GBCA/1.2.0 (Android)"
 
-    private const val URL_GB = "https://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy/Named_Boxarts/"
-    private const val URL_GBC = "https://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy%20Color/Named_Boxarts/"
-    private const val URL_GBA = "https://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy%20Advance/Named_Boxarts/"
+    private const val REPO_GB = "Nintendo_-_Game_Boy"
+    private const val REPO_GBC = "Nintendo_-_Game_Boy_Color"
+    private const val REPO_GBA = "Nintendo_-_Game_Boy_Advance"
 
     private data class IndexEntry(
-        val fullUrl: String,
+        val fileName: String,
         val normalized: String,
         val tokens: Set<String>,
         val regionScore: Int,
@@ -37,8 +45,8 @@ object BoxArtRepository {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(45, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
+        .callTimeout(35, TimeUnit.SECONDS)
         .followRedirects(true)
         .build()
 
@@ -49,35 +57,84 @@ object BoxArtRepository {
     )
     private val indexCache = ConcurrentHashMap<ConsoleSystem, List<IndexEntry>>()
     private val exactCache = ConcurrentHashMap<ConsoleSystem, Map<String, IndexEntry>>()
-    private val failedMatches = ConcurrentHashMap<String, Long>()
+    private val failedLibretro = ConcurrentHashMap<String, Long>()
+    private val failedRa = ConcurrentHashMap<String, Long>()
 
-    private fun cacheDir(context: Context): File =
+    private fun libretroCacheDir(context: Context): File =
         File(context.filesDir, "boxart").apply { mkdirs() }
+
+    private fun raCacheDir(context: Context): File =
+        File(context.filesDir, "ra_boxart").apply { mkdirs() }
 
     private fun customDir(context: Context): File =
         File(context.filesDir, "custom_covers").apply { mkdirs() }
 
-    private fun indexFile(context: Context, system: ConsoleSystem): File =
-        File(cacheDir(context), "libretro_index_${system.name.lowercase()}_v1.txt")
+    private fun downloadedIndexFile(context: Context, system: ConsoleSystem): File =
+        File(libretroCacheDir(context), "gh_index_${system.name.lowercase()}_v2.txt")
 
     private fun coverKey(rom: RomEntry): String {
         val base = rom.md5.ifBlank { rom.crc32.toString(16) }.ifBlank { rom.fileName.hashCode().toString() }
         return "${rom.consoleSystem.name.lowercase()}_${base.replace(Regex("[^a-zA-Z0-9_-]"), "_")}"
     }
 
-    private fun baseUrlFor(system: ConsoleSystem): String = when (system) {
-        ConsoleSystem.GB -> URL_GB
-        ConsoleSystem.GBC -> URL_GBC
-        ConsoleSystem.GBA -> URL_GBA
+    private fun repoNameFor(system: ConsoleSystem): String = when (system) {
+        ConsoleSystem.GB -> REPO_GB
+        ConsoleSystem.GBC -> REPO_GBC
+        ConsoleSystem.GBA -> REPO_GBA
     }
 
-    fun getCachedBoxArtPath(context: Context, rom: RomEntry): String? {
+    private fun assetNameFor(system: ConsoleSystem): String = when (system) {
+        ConsoleSystem.GB -> "boxart_index/gb.txt"
+        ConsoleSystem.GBC -> "boxart_index/gbc.txt"
+        ConsoleSystem.GBA -> "boxart_index/gba.txt"
+    }
+
+    private fun buildImageUrls(system: ConsoleSystem, fileName: String): List<String> {
+        val repo = repoNameFor(system)
+        val encoded = encodePathSegment(fileName)
+        return listOf(
+            "https://raw.githubusercontent.com/libretro-thumbnails/$repo/master/Named_Boxarts/$encoded",
+            "https://cdn.jsdelivr.net/gh/libretro-thumbnails/$repo@master/Named_Boxarts/$encoded",
+        )
+    }
+
+    private fun encodePathSegment(segment: String): String {
+        return URLEncoder.encode(segment, "UTF-8")
+            .replace("+", "%20")
+            .replace("%28", "(")
+            .replace("%29", ")")
+            .replace("%2C", ",")
+            .replace("%27", "'")
+    }
+
+    /**
+     * Returns the best available cached cover respecting user toggles:
+     * Custom cover (if set) -> Libretro cover (if enabled) -> RA cover (if enabled).
+     */
+    fun getCachedBoxArtPath(
+        context: Context,
+        rom: RomEntry,
+        allowLibretro: Boolean = true,
+        allowRa: Boolean = false,
+    ): String? {
         val key = coverKey(rom)
         val custom = File(customDir(context), "$key.png")
         if (custom.isFile && custom.length() > 128L) return custom.absolutePath
-        val cached = File(cacheDir(context), "$key.png")
-        if (cached.isFile && cached.length() > 128L) return cached.absolutePath
+
+        if (allowLibretro) {
+            val cached = File(libretroCacheDir(context), "$key.png")
+            if (cached.isFile && cached.length() > 128L) return cached.absolutePath
+        }
+        if (allowRa) {
+            val raCached = File(raCacheDir(context), "$key.png")
+            if (raCached.isFile && raCached.length() > 128L) return raCached.absolutePath
+        }
         return null
+    }
+
+    fun getCustomCoverPath(context: Context, rom: RomEntry): String? {
+        val custom = File(customDir(context), "${coverKey(rom)}.png")
+        return if (custom.isFile && custom.length() > 128L) custom.absolutePath else null
     }
 
     suspend fun saveCustomCover(context: Context, rom: RomEntry, uri: Uri): String? = withContext(Dispatchers.IO) {
@@ -91,51 +148,132 @@ object BoxArtRepository {
         }.getOrNull()
     }
 
-    suspend fun fetchOrGetBoxArt(context: Context, rom: RomEntry, forceRefresh: Boolean = false): String? =
-        withContext(Dispatchers.IO) {
-            val key = coverKey(rom)
-            if (!forceRefresh) {
-                getCachedBoxArtPath(context, rom)?.let { return@withContext it }
-                val lastFail = failedMatches[key]
-                if (lastFail != null && (System.currentTimeMillis() - lastFail) < 10L * 60 * 1000) {
-                    return@withContext null
-                }
-            } else {
-                failedMatches.remove(key)
-            }
+    fun clearAllCachedCovers(context: Context): Int {
+        failedLibretro.clear()
+        failedRa.clear()
+        var removed = 0
+        libretroCacheDir(context).listFiles()?.forEach { f ->
+            if (f.name.endsWith(".png") && f.delete()) removed++
+        }
+        raCacheDir(context).listFiles()?.forEach { f ->
+            if (f.name.endsWith(".png") && f.delete()) removed++
+        }
+        return removed
+    }
 
-            // 1. Ensure Libretro full directory index is loaded for this system (and fallback GB <-> GBC)
-            val systemsToTry = when (rom.consoleSystem) {
-                ConsoleSystem.GB -> listOf(ConsoleSystem.GB, ConsoleSystem.GBC)
-                ConsoleSystem.GBC -> listOf(ConsoleSystem.GBC, ConsoleSystem.GB)
-                ConsoleSystem.GBA -> listOf(ConsoleSystem.GBA)
-            }
+    /**
+     * Fetches cover art according to enabled sources (Libretro BoxArt and/or RetroAchievements BoxArt).
+     */
+    suspend fun fetchOrGetBoxArt(
+        context: Context,
+        rom: RomEntry,
+        useLibretro: Boolean = true,
+        useRa: Boolean = false,
+        forceRefresh: Boolean = false,
+    ): String? = withContext(Dispatchers.IO) {
+        val key = coverKey(rom)
+        getCustomCoverPath(context, rom)?.let { return@withContext it }
 
-            val candidates = buildCandidates(rom)
-            for (sys in systemsToTry) {
-                val entries = ensureIndex(context, sys, forceRefresh)
-                if (entries.isNotEmpty()) {
-                    val match = findBestMatch(candidates, sys, entries)
-                    if (match != null) {
-                        val downloaded = downloadToCache(context, key, match.fullUrl)
-                        if (downloaded != null) return@withContext downloaded
+        if (!useLibretro && !useRa) return@withContext null
+
+        if (!forceRefresh) {
+            getCachedBoxArtPath(context, rom, allowLibretro = useLibretro, allowRa = useRa)?.let {
+                return@withContext it
+            }
+        } else {
+            failedLibretro.remove(key)
+            failedRa.remove(key)
+        }
+
+        if (useLibretro) {
+            fetchLibretroBoxArt(context, rom, key, forceRefresh)?.let { return@withContext it }
+        }
+        if (useRa) {
+            fetchRaBoxArt(context, rom, key, forceRefresh)?.let { return@withContext it }
+        }
+        null
+    }
+
+    private suspend fun fetchLibretroBoxArt(
+        context: Context,
+        rom: RomEntry,
+        key: String,
+        forceRefresh: Boolean,
+    ): String? {
+        if (!forceRefresh) {
+            val lastFail = failedLibretro[key]
+            if (lastFail != null && (System.currentTimeMillis() - lastFail) < 5L * 60 * 1000) {
+                return null
+            }
+        }
+
+        val systemsToTry = when (rom.consoleSystem) {
+            ConsoleSystem.GB -> listOf(ConsoleSystem.GB, ConsoleSystem.GBC)
+            ConsoleSystem.GBC -> listOf(ConsoleSystem.GBC, ConsoleSystem.GB)
+            ConsoleSystem.GBA -> listOf(ConsoleSystem.GBA)
+        }
+
+        val candidates = buildCandidates(rom)
+        val outFile = File(libretroCacheDir(context), "$key.png")
+
+        for (sys in systemsToTry) {
+            val entries = ensureIndex(context, sys, forceRefresh)
+            if (entries.isNotEmpty()) {
+                val match = findBestMatch(candidates, sys, entries)
+                if (match != null) {
+                    for (url in buildImageUrls(sys, match.fileName)) {
+                        val saved = downloadImageToFile(url, outFile)
+                        if (saved != null) return saved
                     }
                 }
             }
-
-            // 2. Direct fallback URL probing if index download was unavailable
-            val baseUrl = baseUrlFor(rom.consoleSystem)
-            for (c in directProbeNames(rom)) {
-                val encoded = URLEncoder.encode("$c.png", "UTF-8").replace("+", "%20")
-                val downloaded = downloadToCache(context, key, "$baseUrl$encoded")
-                if (downloaded != null) return@withContext downloaded
-            }
-
-            failedMatches[key] = System.currentTimeMillis()
-            null
         }
 
-    private suspend fun ensureIndex(context: Context, system: ConsoleSystem, forceRefresh: Boolean): List<IndexEntry> {
+        // Fallback direct probes for exact standard naming
+        for (name in directProbeNames(rom)) {
+            val sanitized = sanitizeLibretroFileName(name)
+            for (url in buildImageUrls(rom.consoleSystem, "$sanitized.png")) {
+                val saved = downloadImageToFile(url, outFile)
+                if (saved != null) return saved
+            }
+        }
+
+        failedLibretro[key] = System.currentTimeMillis()
+        return null
+    }
+
+    private suspend fun fetchRaBoxArt(
+        context: Context,
+        rom: RomEntry,
+        key: String,
+        forceRefresh: Boolean,
+    ): String? {
+        if (!forceRefresh) {
+            val lastFail = failedRa[key]
+            if (lastFail != null && (System.currentTimeMillis() - lastFail) < 5L * 60 * 1000) {
+                return null
+            }
+        }
+        val hash = rom.md5.trim().lowercase()
+        if (hash.length != 32) return null
+
+        val outFile = File(raCacheDir(context), "$key.png")
+        val artUrl = RetroAchievementsClient.resolveGameBoxArtUrl(context, hash) ?: run {
+            failedRa[key] = System.currentTimeMillis()
+            return null
+        }
+        val saved = downloadImageToFile(artUrl, outFile)
+        if (saved == null) {
+            failedRa[key] = System.currentTimeMillis()
+        }
+        return saved
+    }
+
+    private suspend fun ensureIndex(
+        context: Context,
+        system: ConsoleSystem,
+        forceRefresh: Boolean,
+    ): List<IndexEntry> {
         if (!forceRefresh) {
             indexCache[system]?.let { if (it.isNotEmpty()) return it }
         }
@@ -144,59 +282,87 @@ object BoxArtRepository {
             if (!forceRefresh) {
                 indexCache[system]?.let { if (it.isNotEmpty()) return@withLock it }
             }
-            val file = indexFile(context, system)
-            val stale = !file.isFile || file.length() < 1024L ||
-                (System.currentTimeMillis() - file.lastModified() > INDEX_MAX_AGE_MS)
-            val rawText = if (!forceRefresh && !stale) {
-                runCatching { file.readText() }.getOrNull()
-            } else {
-                downloadDirectoryIndex(baseUrlFor(system))?.also { txt ->
-                    runCatching { file.writeText(txt) }
-                } ?: runCatching { if (file.isFile) file.readText() else null }.getOrNull()
+
+            // 1. Optional live refresh from GitHub Trees API if forceRefresh
+            val liveFile = downloadedIndexFile(context, system)
+            if (forceRefresh) {
+                fetchGithubTreeIndex(system)?.let { txt ->
+                    runCatching { liveFile.writeText(txt) }
+                    return@withLock parseIndex(system, txt)
+                }
             }
-            if (rawText.isNullOrBlank()) return@withLock emptyList()
-            parseIndex(system, rawText)
+
+            // 2. Cached live refresh if present
+            if (liveFile.isFile && liveFile.length() > 1024L) {
+                runCatching { liveFile.readText() }.getOrNull()?.takeIf { it.isNotBlank() }?.let {
+                    return@withLock parseIndex(system, it)
+                }
+            }
+
+            // 3. Instant 0 ms bundled offline asset index (9,132 titles across GB/GBC/GBA!)
+            val assetText = runCatching {
+                context.assets.open(assetNameFor(system)).bufferedReader(Charsets.UTF_8).use { it.readText() }
+            }.onFailure { Log.w(TAG, "Bundled index missing for $system: ${it.message}") }.getOrNull()
+
+            if (!assetText.isNullOrBlank()) {
+                return@withLock parseIndex(system, assetText)
+            }
+
+            // 4. Last resort: live GitHub Trees API
+            fetchGithubTreeIndex(system)?.let { txt ->
+                runCatching { liveFile.writeText(txt) }
+                return@withLock parseIndex(system, txt)
+            }
+
+            emptyList()
         }
     }
 
-    private fun downloadDirectoryIndex(baseUrl: String): String? {
+    private fun fetchGithubTreeIndex(system: ConsoleSystem): String? {
+        val repo = repoNameFor(system)
+        val url = "https://api.github.com/repos/libretro-thumbnails/$repo/git/trees/master?recursive=1"
         return runCatching {
             val req = Request.Builder()
-                .url(baseUrl)
+                .url(url)
                 .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/vnd.github+json")
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@use null
-                val html = resp.body?.string() ?: return@use null
-                val matches = Regex("""href="([^"]+\.png)"""").findAll(html)
-                    .map { it.groupValues[1] }
-                    .filter { !it.contains("..") && !it.startsWith("/") }
-                    .toList()
-                if (matches.size < 20) null else matches.joinToString("\n")
+                val body = resp.body?.string() ?: return@use null
+                val arr = JSONObject(body).optJSONArray("tree") ?: return@use null
+                val names = ArrayList<String>(arr.length() / 2)
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val p = obj.optString("path")
+                    if (p.startsWith("Named_Boxarts/") && p.endsWith(".png")) {
+                        names.add(p.removePrefix("Named_Boxarts/"))
+                    }
+                }
+                if (names.size < 50) null else names.sorted().joinToString("\n")
             }
-        }.onFailure { Log.w(TAG, "Index fetch failed for $baseUrl: ${it.message}") }.getOrNull()
+        }.onFailure { Log.w(TAG, "GitHub tree fetch failed for $system: ${it.message}") }.getOrNull()
     }
 
     private fun parseIndex(system: ConsoleSystem, raw: String): List<IndexEntry> {
-        val baseUrl = baseUrlFor(system)
-        val exact = HashMap<String, IndexEntry>()
-        val entries = ArrayList<IndexEntry>(2048)
-        raw.lineSequence().forEach { encoded ->
-            val trimmed = encoded.trim()
-            if (trimmed.isEmpty()) return@forEach
-            val decoded = runCatching { URLDecoder.decode(trimmed, "UTF-8") }.getOrDefault(trimmed)
+        val exact = HashMap<String, IndexEntry>(4096)
+        val entries = ArrayList<IndexEntry>(4096)
+        raw.lineSequence().forEach { line ->
+            val fileName = line.trim()
+            if (fileName.isEmpty() || !fileName.endsWith(".png", ignoreCase = true)) return@forEach
             val regionScore = when {
-                decoded.contains("(USA", ignoreCase = true) -> 4
-                decoded.contains("(World", ignoreCase = true) -> 3
-                decoded.contains("(Europe", ignoreCase = true) -> 2
-                decoded.contains("(Japan", ignoreCase = true) -> 1
+                fileName.contains("(USA, Europe", ignoreCase = true) -> 5
+                fileName.contains("(USA", ignoreCase = true) -> 4
+                fileName.contains("(World", ignoreCase = true) -> 3
+                fileName.contains("(Europe", ignoreCase = true) -> 2
+                fileName.contains("(Japan", ignoreCase = true) -> 1
                 else -> 0
             }
-            val clean = decoded.removeSuffix(".png").substringBefore(" (").substringBefore(" [")
+            val clean = fileName.removeSuffix(".png").substringBefore(" (").substringBefore(" [")
             val norm = normalize(clean)
             if (norm.isNotEmpty()) {
                 val toks = norm.split(' ').filter { it.isNotEmpty() }.toSet()
-                val entry = IndexEntry(baseUrl + trimmed, norm, toks, regionScore)
+                val entry = IndexEntry(fileName, norm, toks, regionScore)
                 entries.add(entry)
                 val prev = exact[norm]
                 if (prev == null || entry.regionScore > prev.regionScore) {
@@ -209,7 +375,11 @@ object BoxArtRepository {
         return entries
     }
 
-    private fun findBestMatch(candidates: List<String>, system: ConsoleSystem, entries: List<IndexEntry>): IndexEntry? {
+    private fun findBestMatch(
+        candidates: List<String>,
+        system: ConsoleSystem,
+        entries: List<IndexEntry>,
+    ): IndexEntry? {
         val exactMap = exactCache[system] ?: emptyMap()
         // Pass 1: O(1) exact normalized title lookup
         for (c in candidates) {
@@ -218,7 +388,7 @@ object BoxArtRepository {
             exactMap[norm]?.let { return it }
         }
 
-        // Pass 2: Token Jaccard + containment fuzzy scoring (handles [MOD - M. RUS], editions, sequels cleanly)
+        // Pass 2: Token Jaccard + containment fuzzy scoring (handles [MOD - M. RUS], revisions, subtitles)
         var best: IndexEntry? = null
         var bestScore = 0.0
         for (c in candidates) {
@@ -233,7 +403,7 @@ object BoxArtRepository {
                 val union = tokens.union(e.tokens).size.toDouble()
                 val jaccard = inter / union
                 val contain = inter / minOf(tokens.size, e.tokens.size).toDouble()
-                var score = jaccard * 0.75 + contain * 0.25
+                var score = jaccard * 0.72 + contain * 0.28
                 if (e.normalized.startsWith(norm) || norm.startsWith(e.normalized)) {
                     score += 0.08
                 }
@@ -245,10 +415,10 @@ object BoxArtRepository {
                 }
             }
         }
-        return if (bestScore >= 0.62) best else null
+        return if (bestScore >= 0.58) best else null
     }
 
-    private fun downloadToCache(context: Context, key: String, url: String): String? {
+    private fun downloadImageToFile(url: String, outFile: File): String? {
         return runCatching {
             val req = Request.Builder()
                 .url(url)
@@ -257,12 +427,22 @@ object BoxArtRepository {
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@use null
                 val bytes = resp.body?.bytes() ?: return@use null
-                if (bytes.size < 256) return@use null
-                val outFile = File(cacheDir(context), "$key.png")
+                if (!isValidImageBytes(bytes)) return@use null
+                outFile.parentFile?.mkdirs()
                 FileOutputStream(outFile).use { it.write(bytes) }
                 outFile.absolutePath
             }
         }.getOrNull()
+    }
+
+    private fun isValidImageBytes(bytes: ByteArray): Boolean {
+        if (bytes.size < 256) return false
+        val isPng = bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()
+        val isJpg = bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()
+        val isWebp = bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() &&
+            bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte()
+        return isPng || isJpg || isWebp
     }
 
     private fun buildCandidates(rom: RomEntry): List<String> {
@@ -270,18 +450,22 @@ object BoxArtRepository {
         val stripped = raw
             .replace(Regex("\\[[^\\]]*\\]"), " ")
             .replace(Regex("\\([^\\)]*\\)"), " ")
+            .replace("_", " ")
             .replace(Regex("\\s+"), " ")
             .trim()
         val res = LinkedHashSet<String>()
         if (stripped.isNotBlank()) {
             res.add(stripped)
-            // Handle "Title, The" <-> "The Title"
             if (stripped.startsWith("The ", ignoreCase = true)) {
                 res.add(stripped.drop(4) + ", The")
             }
-            // Strip version suffixes like "v1.1" or "Rev 1"
-            val noVer = stripped.replace(Regex("\\b(v\\d[\\d.]*|rev\\s*\\d+|rus|eng|mod)\\b", RegexOption.IGNORE_CASE), " ")
-                .replace(Regex("\\s+"), " ").trim()
+            if (stripped.contains(" - ")) {
+                res.add(stripped.substringBefore(" - ").trim())
+            }
+            val noVer = stripped.replace(
+                Regex("\\b(v\\d[\\d.]*|rev\\s*\\d+|rus|eng|mod|m\\.\\s*rus|hack|patched|gb|gbc|gba)\\b", RegexOption.IGNORE_CASE),
+                " "
+            ).replace(Regex("\\s+"), " ").trim()
             if (noVer.isNotBlank()) res.add(noVer)
         }
         if (rom.internalTitle.isNotBlank() && rom.internalTitle.length >= 3) {
@@ -299,12 +483,20 @@ object BoxArtRepository {
             .replace(":", " -")
         return listOf(
             raw,
-            "$clean (USA)",
             "$clean (USA, Europe)",
+            "$clean (USA)",
             "$clean (Europe)",
             "$clean (World)",
             "$clean (Japan)",
         ).distinct().filter { it.isNotBlank() }
+    }
+
+    private fun sanitizeLibretroFileName(name: String): String {
+        val sb = StringBuilder(name.length)
+        for (c in name) {
+            sb.append(if (c in "&*/:`<>?\\|") '_' else c)
+        }
+        return sb.toString().trim()
     }
 
     private fun normalize(value: String): String {
@@ -313,6 +505,7 @@ object BoxArtRepository {
             .replace(Regex("\\p{M}+"), "")
             .lowercase()
             .replace("&", " and ")
+            .replace("'", "")
             .replace(Regex("\\([^\\)]*\\)|\\[[^\\]]*\\]"), " ")
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()

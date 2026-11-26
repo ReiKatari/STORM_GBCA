@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.lifecycle.lifecycleScope
+import com.stormgbca.emulator.R
 import com.stormgbca.emulator.data.BoxArtRepository
 import com.stormgbca.emulator.data.GbcaPrefs
 import com.stormgbca.emulator.data.RaGameSession
@@ -92,7 +93,7 @@ class MainActivity : AppCompatActivity() {
             }
             romsState.value = updated
             GbcaPrefs.saveCachedRoms(updated)
-            Toast.makeText(this, "Патч привязан к игре", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.toast_patch_linked), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -125,6 +126,7 @@ class MainActivity : AppCompatActivity() {
 
         setContent {
             StormWatermelonTheme {
+                val coreCfg = GbcaPrefs.coreConfigState.value
                 val filteredRoms = remember(
                     romsState.value,
                     filterState.value,
@@ -157,8 +159,9 @@ class MainActivity : AppCompatActivity() {
                         }
                 }
 
-                LaunchedEffect(romsState.value) {
-                    preloadCovers(romsState.value)
+                // Re-evaluate covers whenever ROM list OR either cover toggle changes!
+                LaunchedEffect(romsState.value, coreCfg.showLibretroCovers, coreCfg.showRaCovers) {
+                    preloadCovers(romsState.value, coreCfg.showLibretroCovers, coreCfg.showRaCovers)
                 }
 
                 RomBrowserScreen(
@@ -212,12 +215,18 @@ class MainActivity : AppCompatActivity() {
                     },
                     onRefreshBoxArt = { rom ->
                         lifecycleScope.launch {
-                            val path = BoxArtRepository.fetchOrGetBoxArt(this@MainActivity, rom, forceRefresh = true)
+                            val path = BoxArtRepository.fetchOrGetBoxArt(
+                                this@MainActivity,
+                                rom,
+                                useLibretro = true,
+                                useRa = GbcaPrefs.coreConfigState.value.showRaCovers,
+                                forceRefresh = true,
+                            )
                             if (path != null) {
                                 boxArtMap[rom.uriString] = path
-                                Toast.makeText(this@MainActivity, "Обложка обновлена", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this@MainActivity, getString(R.string.toast_cover_updated), Toast.LENGTH_SHORT).show()
                             } else {
-                                Toast.makeText(this@MainActivity, "Обложка не найдена в базе Libretro", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this@MainActivity, getString(R.string.toast_cover_not_found), Toast.LENGTH_SHORT).show()
                             }
                         }
                     },
@@ -276,7 +285,7 @@ class MainActivity : AppCompatActivity() {
             openRomFromUri(intent.data!!)
         } else {
             rescanLibrary()
-            checkUpdatesQuietly()
+            checkUpdatesOnLaunch()
         }
     }
 
@@ -325,27 +334,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun preloadCovers(roms: List<RomEntry>) {
+    private fun preloadCovers(roms: List<RomEntry>, useLibretro: Boolean, useRa: Boolean) {
         coverLoadJob?.cancel()
+        boxArtMap.clear()
         if (roms.isEmpty()) return
+
         coverLoadJob = lifecycleScope.launch {
-            val autoFetch = GbcaPrefs.coreConfigState.value.autoFetchCovers
             val semaphore = Semaphore(4)
-            // First populate all already-cached covers instantaneously
             val pending = ArrayList<RomEntry>()
             for (rom in roms) {
-                val cached = BoxArtRepository.getCachedBoxArtPath(this@MainActivity, rom)
+                val cached = BoxArtRepository.getCachedBoxArtPath(
+                    this@MainActivity,
+                    rom,
+                    allowLibretro = useLibretro,
+                    allowRa = useRa,
+                )
                 if (cached != null) {
                     boxArtMap[rom.uriString] = cached
-                } else if (autoFetch) {
+                } else if (useLibretro || useRa) {
                     pending.add(rom)
                 }
             }
-            // Fetch missing covers in parallel (4 concurrent workers against cached Libretro index)
+            if (pending.isEmpty()) return@launch
             pending.forEach { rom ->
                 launch(Dispatchers.IO) {
                     semaphore.withPermit {
-                        val fetched = BoxArtRepository.fetchOrGetBoxArt(this@MainActivity, rom)
+                        val fetched = BoxArtRepository.fetchOrGetBoxArt(
+                            this@MainActivity,
+                            rom,
+                            useLibretro = useLibretro,
+                            useRa = useRa,
+                        )
                         if (fetched != null) {
                             withContext(Dispatchers.Main) {
                                 boxArtMap[rom.uriString] = fetched
@@ -364,7 +383,7 @@ class MainActivity : AppCompatActivity() {
             if (entry != null) {
                 launchRom(entry)
             } else {
-                Toast.makeText(this@MainActivity, "Неподдерживаемый файл ROM", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, getString(R.string.toast_unsupported_rom), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -376,11 +395,14 @@ class MainActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
-    private fun checkUpdatesQuietly() {
+    private fun checkUpdatesOnLaunch() {
+        if (!GbcaPrefs.coreConfigState.value.autoCheckUpdates) return
         lifecycleScope.launch {
             val rel = StormUpdateMirrorClient.checkLatestUpdate()
             if (rel != null && rel.version != GbcaPrefs.getSkippedUpdateVersion()) {
                 latestUpdateState.value = rel
+                // Automatically pop up the update dialog on launch when a newer release exists!
+                showUpdateDialogState.value = true
             }
         }
     }

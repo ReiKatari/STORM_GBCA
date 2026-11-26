@@ -1,20 +1,24 @@
 package com.stormgbca.emulator.ui.emulator
 
+import android.content.Context
 import android.graphics.BitmapFactory
+import android.os.BatteryManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,7 +27,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
@@ -31,15 +34,21 @@ import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Surface
+import androidx.compose.material.Switch
+import androidx.compose.material.SwitchDefaults
 import androidx.compose.material.Text
 import androidx.compose.material.TextFieldDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Download
@@ -48,6 +57,7 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Palette
@@ -58,7 +68,9 @@ import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.VideogameAsset
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,24 +83,37 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.stormgbca.emulator.R
 import com.stormgbca.emulator.data.GbcaPrefs
 import com.stormgbca.emulator.data.RaGameSession
 import com.stormgbca.emulator.data.RomRepository
 import com.stormgbca.emulator.model.CheatItem
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.RomEntry
+import com.stormgbca.emulator.ui.common.UnifiedBackButton
 import com.stormgbca.emulator.ui.common.WatermelonSwitch
+import com.stormgbca.emulator.ui.common.bouncingClickable
+import com.stormgbca.emulator.ui.library.formatPlayTime
 import com.stormgbca.emulator.ui.ra.GameAchievementsDialog
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.WatermelonMono
 import com.stormgbca.emulator.ui.theme.watermelon
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import ru.stormgames.gbca.NativeCore
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -103,28 +128,44 @@ private enum class PauseSubDialog {
     SENSORS,
     CORE_ENGINE,
     ACHIEVEMENTS,
+    CUSTOMIZER,
 }
 
-private data class PauseTile(
-    val title: String,
-    val subtitle: String,
+private enum class ConfirmAction {
+    NONE,
+    RESET,
+    EXIT,
+}
+
+private data class PauseTileItem(
+    val key: String,
+    val label: String,
     val icon: ImageVector,
-    val tint: Color,
+    val badge: String? = null,
+    val extendedOnly: Boolean = false,
+    val destructive: Boolean = false,
     val onClick: () -> Unit,
 )
 
+/**
+ * In-Game Pause Menu IDENTICAL in layout, telemetry banner, quick-slot strip, compact icon tile grid,
+ * extended toggle, customizer and bottom-centered circular back button to STORM DS PauseMenuOverlay.kt.
+ */
 @Composable
 fun PauseMenuOverlay(
     rom: RomEntry,
     system: ConsoleSystem,
+    boxArtPath: String?,
+    sessionStartMs: Long,
     activeCoreName: String,
     activeBackendLabel: String,
     fastForwardActive: Boolean,
     rewindAvailableFrames: Int,
     raSession: RaGameSession?,
+    linkStatus: LinkStatusInfo,
     onResume: () -> Unit,
-    onQuickSave: () -> Unit,
-    onQuickLoad: () -> Unit,
+    onQuickSave: (Int) -> Unit,
+    onQuickLoad: (Int) -> Unit,
     onSaveSlot: (Int) -> Unit,
     onLoadSlot: (Int) -> Unit,
     onRewindStep: () -> Unit,
@@ -133,6 +174,7 @@ fun PauseMenuOverlay(
     onOpenOverlayPicker: () -> Unit,
     onOpenLayoutEditor: () -> Unit,
     onOpenRamFinder: () -> Unit,
+    onOpenMultiplayer: () -> Unit,
     onOpenRaAccount: () -> Unit,
     onConfigApplied: () -> Unit,
     onCheatsUpdated: (List<CheatItem>) -> Unit,
@@ -143,123 +185,488 @@ fun PauseMenuOverlay(
     onExit: () -> Unit,
 ) {
     val colors = watermelon
-    var subDialog by remember { mutableStateOf(PauseSubDialog.NONE) }
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
     val cfg = GbcaPrefs.coreConfigState.value
 
-    val raSubtitle = if (raSession != null) {
-        "${raSession.unlockedCount}/${raSession.totalCount} (${raSession.earnedPoints} pts)"
-    } else {
-        "RetroAchievements"
+    var subDialog by remember { mutableStateOf(PauseSubDialog.NONE) }
+    var confirmAction by remember { mutableStateOf(ConfirmAction.NONE) }
+    var activeQuickSlot by remember { mutableIntStateOf(GbcaPrefs.getActiveQuickSlot()) }
+    var hiddenKeys by remember { mutableStateOf(GbcaPrefs.getHiddenPauseTiles()) }
+    val isExtended = cfg.extendedPauseMenu
+
+    // Live Telemetry (Clock + Battery % + Session Duration - Identical to STORM DS!)
+    val batteryManager = remember(context) { context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager }
+    var batteryLevel by remember { mutableStateOf<Int?>(null) }
+    val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    var currentTimeStr by remember { mutableStateOf(timeFmt.format(Date())) }
+    var sessionDurationMs by remember { mutableStateOf((System.currentTimeMillis() - sessionStartMs).coerceAtLeast(0L)) }
+
+    LaunchedEffect(batteryManager) {
+        while (true) {
+            val level = withContext(Dispatchers.IO) {
+                batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+            }
+            batteryLevel = if (level in 0..100) level else null
+            currentTimeStr = timeFmt.format(Date())
+            sessionDurationMs = (System.currentTimeMillis() - sessionStartMs).coerceAtLeast(0L)
+            delay(15_000L)
+        }
     }
 
-    val tiles = listOf(
-        PauseTile("Продолжить", "Вернуться в игру", Icons.Filled.PlayArrow, colors.green, onResume),
-        PauseTile("Быстрое сохранение", "Слот быстрого доступа", Icons.Filled.Download, Color(0xFF38BDF8), { onQuickSave(); onResume() }),
-        PauseTile("Быстрая загрузка", "Восстановить состояние", Icons.Filled.Upload, Color(0xFFA855F7), { onQuickLoad(); onResume() }),
-        PauseTile("Слоты сохранений", "10 слотов со скриншотами", Icons.Filled.Layers, Color(0xFF818CF8), { subDialog = PauseSubDialog.SLOTS }),
-        PauseTile("Перемотка назад", "$rewindAvailableFrames кадров", Icons.Filled.History, Color(0xFF2DD4BF), onRewindStep),
-        PauseTile("Ускорение", if (fastForwardActive) "Включено" else "Выключено", Icons.Filled.FastForward, if (fastForwardActive) colors.green else colors.text2, onToggleFastForward),
-        PauseTile("Корпус (${system.label})", "Выбрать 3D скин", Icons.Filled.Devices, Color(0xFFF472B6), onOpenSkinPicker),
-        PauseTile("Оверлей и шейдеры", "RetroArch .slangp и кнопки", Icons.Filled.Gamepad, Color(0xFFFB923C), onOpenOverlayPicker),
-        PauseTile("Экран и раскладка", "Размер и позиция (${system.label})", Icons.Filled.AspectRatio, Color(0xFF00E5FF), onOpenLayoutEditor),
-        PauseTile("Графика и мощь", "${cfg.resolutionScale}x | $activeBackendLabel", Icons.Filled.Palette, Color(0xFFFACC15), { subDialog = PauseSubDialog.VIDEO }),
-        PauseTile("Аудиомикшер", "Громкость и 6 каналов", Icons.Filled.GraphicEq, Color(0xFF34D399), { subDialog = PauseSubDialog.AUDIO_MIXER }),
-        PauseTile("Чит-коды", "GameShark / AR / Genie", Icons.Filled.Tune, Color(0xFFE879F9), { subDialog = PauseSubDialog.CHEATS }),
-        PauseTile("Поиск в RAM", "Живой сканер памяти", Icons.Filled.Search, Color(0xFF22D3EE), onOpenRamFinder),
-        PauseTile("Мягкий патч", "IPS / UPS / BPS", Icons.Filled.Build, Color(0xFF38BDF8), onApplySoftPatch),
-        PauseTile("Скриншот", "Сохранить кадр в PNG", Icons.Filled.CameraAlt, Color(0xFF22D3EE), { onTakeScreenshot(); onResume() }),
-        PauseTile("Датчики", "Солнце, гироскоп, вибрация", Icons.Filled.Sensors, Color(0xFFF59E0B), { subDialog = PauseSubDialog.SENSORS }),
-        PauseTile("Ядро эмуляции", activeCoreName, Icons.Filled.Memory, Color(0xFF60A5FA), { subDialog = PauseSubDialog.CORE_ENGINE }),
-        PauseTile("Достижения", raSubtitle, Icons.Filled.EmojiEvents, Color(0xFFD4A017), { subDialog = PauseSubDialog.ACHIEVEMENTS }),
-        PauseTile("Настройки", "Общие параметры", Icons.Filled.Settings, colors.text2, onOpenSettings),
-        PauseTile("Перезапуск", "Сбросить консоль", Icons.Filled.RestartAlt, colors.red, onReset),
-        PauseTile("Выход в библиотеку", "Сохранить SRAM и выйти", Icons.AutoMirrored.Filled.Logout, colors.red, onExit),
+    val formattedSession = remember(sessionDurationMs) {
+        val secs = sessionDurationMs / 1000L
+        val mins = secs / 60L
+        val hrs = mins / 60L
+        val rem = mins % 60L
+        when {
+            mins < 1L -> context.getString(R.string.pause_session_lt_min)
+            hrs > 0L -> "${hrs}h ${rem}m"
+            else -> "${mins}m"
+        }
+    }
+
+    BackHandler {
+        when {
+            subDialog != PauseSubDialog.NONE -> subDialog = PauseSubDialog.NONE
+            confirmAction != ConfirmAction.NONE -> confirmAction = ConfirmAction.NONE
+            else -> onResume()
+        }
+    }
+
+    val ffBadge = if (fastForwardActive) "${cfg.fastForwardMultiplier.toInt()}x" else null
+    val linkBadge = if (linkStatus.mode != NativeCore.LINK_NONE && linkStatus.connected) "${linkStatus.playerCount}P" else null
+    val raBadge = raSession?.let { "${it.unlockedCount}/${it.totalCount}" }
+    val rwBadge = if (rewindAvailableFrames > 0) "${rewindAvailableFrames}f" else null
+
+    val allTiles = listOf(
+        PauseTileItem("save_state", stringResource(R.string.pause_save_state), Icons.Filled.Download, "#$activeQuickSlot") {
+            onQuickSave(activeQuickSlot); onResume()
+        },
+        PauseTileItem("load_state", stringResource(R.string.pause_load_state), Icons.Filled.Upload, "#$activeQuickSlot") {
+            onQuickLoad(activeQuickSlot); onResume()
+        },
+        PauseTileItem("fast_forward", stringResource(R.string.pause_fast_forward), Icons.Filled.FastForward, ffBadge) {
+            onToggleFastForward()
+        },
+        PauseTileItem("rewind", stringResource(R.string.pause_rewind), Icons.Filled.History, rwBadge) {
+            onRewindStep()
+        },
+        PauseTileItem("multiplayer", stringResource(R.string.pause_multiplayer), Icons.Filled.Cable, linkBadge) {
+            onOpenMultiplayer()
+        },
+        PauseTileItem("screenshot", stringResource(R.string.pause_screenshot), Icons.Filled.CameraAlt) {
+            onTakeScreenshot(); onResume()
+        },
+        PauseTileItem("skins", stringResource(R.string.pause_skins), Icons.Filled.Devices, system.label) {
+            onOpenSkinPicker()
+        },
+        PauseTileItem("overlay", stringResource(R.string.pause_overlay), Icons.Filled.Gamepad) {
+            onOpenOverlayPicker()
+        },
+        PauseTileItem("screen", stringResource(R.string.pause_screen), Icons.Filled.AspectRatio) {
+            onOpenLayoutEditor()
+        },
+        PauseTileItem("video", stringResource(R.string.pause_video), Icons.Filled.Palette, "${cfg.resolutionScale}x", extendedOnly = true) {
+            subDialog = PauseSubDialog.VIDEO
+        },
+        PauseTileItem("audio", stringResource(R.string.pause_audio), Icons.Filled.GraphicEq, extendedOnly = true) {
+            subDialog = PauseSubDialog.AUDIO_MIXER
+        },
+        PauseTileItem("cheats", stringResource(R.string.pause_cheats), Icons.Filled.Tune) {
+            subDialog = PauseSubDialog.CHEATS
+        },
+        PauseTileItem("ram_finder", stringResource(R.string.pause_ram_finder), Icons.Filled.Search, extendedOnly = true) {
+            onOpenRamFinder()
+        },
+        PauseTileItem("patch", stringResource(R.string.pause_patch), Icons.Filled.Build, extendedOnly = true) {
+            onApplySoftPatch()
+        },
+        PauseTileItem("sensors", stringResource(R.string.pause_sensors), Icons.Filled.Sensors, extendedOnly = true) {
+            subDialog = PauseSubDialog.SENSORS
+        },
+        PauseTileItem("core", stringResource(R.string.pause_core), Icons.Filled.Memory, activeCoreName, extendedOnly = true) {
+            subDialog = PauseSubDialog.CORE_ENGINE
+        },
+        PauseTileItem("achievements", stringResource(R.string.pause_achievements), Icons.Filled.EmojiEvents, raBadge) {
+            subDialog = PauseSubDialog.ACHIEVEMENTS
+        },
+        PauseTileItem("settings", stringResource(R.string.settings), Icons.Filled.Settings) {
+            onOpenSettings()
+        },
+        PauseTileItem("reset", stringResource(R.string.pause_reset), Icons.Filled.RestartAlt, destructive = true) {
+            confirmAction = ConfirmAction.RESET
+        },
+        PauseTileItem("exit", stringResource(R.string.pause_exit), Icons.AutoMirrored.Filled.Logout, destructive = true) {
+            confirmAction = ConfirmAction.EXIT
+        },
     )
+
+    val displayedTiles = remember(allTiles, isExtended, hiddenKeys) {
+        allTiles.filter { tile ->
+            (isExtended || !tile.extendedOnly) && !hiddenKeys.contains(tile.key)
+        }
+    }
+
+    val gridColumns = if (isLandscape) {
+        when {
+            displayedTiles.size <= 9 -> 3
+            displayedTiles.size <= 12 -> 4
+            else -> 5
+        }
+    } else {
+        3
+    }
+    val panelMaxWidth = if (isLandscape) {
+        when (gridColumns) {
+            3 -> 480.dp
+            4 -> 560.dp
+            else -> 650.dp
+        }
+    } else {
+        460.dp
+    }
+    val horizontalEdge = if (isLandscape) 16.dp else 12.dp
+    val compactHeight = displayedTiles.size > 12
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xCC04060D))
-            .padding(14.dp),
-        contentAlignment = Alignment.Center,
+            .background(Color.Black.copy(alpha = if (colors.isDark) 0.84f else 0.68f))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onResume() },
+        contentAlignment = if (isLandscape) Alignment.Center else Alignment.BottomCenter,
     ) {
-        Surface(
-            shape = RoundedCornerShape(22.dp),
-            color = colors.surface.copy(alpha = 0.95f),
-            elevation = 24.dp,
+        Column(
             modifier = Modifier
-                .widthIn(max = 640.dp)
+                .widthIn(max = panelMaxWidth)
                 .fillMaxWidth()
-                .border(1.2.dp, colors.line, RoundedCornerShape(22.dp)),
+                .navigationBarsPadding()
+                .padding(bottom = if (isLandscape) 6.dp else 12.dp)
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { /* consume */ },
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = rom.displayTitle,
-                            color = colors.text,
-                            fontFamily = SpaceGrotesk,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = "${rom.platformLabel}  |  $activeCoreName  |  $activeBackendLabel  |  ${cfg.resolutionScale}x",
-                            color = colors.text2,
-                            fontFamily = WatermelonMono,
-                            fontSize = 11.sp,
-                        )
+            // 1. Top Information Bar (Game Icon, Title, PAUSED badge, Play Time, Telemetry & Resume Pill - STORM DS Exact!)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = horizontalEdge, vertical = if (isLandscape) 3.dp else 4.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.line, RoundedCornerShape(16.dp))
+                    .padding(horizontal = 11.dp, vertical = if (isLandscape) 6.dp else 7.dp),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Box(
+                            modifier = Modifier
+                                .size(if (isLandscape) 34.dp else 36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.surface2)
+                                .border(1.dp, colors.line, RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (!boxArtPath.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context).data(File(boxArtPath)).build(),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                Icon(Icons.Filled.VideogameAsset, contentDescription = null, tint = colors.green, modifier = Modifier.size(18.dp))
+                            }
+                        }
+
+                        Spacer(Modifier.width(9.dp))
+
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = rom.displayTitle,
+                                color = colors.text,
+                                fontFamily = SpaceGrotesk,
+                                fontSize = if (isLandscape) 13.5.sp else 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 1.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(colors.red.copy(alpha = 0.18f))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.pause_paused_label),
+                                        color = colors.red,
+                                        fontFamily = SpaceGrotesk,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp,
+                                    )
+                                }
+                                val pt = formatPlayTime(rom.totalPlaySeconds)
+                                if (pt.isNotEmpty()) {
+                                    Text(pt, color = colors.text2, fontSize = 9.5.sp, modifier = Modifier.padding(start = 6.dp))
+                                }
+                                if (isLandscape) {
+                                    Text(
+                                        text = buildString {
+                                            append(" | ")
+                                            append(currentTimeStr)
+                                            if (batteryLevel != null) append(" | $batteryLevel%")
+                                            append(" | ")
+                                            append(formattedSession)
+                                        },
+                                        color = colors.text2,
+                                        fontFamily = WatermelonMono,
+                                        fontSize = 9.5.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        // Right-aligned Resume Pill Button (STORM DS signature!)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(colors.surface2)
+                                .border(1.5.dp, colors.green.copy(alpha = 0.85f), RoundedCornerShape(10.dp))
+                                .bouncingClickable(onClick = onResume)
+                                .padding(horizontal = 11.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = colors.green, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.pause_resume), color = colors.green, fontFamily = SpaceGrotesk, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
                     }
-                    Box(
+
+                    // Portrait Telemetry Strip (Clock | Battery % | Session Duration)
+                    if (!isLandscape) {
+                        Spacer(Modifier.height(5.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.surface2.copy(alpha = 0.78f))
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.AccessTime, contentDescription = null, tint = colors.text2, modifier = Modifier.size(12.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(currentTimeStr, color = colors.text, fontFamily = WatermelonMono, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            if (batteryLevel != null) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Filled.BatteryStd,
+                                        contentDescription = null,
+                                        tint = if (batteryLevel!! <= 20) colors.red else colors.green,
+                                        modifier = Modifier.size(12.dp),
+                                    )
+                                    Spacer(Modifier.width(3.dp))
+                                    Text("$batteryLevel%", color = colors.text, fontFamily = WatermelonMono, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.HourglassTop, contentDescription = null, tint = colors.text2, modifier = Modifier.size(12.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("$formattedSession | $activeBackendLabel", color = colors.text2, fontFamily = WatermelonMono, fontSize = 10.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Quick Save Slot Bar (Portrait - STORM DS Exact!)
+            if (!isLandscape) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = horizontalEdge, vertical = 3.dp)
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(colors.surface2)
+                        .border(1.dp, colors.line, RoundedCornerShape(11.dp))
+                        .clickable { subDialog = PauseSubDialog.SLOTS }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Layers, contentDescription = null, tint = colors.green, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text(stringResource(R.string.pause_quick_slot_title), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text(stringResource(R.string.pause_quick_slot_fmt, activeQuickSlot), color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // 3. STORM DS Compact Customizable Icon Tile Grid (Zero Section Headers!)
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(gridColumns),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .heightIn(max = if (isLandscape) 260.dp else 430.dp)
+                    .padding(horizontal = horizontalEdge, vertical = 4.dp),
+            ) {
+                items(displayedTiles, key = { it.key }) { tile ->
+                    PauseTileCard(tile = tile, compactHeight = compactHeight)
+                }
+            }
+
+            // 4. Bottom Controls Row: Back (Landscape) + Quick Slot (Landscape) + Extended Menu Toggle + Customize
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = horizontalEdge, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (isLandscape) {
+                    UnifiedBackButton(onClick = onResume, size = 38.dp, iconSize = 18.dp)
+                    Row(
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(11.dp))
                             .background(colors.surface2)
-                            .border(1.dp, colors.line, CircleShape)
-                            .clickable(onClick = onResume),
-                        contentAlignment = Alignment.Center,
+                            .border(1.dp, colors.line, RoundedCornerShape(11.dp))
+                            .clickable { subDialog = PauseSubDialog.SLOTS }
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
                     ) {
-                        Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Filled.Layers, contentDescription = null, tint = colors.green, modifier = Modifier.size(15.dp))
+                        Text(stringResource(R.string.pause_quick_slot_fmt, activeQuickSlot), color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
-
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 132.dp),
+                // Extended Menu Switch Pill
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 500.dp),
-                    contentPadding = PaddingValues(2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                        .weight(1f)
+                        .height(if (isLandscape) 38.dp else 40.dp)
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(colors.surface2)
+                        .border(1.dp, colors.line, RoundedCornerShape(11.dp))
+                        .clickable { GbcaPrefs.updateCoreConfig { it.copy(extendedPauseMenu = !isExtended) } }
+                        .padding(horizontal = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    items(tiles) { tile ->
-                        Column(
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f, fill = false)) {
+                        Icon(Icons.Filled.DashboardCustomize, contentDescription = null, tint = if (isExtended) colors.green else colors.text2, modifier = Modifier.size(15.dp))
+                        Text(
+                            text = stringResource(R.string.pause_extended_menu),
+                            color = colors.text,
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Switch(
+                        checked = isExtended,
+                        onCheckedChange = { v -> GbcaPrefs.updateCoreConfig { it.copy(extendedPauseMenu = v) } },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = colors.green,
+                            checkedTrackColor = colors.greenDim,
+                            uncheckedThumbColor = colors.text,
+                            uncheckedTrackColor = colors.line,
+                        ),
+                    )
+                }
+
+                // Customize Button
+                Box(
+                    modifier = Modifier
+                        .height(if (isLandscape) 38.dp else 40.dp)
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(colors.surface2)
+                        .border(1.dp, colors.line, RoundedCornerShape(11.dp))
+                        .bouncingClickable { subDialog = PauseSubDialog.CUSTOMIZER }
+                        .padding(horizontal = 11.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Icon(Icons.Filled.Tune, contentDescription = null, tint = colors.green, modifier = Modifier.size(15.dp))
+                        Text(stringResource(R.string.pause_customize), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+
+            // 5. Portrait Bottom-Centered Circular Back Button (STORM DS Exact!)
+            if (!isLandscape) {
+                Spacer(Modifier.height(6.dp))
+                UnifiedBackButton(
+                    onClick = onResume,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                )
+            }
+        }
+    }
+
+    // Confirmation Dialog for Reset / Exit
+    if (confirmAction != ConfirmAction.NONE) {
+        val isReset = confirmAction == ConfirmAction.RESET
+        Dialog(onDismissRequest = { confirmAction = ConfirmAction.NONE }) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = colors.surface,
+                modifier = Modifier.fillMaxWidth().border(1.dp, colors.line, RoundedCornerShape(18.dp)),
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(if (isReset) R.string.pause_reset else R.string.pause_exit),
+                        color = colors.red,
+                        fontFamily = SpaceGrotesk,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = stringResource(if (isReset) R.string.pause_confirm_reset else R.string.pause_confirm_exit),
+                        color = colors.text,
+                        fontSize = 13.sp,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(colors.surface2)
-                                .border(1.dp, colors.line, RoundedCornerShape(14.dp))
-                                .clickable(onClick = tile.onClick)
-                                .padding(11.dp),
+                                .clickable { confirmAction = ConfirmAction.NONE }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(tile.tint.copy(alpha = 0.16f)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(tile.icon, contentDescription = null, tint = tile.tint, modifier = Modifier.size(18.dp))
-                            }
-                            Spacer(Modifier.height(7.dp))
-                            Text(tile.title, color = colors.text, fontFamily = SpaceGrotesk, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(tile.subtitle, color = colors.text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(stringResource(R.string.cancel), color = colors.text, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(colors.red)
+                                .clickable {
+                                    val act = confirmAction
+                                    confirmAction = ConfirmAction.NONE
+                                    if (act == ConfirmAction.RESET) onReset() else onExit()
+                                }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(stringResource(R.string.confirm), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 }
@@ -267,8 +674,29 @@ fun PauseMenuOverlay(
         }
     }
 
+    // Sub-Dialogs
     when (subDialog) {
-        PauseSubDialog.SLOTS -> SaveSlotsDialog(rom = rom, onSaveSlot = onSaveSlot, onLoadSlot = { onLoadSlot(it); subDialog = PauseSubDialog.NONE; onResume() }, onDismiss = { subDialog = PauseSubDialog.NONE })
+        PauseSubDialog.SLOTS -> SaveSlotsDialog(
+            rom = rom,
+            activeSlot = activeQuickSlot,
+            onSelectActive = { slot ->
+                activeQuickSlot = slot
+                GbcaPrefs.setActiveQuickSlot(slot)
+            },
+            onSaveSlot = { slot ->
+                activeQuickSlot = slot
+                GbcaPrefs.setActiveQuickSlot(slot)
+                onSaveSlot(slot)
+            },
+            onLoadSlot = { slot ->
+                activeQuickSlot = slot
+                GbcaPrefs.setActiveQuickSlot(slot)
+                onLoadSlot(slot)
+                subDialog = PauseSubDialog.NONE
+                onResume()
+            },
+            onDismiss = { subDialog = PauseSubDialog.NONE },
+        )
         PauseSubDialog.VIDEO -> VideoSettingsDialog(onConfigApplied = onConfigApplied, onDismiss = { subDialog = PauseSubDialog.NONE })
         PauseSubDialog.AUDIO_MIXER -> AudioMixerDialog(onConfigApplied = onConfigApplied, onDismiss = { subDialog = PauseSubDialog.NONE })
         PauseSubDialog.CHEATS -> CheatsDialog(rom = rom, onCheatsUpdated = onCheatsUpdated, onDismiss = { subDialog = PauseSubDialog.NONE })
@@ -277,9 +705,21 @@ fun PauseMenuOverlay(
         PauseSubDialog.ACHIEVEMENTS -> GameAchievementsDialog(
             gameTitleFallback = rom.displayTitle,
             session = raSession,
-            onOpenLogin = {
-                subDialog = PauseSubDialog.NONE
-                onOpenRaAccount()
+            onOpenLogin = { subDialog = PauseSubDialog.NONE; onOpenRaAccount() },
+            onDismiss = { subDialog = PauseSubDialog.NONE },
+        )
+        PauseSubDialog.CUSTOMIZER -> PauseCustomizerDialog(
+            allTiles = allTiles,
+            hiddenKeys = hiddenKeys,
+            onToggleHidden = { key ->
+                val next = hiddenKeys.toMutableSet()
+                if (next.contains(key)) next.remove(key) else next.add(key)
+                hiddenKeys = next
+                GbcaPrefs.setHiddenPauseTiles(next)
+            },
+            onResetAll = {
+                hiddenKeys = emptySet()
+                GbcaPrefs.setHiddenPauseTiles(emptySet())
             },
             onDismiss = { subDialog = PauseSubDialog.NONE },
         )
@@ -288,8 +728,134 @@ fun PauseMenuOverlay(
 }
 
 @Composable
+private fun PauseTileCard(
+    tile: PauseTileItem,
+    compactHeight: Boolean,
+) {
+    val colors = watermelon
+    val iconTint = if (tile.destructive) colors.red else colors.green
+    val borderCol = if (tile.destructive) colors.red.copy(alpha = 0.45f) else colors.line
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(if (compactHeight) 62.dp else 72.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(colors.surface)
+            .border(1.dp, borderCol, RoundedCornerShape(13.dp))
+            .bouncingClickable(onClick = tile.onClick)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+    ) {
+        if (!tile.badge.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(colors.greenDim)
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
+            ) {
+                Text(tile.badge, color = colors.green, fontFamily = WatermelonMono, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(tile.icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(if (compactHeight) 20.dp else 22.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = tile.label,
+                color = if (tile.destructive) colors.red else colors.text,
+                fontFamily = SpaceGrotesk,
+                fontSize = if (compactHeight) 10.5.sp else 11.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PauseCustomizerDialog(
+    allTiles: List<PauseTileItem>,
+    hiddenKeys: Set<String>,
+    onToggleHidden: (String) -> Unit,
+    onResetAll: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = watermelon
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = colors.surface,
+            modifier = Modifier.fillMaxWidth().border(1.dp, colors.line, RoundedCornerShape(18.dp)),
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.pause_customize), color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
+                }
+                Spacer(Modifier.height(10.dp))
+                Column(
+                    modifier = Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    allTiles.forEach { tile ->
+                        val visible = !hiddenKeys.contains(tile.key)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(colors.surface2)
+                                .clickable { onToggleHidden(tile.key) }
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                        ) {
+                            Icon(tile.icon, contentDescription = null, tint = if (tile.destructive) colors.red else colors.green, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(tile.label, color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            WatermelonSwitch(checked = visible, onCheckedChange = { onToggleHidden(tile.key) })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.surface2)
+                            .clickable(onClick = onResetAll)
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(stringResource(R.string.reset), color = colors.text, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.green)
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(stringResource(R.string.confirm), color = Color(0xFF05060A), fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SaveSlotsDialog(
     rom: RomEntry,
+    activeSlot: Int,
+    onSelectActive: (Int) -> Unit,
     onSaveSlot: (Int) -> Unit,
     onLoadSlot: (Int) -> Unit,
     onDismiss: () -> Unit,
@@ -307,8 +873,8 @@ private fun SaveSlotsDialog(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Слоты сохранений", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
+                    Text(stringResource(R.string.pause_slots), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
                 }
                 Spacer(Modifier.height(10.dp))
                 Column(
@@ -319,6 +885,7 @@ private fun SaveSlotsDialog(
                         val file = remember(refreshTick, slot) { RomRepository.getStateFile(context, rom, slot) }
                         val thumb = remember(refreshTick, slot) { RomRepository.getStateThumbFile(context, rom, slot) }
                         val exists = file.exists() && file.length() > 0L
+                        val isAct = slot == activeSlot
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -326,7 +893,8 @@ private fun SaveSlotsDialog(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(colors.surface2)
-                                .border(1.dp, colors.line, RoundedCornerShape(12.dp))
+                                .border(if (isAct) 1.5.dp else 1.dp, if (isAct) colors.green else colors.line, RoundedCornerShape(12.dp))
+                                .clickable { onSelectActive(slot) }
                                 .padding(10.dp),
                         ) {
                             Box(
@@ -342,15 +910,15 @@ private fun SaveSlotsDialog(
                                 if (bmp != null) {
                                     Image(bitmap = bmp.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                                 } else {
-                                    Text("#$slot", color = colors.text3, fontFamily = WatermelonMono, fontSize = 12.sp)
+                                    Text("#$slot", color = colors.text2, fontFamily = WatermelonMono, fontSize = 12.sp)
                                 }
                             }
                             Spacer(Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Слот $slot", color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text(stringResource(R.string.pause_quick_slot_fmt, slot), color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 Text(
-                                    text = if (exists) fmt.format(Date(file.lastModified())) else "Пусто",
-                                    color = colors.text3,
+                                    text = if (exists) fmt.format(Date(file.lastModified())) else stringResource(R.string.empty_slot),
+                                    color = colors.text2,
                                     fontFamily = WatermelonMono,
                                     fontSize = 11.sp,
                                 )
@@ -359,13 +927,10 @@ private fun SaveSlotsDialog(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(colors.greenDim)
-                                    .clickable {
-                                        onSaveSlot(slot)
-                                        refreshTick++
-                                    }
+                                    .clickable { onSaveSlot(slot); refreshTick++ }
                                     .padding(horizontal = 10.dp, vertical = 6.dp),
                             ) {
-                                Text("Сохранить", color = colors.green, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.save), color = colors.green, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                             if (exists) {
                                 Spacer(Modifier.width(6.dp))
@@ -376,7 +941,7 @@ private fun SaveSlotsDialog(
                                         .clickable { onLoadSlot(slot) }
                                         .padding(horizontal = 10.dp, vertical = 6.dp),
                                 ) {
-                                    Text("Загрузить", color = Color(0xFF05060A), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.load), color = Color(0xFF05060A), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -396,22 +961,12 @@ private fun VideoSettingsDialog(
     val cfg = GbcaPrefs.coreConfigState.value
     val paletteCount = remember { NativeCore.nativeGetDmgPaletteCount().coerceAtLeast(1) }
     val upscaleModes = listOf(
-        NativeCore.UPSCALE_NONE to "Нет (Nearest)",
+        NativeCore.UPSCALE_NONE to "Nearest",
         NativeCore.UPSCALE_XBRZ to "xBRZ HD",
         NativeCore.UPSCALE_SCALE_EPX to "Scale2x / EPX",
         NativeCore.UPSCALE_MMPX to "MMPX Sharp",
         NativeCore.UPSCALE_LCD_HD to "LCD Subpixel HD",
         NativeCore.UPSCALE_CRT_HD to "CRT Scanlines HD",
-    )
-    val ccModes = listOf(
-        NativeCore.CC_DISABLED to "Отключено",
-        NativeCore.CC_CORRECT_CURVES to "Точные кривые",
-        NativeCore.CC_MODERN_BALANCED to "Современный баланс",
-        NativeCore.CC_MODERN_BOOST to "Современный яркий",
-        NativeCore.CC_REDUCE_CONTRAST to "Сниженный контраст",
-        NativeCore.CC_LOW_CONTRAST to "Низкий контраст",
-        NativeCore.CC_MODERN_ACCURATE to "Точный современный",
-        NativeCore.CC_GBA_AGB_AGS to "GBA AGB / AGS матрица",
     )
 
     Dialog(onDismissRequest = onDismiss) {
@@ -421,19 +976,15 @@ private fun VideoSettingsDialog(
             modifier = Modifier.fillMaxWidth().border(1.dp, colors.line, RoundedCornerShape(18.dp)),
         ) {
             Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.padding(16.dp).heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Графика, разрешение и разгон", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
+                    Text(stringResource(R.string.set_video_title), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
                 }
 
-                // Internal Resolution Scale 1x..4x
-                Text("Увеличение разрешения (Internal Scale)", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp)
+                Text(stringResource(R.string.vid_scale), color = colors.text, fontFamily = WatermelonMono, fontSize = 11.5.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                     listOf(1, 2, 3, 4).forEach { sc ->
                         val sel = cfg.resolutionScale == sc
@@ -458,89 +1009,36 @@ private fun VideoSettingsDialog(
                     }
                 }
 
-                // Upscaler Mode
-                Text("Алгоритм апскейлинга", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp)
-                upscaleModes.forEach { (id, title) ->
-                    val sel = cfg.upscaleMode == id
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(if (sel) colors.greenDim else colors.surface2)
-                            .clickable {
-                                GbcaPrefs.updateCoreConfig {
-                                    val nextScale = if (id != NativeCore.UPSCALE_NONE && it.resolutionScale < 2) 2 else it.resolutionScale
-                                    it.copy(upscaleMode = id, resolutionScale = nextScale)
-                                }
-                                onConfigApplied()
+                Text(stringResource(R.string.vid_upscaler), color = colors.text, fontFamily = WatermelonMono, fontSize = 11.5.sp)
+                upscaleModes.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        pair.forEach { (id, title) ->
+                            val sel = cfg.upscaleMode == id
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(if (sel) colors.greenDim else colors.surface2)
+                                    .border(1.dp, if (sel) colors.green else colors.line, RoundedCornerShape(9.dp))
+                                    .clickable {
+                                        GbcaPrefs.updateCoreConfig {
+                                            val nextScale = if (id != NativeCore.UPSCALE_NONE && it.resolutionScale < 2) 2 else it.resolutionScale
+                                            it.copy(upscaleMode = id, resolutionScale = nextScale)
+                                        }
+                                        onConfigApplied()
+                                    }
+                                    .padding(vertical = 8.dp, horizontal = 6.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(title, color = if (sel) colors.green else colors.text, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
-                            .padding(horizontal = 12.dp, vertical = 7.dp),
-                    ) {
-                        Text(title, color = if (sel) colors.green else colors.text, fontSize = 12.5.sp)
-                    }
-                }
-
-                // CPU Overclock & Frame Skip
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Разгон процессора (CPU Overclock)", color = colors.text2, fontSize = 12.sp)
-                    Text("${cfg.cpuOverclockPct}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
-                }
-                Slider(
-                    value = cfg.cpuOverclockPct.toFloat(),
-                    onValueChange = { v ->
-                        val snapped = ((v / 25f).toInt() * 25).coerceIn(50, 400)
-                        GbcaPrefs.updateCoreConfig { it.copy(cpuOverclockPct = snapped) }
-                        onConfigApplied()
-                    },
-                    valueRange = 50f..400f,
-                    colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
-                )
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Пропуск кадров (Frame Skip)", color = colors.text2, fontSize = 12.sp)
-                    Text(if (cfg.frameSkip == 0) "Выкл" else "${cfg.frameSkip}", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    (0..4).forEach { fs ->
-                        val sel = cfg.frameSkip == fs
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (sel) colors.green else colors.surface2)
-                                .clickable {
-                                    GbcaPrefs.updateCoreConfig { it.copy(frameSkip = fs) }
-                                    onConfigApplied()
-                                }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("$fs", color = if (sel) Color(0xFF05060A) else colors.text, fontFamily = WatermelonMono, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
-                    }
-                }
-
-                Text("Цветокоррекция", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp)
-                ccModes.forEach { (id, title) ->
-                    val sel = cfg.colorCorrectionMode == id
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(if (sel) colors.greenDim else colors.surface2)
-                            .clickable {
-                                GbcaPrefs.updateCoreConfig { it.copy(colorCorrectionMode = id) }
-                                onConfigApplied()
-                            }
-                            .padding(horizontal = 12.dp, vertical = 7.dp),
-                    ) {
-                        Text(title, color = if (sel) colors.green else colors.text, fontSize = 12.5.sp)
                     }
                 }
 
                 val palName = NativeCore.nativeGetDmgPaletteName(cfg.dmgPaletteIndex) ?: "DMG Olive"
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Палитра DMG (${cfg.dmgPaletteIndex + 1}/$paletteCount)", color = colors.text2, fontSize = 12.sp)
+                    Text("DMG Palette (${cfg.dmgPaletteIndex + 1}/$paletteCount)", color = colors.text, fontSize = 12.sp)
                     Text(palName, color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
                 }
                 Slider(
@@ -554,7 +1052,7 @@ private fun VideoSettingsDialog(
                 )
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Инерция матрицы (Ghosting)", color = colors.text2, fontSize = 12.sp)
+                    Text("LCD Ghosting", color = colors.text, fontSize = 12.sp)
                     Text("${cfg.lcdGhosting}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
                 }
                 Slider(
@@ -568,7 +1066,7 @@ private fun VideoSettingsDialog(
                 )
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Рамки Super Game Boy", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text("Super Game Boy Borders", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                     WatermelonSwitch(
                         checked = cfg.sgbBorders,
                         onCheckedChange = { c ->
@@ -589,7 +1087,7 @@ private fun AudioMixerDialog(
 ) {
     val colors = watermelon
     val cfg = GbcaPrefs.coreConfigState.value
-    val chNames = listOf("PSG 1 (Импульс 1)", "PSG 2 (Импульс 2)", "PSG 3 (Волна)", "PSG 4 (Шум)", "DMA A (GBA)", "DMA B (GBA)")
+    val chNames = listOf("PSG 1 (Pulse 1)", "PSG 2 (Pulse 2)", "PSG 3 (Wave)", "PSG 4 (Noise)", "DMA A (GBA)", "DMA B (GBA)")
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -602,12 +1100,12 @@ private fun AudioMixerDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Аудиомикшер (6 каналов)", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
+                    Text(stringResource(R.string.set_audio_title), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Отключить звук", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.aud_mute), color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                     WatermelonSwitch(
                         checked = cfg.audioMuted,
                         onCheckedChange = { m ->
@@ -618,15 +1116,12 @@ private fun AudioMixerDialog(
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Общая громкость", color = colors.text, fontSize = 12.5.sp)
+                    Text(stringResource(R.string.aud_master), color = colors.text, fontSize = 12.5.sp)
                     Text("${(cfg.masterVolume * 100).toInt()}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
                 }
                 Slider(
                     value = cfg.masterVolume,
-                    onValueChange = { v ->
-                        GbcaPrefs.updateCoreConfig { it.copy(masterVolume = v) }
-                        onConfigApplied()
-                    },
+                    onValueChange = { v -> GbcaPrefs.updateCoreConfig { it.copy(masterVolume = v) }; onConfigApplied() },
                     valueRange = 0f..1.5f,
                     colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
                 )
@@ -678,32 +1173,18 @@ private fun CheatsDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Чит-коды", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
+                    Text(stringResource(R.string.pause_cheats), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
                 }
-
                 val tfColors = TextFieldDefaults.outlinedTextFieldColors(
                     textColor = colors.text,
                     focusedBorderColor = colors.green,
                     unfocusedBorderColor = colors.line,
                     focusedLabelColor = colors.green,
-                    unfocusedLabelColor = colors.text3,
+                    unfocusedLabelColor = colors.text2,
                 )
-                OutlinedTextField(
-                    value = newName,
-                    onValueChange = { newName = it },
-                    label = { Text("Название чита") },
-                    singleLine = true,
-                    colors = tfColors,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = newCode,
-                    onValueChange = { newCode = it },
-                    label = { Text("Код (GameShark / Action Replay / Game Genie)") },
-                    colors = tfColors,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text("Name") }, singleLine = true, colors = tfColors, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = newCode, onValueChange = { newCode = it }, label = { Text("Code (GS / AR / CB / GG)") }, colors = tfColors, modifier = Modifier.fillMaxWidth())
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -711,17 +1192,11 @@ private fun CheatsDialog(
                         .background(colors.green)
                         .clickable {
                             if (newCode.isNotBlank()) {
-                                val next = cheats + CheatItem(
-                                    id = UUID.randomUUID().toString(),
-                                    name = newName.ifBlank { "Чит ${cheats.size + 1}" },
-                                    code = newCode.trim(),
-                                    enabled = true,
-                                )
+                                val next = cheats + CheatItem(UUID.randomUUID().toString(), newName.ifBlank { "Cheat ${cheats.size + 1}" }, newCode.trim(), true)
                                 cheats = next
                                 GbcaPrefs.saveCheatsForRom(key, next)
                                 onCheatsUpdated(next)
-                                newName = ""
-                                newCode = ""
+                                newName = ""; newCode = ""
                             }
                         }
                         .padding(vertical = 10.dp),
@@ -730,44 +1205,27 @@ private fun CheatsDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Add, contentDescription = null, tint = Color(0xFF05060A), modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Добавить код", color = Color(0xFF05060A), fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        Text("Add", color = Color(0xFF05060A), fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
                 }
-
                 cheats.forEach { item ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(colors.surface2)
-                            .padding(10.dp),
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(colors.surface2).padding(10.dp),
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(item.name, color = colors.text, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text(item.code, color = colors.text3, fontFamily = WatermelonMono, fontSize = 10.5.sp)
+                            Text(item.code, color = colors.text2, fontFamily = WatermelonMono, fontSize = 10.5.sp)
                         }
-                        WatermelonSwitch(
-                            checked = item.enabled,
-                            onCheckedChange = { c ->
-                                val next = cheats.map { if (it.id == item.id) it.copy(enabled = c) else it }
-                                cheats = next
-                                GbcaPrefs.saveCheatsForRom(key, next)
-                                onCheatsUpdated(next)
-                            },
-                        )
+                        WatermelonSwitch(checked = item.enabled, onCheckedChange = { c ->
+                            val next = cheats.map { if (it.id == item.id) it.copy(enabled = c) else it }
+                            cheats = next; GbcaPrefs.saveCheatsForRom(key, next); onCheatsUpdated(next)
+                        })
                         Spacer(Modifier.width(8.dp))
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = null,
-                            tint = colors.red,
-                            modifier = Modifier.size(20.dp).clickable {
-                                val next = cheats.filterNot { it.id == item.id }
-                                cheats = next
-                                GbcaPrefs.saveCheatsForRom(key, next)
-                                onCheatsUpdated(next)
-                            },
-                        )
+                        Icon(Icons.Filled.Delete, contentDescription = null, tint = colors.red, modifier = Modifier.size(20.dp).clickable {
+                            val next = cheats.filterNot { it.id == item.id }
+                            cheats = next; GbcaPrefs.saveCheatsForRom(key, next); onCheatsUpdated(next)
+                        })
                     }
                 }
             }
@@ -782,7 +1240,6 @@ private fun SensorsDialog(
 ) {
     val colors = watermelon
     val cfg = GbcaPrefs.coreConfigState.value
-
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(18.dp),
@@ -791,34 +1248,31 @@ private fun SensorsDialog(
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Аппаратные датчики", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
+                    Text(stringResource(R.string.pause_sensors), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Датчик солнца (Boktai LUX)", color = colors.text, fontSize = 13.sp)
-                    Text("${cfg.solarLux} / 10", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Solar Sensor (Boktai LUX)", color = colors.text, fontSize = 13.sp)
+                    Text("${cfg.solarLux}/10", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
                 }
                 Slider(
                     value = cfg.solarLux.toFloat(),
-                    onValueChange = { v ->
-                        GbcaPrefs.updateCoreConfig { it.copy(solarLux = v.toInt().coerceIn(0, 10)) }
-                        onConfigApplied()
-                    },
+                    onValueChange = { v -> GbcaPrefs.updateCoreConfig { it.copy(solarLux = v.toInt().coerceIn(0, 10)) }; onConfigApplied() },
                     valueRange = 0f..10f,
                     steps = 9,
                     colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
                 )
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Акселерометр (Tilt)", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    WatermelonSwitch(cfg.sensorTiltEnabled, { c -> GbcaPrefs.updateCoreConfig { it.copy(sensorTiltEnabled = c) } })
+                    Text("Tilt / Accelerometer", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    WatermelonSwitch(checked = cfg.sensorTiltEnabled, onCheckedChange = { c -> GbcaPrefs.updateCoreConfig { it.copy(sensorTiltEnabled = c) } })
                 }
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Гироскоп (WarioWare Twisted)", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    WatermelonSwitch(cfg.sensorGyroEnabled, { c -> GbcaPrefs.updateCoreConfig { it.copy(sensorGyroEnabled = c) } })
+                    Text("Gyroscope (WarioWare)", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    WatermelonSwitch(checked = cfg.sensorGyroEnabled, onCheckedChange = { c -> GbcaPrefs.updateCoreConfig { it.copy(sensorGyroEnabled = c) } })
                 }
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Вибрация картриджа (Rumble)", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    WatermelonSwitch(cfg.rumbleEnabled, { c -> GbcaPrefs.updateCoreConfig { it.copy(rumbleEnabled = c) } })
+                    Text("Rumble Haptics", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    WatermelonSwitch(checked = cfg.rumbleEnabled, onCheckedChange = { c -> GbcaPrefs.updateCoreConfig { it.copy(rumbleEnabled = c) } })
                 }
             }
         }
@@ -836,9 +1290,8 @@ private fun CoreEngineDialog(
     val active = when (system) {
         ConsoleSystem.GB -> cfg.preferredCoreGb
         ConsoleSystem.GBC -> cfg.preferredCoreGbc
-        ConsoleSystem.GBA -> cfg.preferredCoreGba
+        ConsoleSystem.GBA -> NativeCore.CORE_MGBA
     }
-
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(18.dp),
@@ -847,13 +1300,16 @@ private fun CoreEngineDialog(
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Ядро эмуляции (${system.label})", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
+                    Text("${stringResource(R.string.pause_core)} (${system.label})", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
                 }
-                listOf(NativeCore.CORE_MGBA to "mGBA (Универсальное, GB/GBC/GBA)", NativeCore.CORE_SAMEBOY to "SameBoy (Точное для GB/GBC)").forEach { (id, title) ->
+                listOf(
+                    NativeCore.CORE_MGBA to "mGBA (Primary GB/GBC/GBA + Link + Printer)",
+                    NativeCore.CORE_SAMEBOY to "SameBoy (Cycle-Accurate GB/GBC)",
+                ).forEach { (id, title) ->
                     val enabled = system != ConsoleSystem.GBA || id == NativeCore.CORE_MGBA
                     val sel = active == id
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
@@ -864,15 +1320,14 @@ private fun CoreEngineDialog(
                                     when (system) {
                                         ConsoleSystem.GB -> it.copy(preferredCoreGb = id)
                                         ConsoleSystem.GBC -> it.copy(preferredCoreGbc = id)
-                                        ConsoleSystem.GBA -> it.copy(preferredCoreGba = NativeCore.CORE_MGBA)
+                                        ConsoleSystem.GBA -> it
                                     }
                                 }
                                 onConfigApplied()
-                                onDismiss()
                             }
                             .padding(12.dp),
                     ) {
-                        Text(title, color = if (!enabled) colors.text3 else if (sel) colors.green else colors.text, fontSize = 13.sp)
+                        Text(title, color = if (!enabled) colors.text2.copy(alpha = 0.45f) else if (sel) colors.green else colors.text, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

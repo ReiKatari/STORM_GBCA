@@ -374,7 +374,7 @@ public class StormGbcaMainView : Grid
 
         try
         {
-            var curVer = AuroraDualMirrorUpdater.TryParseSemanticVersion(GbcaLoc.AppVersion, out var parsed) ? parsed : new Version(1, 1, 0);
+            var curVer = AuroraDualMirrorUpdater.TryParseSemanticVersion(GbcaLoc.AppVersion, out var parsed) ? parsed : new Version(1, 2, 0);
             var updater = new AuroraDualMirrorUpdater();
             var res = await updater.CheckStormGbcaUpdateAsync(curVer);
 
@@ -409,7 +409,7 @@ public class StormGbcaMainView : Grid
         {
             if (manual && modal != null)
             {
-                var curVer = new Version(1, 1, 0);
+                var curVer = new Version(1, 2, 0);
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     modal.UpdateState(StormUpdateModal.UpdateModalMode.Error, new AuroraUpdateCheckResult(false, curVer, curVer, string.Empty, string.Empty, null, "None", CheckSucceeded: false, ErrorMessage: ex.Message));

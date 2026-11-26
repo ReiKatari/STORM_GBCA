@@ -639,6 +639,97 @@ Java_ru_stormgames_gbca_NativeCore_nativeVkDestroy(JNIEnv*, jclass) {
     storm::vk_destroy();
 }
 
+// --- v1.2.0 Device Optimization, Multiplayer / Link Cable / Wireless / JoyBus / GB Printer ---
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeSetOptimizationProfile(JNIEnv*, jclass, jlong handle, jint profile) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (ctx) storm_gbca_set_optimization_profile(ctx, profile);
+}
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeLinkStart(
+    JNIEnv* env, jclass, jlong handle, jint mode, jstring hostIp, jint port, jint clockPort, jstring roomName
+) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (!ctx) return -1;
+    std::string ip, rname;
+    if (hostIp) {
+        const char* c = env->GetStringUTFChars(hostIp, nullptr);
+        if (c) { ip = c; env->ReleaseStringUTFChars(hostIp, c); }
+    }
+    if (roomName) {
+        const char* c = env->GetStringUTFChars(roomName, nullptr);
+        if (c) { rname = c; env->ReleaseStringUTFChars(roomName, c); }
+    }
+    return storm_gbca_link_start(ctx, mode, ip.c_str(), port, clockPort, rname.c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeLinkStop(JNIEnv*, jclass, jlong handle) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (ctx) storm_gbca_link_stop(ctx);
+}
+
+JNIEXPORT jstring JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeLinkGetStatus(JNIEnv* env, jclass, jlong handle) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (!ctx) return env->NewStringUTF("0\t0\t0\t1\t0\t0\t\t\tDisconnected");
+    StormGbcaLinkStatus st{};
+    storm_gbca_link_get_status(ctx, &st);
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), "%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s",
+                  st.mode, st.connected, st.player_id, st.player_count, st.ping_ms, st.port,
+                  sanitize_field(st.room_name).c_str(),
+                  sanitize_field(st.peer_info).c_str(),
+                  sanitize_field(st.status_text).c_str());
+    return env->NewStringUTF(buf);
+}
+
+JNIEXPORT jstring JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeLanDiscover(JNIEnv* env, jclass, jint timeoutMs) {
+    StormGbcaLanRoom rooms[16]{};
+    int count = storm_gbca_lan_discover(rooms, 16, timeoutMs);
+    std::string out;
+    for (int i = 0; i < count; ++i) {
+        char line[384];
+        std::snprintf(line, sizeof(line), "%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\n",
+                      sanitize_field(rooms[i].host_ip).c_str(),
+                      rooms[i].port,
+                      rooms[i].mode,
+                      rooms[i].platform,
+                      rooms[i].player_count,
+                      rooms[i].max_players,
+                      sanitize_field(rooms[i].room_name).c_str(),
+                      sanitize_field(rooms[i].game_title).c_str());
+        out += line;
+    }
+    return env->NewStringUTF(out.c_str());
+}
+
+JNIEXPORT jintArray JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativePollPrinterImage(JNIEnv* env, jclass, jlong handle, jintArray outWH) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (!ctx) return nullptr;
+    int w = 0, h = 0;
+    if (storm_gbca_printer_poll_image(ctx, nullptr, 0, &w, &h) != 1 || w <= 0 || h <= 0) {
+        return nullptr;
+    }
+    int total = w * h;
+    std::vector<uint32_t> rgba(static_cast<size_t>(total));
+    if (storm_gbca_printer_poll_image(ctx, rgba.data(), total, &w, &h) != 1) {
+        return nullptr;
+    }
+    if (outWH && env->GetArrayLength(outWH) >= 2) {
+        jint wh[2] = {w, h};
+        env->SetIntArrayRegion(outWH, 0, 2, wh);
+    }
+    jintArray arr = env->NewIntArray(total);
+    if (!arr) return nullptr;
+    env->SetIntArrayRegion(arr, 0, total, reinterpret_cast<const jint*>(rgba.data()));
+    return arr;
+}
+
 } // extern "C"
 
 #endif // ANDROID

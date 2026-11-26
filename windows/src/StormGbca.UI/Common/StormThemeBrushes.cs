@@ -10,19 +10,20 @@ namespace StormGbca.UI.Common;
 
 /// <summary>
 /// Live theme-aware brushes supporting all 8 dark themes and the light STORM DAY theme.
+/// Strictly enforces pure white text on dark themes and pure black text on light themes (zero dim gray).
 /// </summary>
 public static class StormThemeBrushes
 {
     public static bool IsDark => AuroraThemeManager.Instance.CurrentTheme.IsDark;
 
     public static IBrush PrimaryText => new SolidColorBrush(
-        IsDark ? Color.Parse("#F8FAFC") : Color.Parse("#0F172A"));
+        IsDark ? Color.Parse("#FFFFFF") : Color.Parse("#000000"));
 
     public static IBrush SecondaryText => new SolidColorBrush(
-        IsDark ? Color.Parse("#94A3B8") : Color.Parse("#475569"));
+        IsDark ? Color.Parse("#F1F5F9") : Color.Parse("#0F172A"));
 
     public static IBrush BodyText => new SolidColorBrush(
-        IsDark ? Color.Parse("#CBD5E1") : Color.Parse("#1E293B"));
+        IsDark ? Color.Parse("#FFFFFF") : Color.Parse("#0F172A"));
 
     public static Color AccentPrimaryColor =>
         AuroraThemeManager.ResolveAccentColors(
@@ -42,7 +43,7 @@ public static class StormThemeBrushes
         get
         {
             var hc = AuroraThemeManager.Instance.CurrentTheme.HeaderColor;
-            return new SolidColorBrush(Color.FromArgb(IsDark ? (byte)185 : (byte)225, hc.R, hc.G, hc.B));
+            return new SolidColorBrush(Color.FromArgb(IsDark ? (byte)195 : (byte)230, hc.R, hc.G, hc.B));
         }
     }
 
@@ -51,24 +52,24 @@ public static class StormThemeBrushes
         get
         {
             var cc = AuroraThemeManager.Instance.CurrentTheme.CardColor;
-            return new SolidColorBrush(Color.FromArgb(IsDark ? (byte)165 : (byte)220, cc.R, cc.G, cc.B));
+            return new SolidColorBrush(Color.FromArgb(IsDark ? (byte)180 : (byte)225, cc.R, cc.G, cc.B));
         }
     }
 
     public static IBrush CardSurface => new SolidColorBrush(
-        IsDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(200, 255, 255, 255));
+        IsDark ? Color.FromArgb(44, 255, 255, 255) : Color.FromArgb(215, 255, 255, 255));
 
     public static IBrush RowSurface => new SolidColorBrush(
-        IsDark ? Color.FromArgb(28, 255, 255, 255) : Color.FromArgb(170, 241, 245, 249));
+        IsDark ? Color.FromArgb(30, 255, 255, 255) : Color.FromArgb(185, 241, 245, 249));
 
     public static IBrush HoverSurface => new SolidColorBrush(
-        Color.FromArgb(IsDark ? (byte)55 : (byte)45, AccentPrimaryColor.R, AccentPrimaryColor.G, AccentPrimaryColor.B));
+        Color.FromArgb(IsDark ? (byte)60 : (byte)45, AccentPrimaryColor.R, AccentPrimaryColor.G, AccentPrimaryColor.B));
 
     public static IBrush SubtleBorder => new SolidColorBrush(
-        IsDark ? Color.FromArgb(65, 255, 255, 255) : Color.FromArgb(70, 15, 23, 42));
+        IsDark ? Color.FromArgb(75, 255, 255, 255) : Color.FromArgb(80, 15, 23, 42));
 
     public static IBrush StrongBorder => new SolidColorBrush(
-        IsDark ? Color.FromArgb(100, 255, 255, 255) : Color.FromArgb(110, 15, 23, 42));
+        IsDark ? Color.FromArgb(115, 255, 255, 255) : Color.FromArgb(120, 15, 23, 42));
 
     public static void BindTheme(Control control, Action apply)
     {

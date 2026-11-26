@@ -18,7 +18,10 @@ data class GbcaButtonStyle(
     val pillBg: Color,
     val labelColor: Color,
     val glow: Color,
-)
+) {
+    fun localizedLabel(): String =
+        if (java.util.Locale.getDefault().language.equals("ru", ignoreCase = true)) labelRu else labelEn
+}
 
 object ButtonThemeManager {
     val STYLES: List<GbcaButtonStyle> = listOf(

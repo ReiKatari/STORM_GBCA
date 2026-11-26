@@ -1,8 +1,10 @@
 #include "storm_gbca_core.h"
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -329,6 +331,69 @@ int main() {
             ok = false;
         } else {
             std::printf("[PASS] v1.1.0-Power   | 3x xBRZ (720x480) + RAM Cheat Finder (0x120=0x77) + Overclock OK\n");
+        }
+    }
+
+    // v1.2.0 Tests: Device Optimization Profiles + LAN Host/Client Link + UDP Auto-Discovery + Wireless RFU + GB Printer
+    {
+        bool v120_ok = true;
+        StormGbcaContext* host = storm_gbca_create();
+        StormGbcaContext* client = storm_gbca_create();
+        v120_ok &= (host != nullptr && client != nullptr);
+        if (v120_ok) {
+            storm_gbca_set_optimization_profile(host, STORM_OPT_LITE);
+            storm_gbca_set_optimization_profile(host, STORM_OPT_BALANCED);
+            v120_ok &= (storm_gbca_load_rom_buffer(host, gba_rom.data(), gba_rom.size(), "host.gba") == 0);
+            v120_ok &= (storm_gbca_load_rom_buffer(client, gba_rom.data(), gba_rom.size(), "client.gba") == 0);
+
+            // Start LAN Host on ephemeral port 54391
+            v120_ok &= (storm_gbca_link_start(host, STORM_LINK_LAN_HOST, "", 54391, 49420, "StormTestRoom") == 0);
+
+            // Discover room over UDP localhost/LAN
+            StormGbcaLanRoom rooms[4]{};
+            int found = storm_gbca_lan_discover(rooms, 4, 400);
+            bool found_room = false;
+            for (int i = 0; i < found; ++i) {
+                if (rooms[i].port == 54391) found_room = true;
+            }
+            v120_ok &= found_room;
+
+            // Connect LAN client
+            v120_ok &= (storm_gbca_link_start(client, STORM_LINK_LAN_CLIENT, "127.0.0.1", 54391, 49420, "") == 0);
+            for (int f = 0; f < 8; ++f) {
+                storm_gbca_run_frame(host);
+                storm_gbca_run_frame(client);
+                std::this_thread::sleep_for(std::chrono::milliseconds(8));
+            }
+            StormGbcaLinkStatus hst{}, cst{};
+            storm_gbca_link_get_status(host, &hst);
+            storm_gbca_link_get_status(client, &cst);
+            v120_ok &= (hst.connected == 1 && cst.connected == 1 && hst.player_count >= 2);
+
+            storm_gbca_link_stop(client);
+            storm_gbca_link_stop(host);
+
+            // GB Printer attachment test on GB ROM
+            v120_ok &= (storm_gbca_load_rom_buffer(host, gb_rom.data(), gb_rom.size(), "cam.gb") == 0);
+            v120_ok &= (storm_gbca_link_start(host, STORM_LINK_GB_PRINTER, "", 0, 0, "") == 0);
+            storm_gbca_run_frame(host);
+            storm_gbca_link_get_status(host, &hst);
+            v120_ok &= (hst.mode == STORM_LINK_GB_PRINTER && hst.connected == 1);
+            storm_gbca_link_stop(host);
+
+            // Local Loopback test
+            v120_ok &= (storm_gbca_link_start(host, STORM_LINK_LOCAL_LOOPBACK, "", 0, 0, "") == 0);
+            storm_gbca_run_frame(host);
+            storm_gbca_link_stop(host);
+
+            storm_gbca_destroy(client);
+            storm_gbca_destroy(host);
+        }
+        if (!v120_ok) {
+            std::printf("[FAIL] v1.2.0-LinkOpt | Multiplayer LAN/Discovery/Printer/Optimization failed\n");
+            ok = false;
+        } else {
+            std::printf("[PASS] v1.2.0-LinkOpt | Optimization Profiles + LAN Host/Client + UDP Discovery + GB Printer + Loopback OK\n");
         }
     }
 

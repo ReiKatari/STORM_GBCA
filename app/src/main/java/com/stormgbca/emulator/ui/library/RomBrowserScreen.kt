@@ -3,10 +3,11 @@ package com.stormgbca.emulator.ui.library
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,7 +22,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -64,18 +64,22 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.stormgbca.emulator.R
 import com.stormgbca.emulator.model.RomEntry
 import com.stormgbca.emulator.model.RomFilter
 import com.stormgbca.emulator.model.RomSortMode
 import com.stormgbca.emulator.model.RomViewMode
+import com.stormgbca.emulator.ui.common.UnifiedBackButton
 import com.stormgbca.emulator.ui.common.WatermelonMark
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.WatermelonColors
@@ -84,6 +88,24 @@ import com.stormgbca.emulator.ui.theme.watermelon
 import ru.stormgames.gbca.NativeCore
 import java.io.File
 
+@Composable
+private fun filterLabel(f: RomFilter): String = when (f) {
+    RomFilter.ALL -> stringResource(R.string.filter_all)
+    RomFilter.GB -> stringResource(R.string.filter_gb)
+    RomFilter.GBC -> stringResource(R.string.filter_gbc)
+    RomFilter.GBA -> stringResource(R.string.filter_gba)
+    RomFilter.FAVORITES -> stringResource(R.string.filter_favorites)
+}
+
+@Composable
+private fun sortLabel(m: RomSortMode): String = when (m) {
+    RomSortMode.TITLE -> stringResource(R.string.sort_title)
+    RomSortMode.RECENT -> stringResource(R.string.sort_recent)
+    RomSortMode.PLATFORM -> stringResource(R.string.sort_platform)
+    RomSortMode.PLAY_TIME -> stringResource(R.string.sort_playtime)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RomBrowserScreen(
     roms: List<RomEntry>,
@@ -126,7 +148,7 @@ fun RomBrowserScreen(
             .background(colors.bg)
             .padding(top = 8.dp),
     ) {
-        // Watermelon Fullscreen Header (no system bars gap)
+        // Watermelon Fullscreen Header
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -145,14 +167,14 @@ fun RomBrowserScreen(
                     cursorBrush = SolidColor(colors.green),
                     decorationBox = { inner ->
                         Box {
-                            if (searchQuery.isEmpty()) Text("Поиск игр...", color = colors.text3, fontSize = 15.sp)
+                            if (searchQuery.isEmpty()) Text(stringResource(R.string.hint_search_roms), color = colors.text2, fontSize = 15.sp)
                             inner()
                         }
                     },
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = { searchOpen = false; onSearchQueryChange("") }) {
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2)
+                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text)
                 }
             } else {
                 WatermelonMark(height = 26.dp)
@@ -167,14 +189,14 @@ fun RomBrowserScreen(
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = { searchOpen = true }) {
-                    Icon(Icons.Filled.Search, contentDescription = "Поиск", tint = colors.text2)
+                    Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.hint_search_roms), tint = colors.text)
                 }
                 IconButton(onClick = onOpenRetroAchievements) {
                     Box {
                         Icon(
                             Icons.Filled.EmojiEvents,
                             contentDescription = "RetroAchievements",
-                            tint = if (raConnected) Color(0xFFFACC15) else colors.text2,
+                            tint = if (raConnected) Color(0xFFFACC15) else colors.text,
                         )
                         if (raConnected) {
                             Box(
@@ -190,19 +212,19 @@ fun RomBrowserScreen(
                 IconButton(onClick = onToggleViewMode) {
                     Icon(
                         if (viewMode == RomViewMode.GRID) Icons.Filled.ViewList else Icons.Filled.GridView,
-                        contentDescription = "Вид",
-                        tint = colors.text2,
+                        contentDescription = null,
+                        tint = colors.text,
                     )
                 }
                 Box {
                     IconButton(onClick = { sortMenuOpen = true }) {
-                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Сортировка", tint = colors.text2)
+                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, tint = colors.text)
                     }
                     DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
                         RomSortMode.entries.forEach { mode ->
                             DropdownMenuItem(onClick = { onSortChange(mode); sortMenuOpen = false }) {
                                 Text(
-                                    text = mode.labelRu,
+                                    text = sortLabel(mode),
                                     color = if (mode == sortMode) colors.green else colors.text,
                                     fontWeight = if (mode == sortMode) FontWeight.Bold else FontWeight.Normal,
                                 )
@@ -212,11 +234,11 @@ fun RomBrowserScreen(
                 }
                 if (hasUpdateAvailable) {
                     IconButton(onClick = onOpenUpdateDialog) {
-                        Icon(Icons.Filled.SystemUpdate, contentDescription = "Обновление", tint = colors.green)
+                        Icon(Icons.Filled.SystemUpdate, contentDescription = stringResource(R.string.update_dialog_title), tint = colors.green)
                     }
                 }
                 IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Настройки", tint = colors.text2)
+                    Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings), tint = colors.text)
                 }
             }
         }
@@ -229,38 +251,36 @@ fun RomBrowserScreen(
             )
         }
 
-        // Platform Filter Pills + Action Buttons
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // Clean Wrapped Filter Pills & Action Buttons (ZERO horizontal scrolling!)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 6.dp),
         ) {
             RomFilter.entries.forEach { f ->
                 val selected = f == filter
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(18.dp))
                         .background(if (selected) colors.green else colors.surface2)
-                        .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(20.dp))
+                        .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(18.dp))
                         .clickable { onFilterChange(f) }
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                 ) {
                     Text(
-                        text = f.labelRu,
+                        text = filterLabel(f),
                         color = if (selected) Color(0xFF05060A) else colors.text,
                         fontFamily = SpaceGrotesk,
-                        fontSize = 12.5.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                     )
                 }
             }
-            Spacer(Modifier.width(4.dp))
-            HeaderActionPill(Icons.Filled.CreateNewFolder, "Папка", onAddFolder)
-            HeaderActionPill(Icons.Filled.FileOpen, "Файл", onOpenSingleFile)
-            HeaderActionPill(Icons.Filled.Refresh, "Обновить", onRefresh)
+            HeaderActionPill(Icons.Filled.CreateNewFolder, stringResource(R.string.folder_btn), onAddFolder)
+            HeaderActionPill(Icons.Filled.FileOpen, stringResource(R.string.file_btn), onOpenSingleFile)
+            HeaderActionPill(Icons.Filled.Refresh, stringResource(R.string.refresh_library), onRefresh)
         }
 
         if (roms.isEmpty()) {
@@ -274,16 +294,18 @@ fun RomBrowserScreen(
                 ) {
                     WatermelonMark(height = 54.dp)
                     Text(
-                        text = if (isScanning) "Сканирование библиотеки..." else "Библиотека игр пуста",
+                        text = if (isScanning) stringResource(R.string.scanning_library) else stringResource(R.string.empty_library_title),
                         color = colors.text,
                         fontFamily = SpaceGrotesk,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
                     )
                     Text(
-                        text = "Выберите папку с играми GB, GBC, GBA, SGB (поддерживаются ZIP и 7Z) или откройте отдельный файл.",
+                        text = stringResource(R.string.empty_library_desc),
                         color = colors.text2,
                         fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(
@@ -293,7 +315,7 @@ fun RomBrowserScreen(
                                 .clickable(onClick = onAddFolder)
                                 .padding(horizontal = 16.dp, vertical = 11.dp),
                         ) {
-                            Text("Добавить папку ROM", color = Color(0xFF05060A), fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(stringResource(R.string.add_rom_folder), color = Color(0xFF05060A), fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                         Box(
                             modifier = Modifier
@@ -303,7 +325,7 @@ fun RomBrowserScreen(
                                 .clickable(onClick = onOpenSingleFile)
                                 .padding(horizontal = 16.dp, vertical = 11.dp),
                         ) {
-                            Text("Открыть файл", color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(stringResource(R.string.open_rom_file), color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         }
                     }
                 }
@@ -391,17 +413,21 @@ fun RomBrowserScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Text("Информация об игре", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(20.dp).clickable { infoRom = null })
+                        Text(stringResource(R.string.info_title), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(20.dp).clickable { infoRom = null })
                     }
-                    InfoRow("Название", rom.displayTitle)
-                    InfoRow("Заголовок ROM", rom.internalTitle)
-                    InfoRow("Платформа", rom.platformLabel)
-                    InfoRow("Код игры", rom.gameCode.ifBlank { "-" })
-                    InfoRow("Регион", rom.region)
-                    InfoRow("Размер", "${rom.romSize / 1024} КБ")
+                    InfoRow(stringResource(R.string.info_name), rom.displayTitle)
+                    InfoRow(stringResource(R.string.info_rom_header), rom.internalTitle)
+                    InfoRow(stringResource(R.string.info_platform), rom.platformLabel)
+                    InfoRow(stringResource(R.string.info_code), rom.gameCode.ifBlank { "-" })
+                    InfoRow(stringResource(R.string.info_region), rom.region)
+                    InfoRow(stringResource(R.string.info_size), "${rom.romSize / 1024} KB")
                     InfoRow("CRC32", rom.crc32.toString(16).uppercase())
                     InfoRow("MD5", rom.md5)
+                    Spacer(Modifier.height(4.dp))
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        UnifiedBackButton(onClick = { infoRom = null })
+                    }
                 }
             }
         }
@@ -414,15 +440,15 @@ private fun HeaderActionPill(icon: ImageVector, label: String, onClick: () -> Un
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(colors.surface2)
-            .border(1.dp, colors.line, RoundedCornerShape(20.dp))
+            .border(1.dp, colors.line, RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 11.dp, vertical = 7.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = colors.green, modifier = Modifier.size(15.dp))
-        Spacer(Modifier.width(5.dp))
-        Text(label, color = colors.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Icon(icon, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(label, color = colors.text, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -430,7 +456,7 @@ private fun HeaderActionPill(icon: ImageVector, label: String, onClick: () -> Un
 private fun InfoRow(label: String, value: String) {
     val colors = watermelon
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = colors.text3, fontSize = 12.sp)
+        Text(label, color = colors.text2, fontSize = 12.sp)
         Text(value, color = colors.text, fontFamily = WatermelonMono, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -459,12 +485,17 @@ private fun RomContextDialog(
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(rom.displayTitle, color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("${rom.platformLabel}  |  ${rom.region}", color = colors.text3, fontFamily = WatermelonMono, fontSize = 11.sp)
+                Text("${rom.platformLabel}  |  ${rom.region}", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp)
                 Spacer(Modifier.height(4.dp))
 
-                ContextBtn(Icons.Filled.PlayArrow, "Запустить игру", colors.green, onLaunch)
-                ContextBtn(if (rom.isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline, if (rom.isFavorite) "Убрать из избранного" else "В избранное", WatermelonColors.favoriteStar, onToggleFavorite)
-                ContextBtn(Icons.Filled.EmojiEvents, "Достижения (RetroAchievements)", Color(0xFFFACC15), onViewAchievements)
+                ContextBtn(Icons.Filled.PlayArrow, stringResource(R.string.ctx_launch), colors.green, onLaunch)
+                ContextBtn(
+                    if (rom.isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                    stringResource(if (rom.isFavorite) R.string.ctx_fav_remove else R.string.ctx_fav_add),
+                    WatermelonColors.favoriteStar,
+                    onToggleFavorite,
+                )
+                ContextBtn(Icons.Filled.EmojiEvents, stringResource(R.string.ctx_achievements), Color(0xFFFACC15), onViewAchievements)
                 if (rom.platform != NativeCore.PLATFORM_GBA) {
                     val nextCore = when (rom.coreOverride) {
                         -1 -> NativeCore.CORE_MGBA
@@ -474,17 +505,17 @@ private fun RomContextDialog(
                     val curLabel = when (rom.coreOverride) {
                         NativeCore.CORE_MGBA -> "mGBA"
                         NativeCore.CORE_SAMEBOY -> "SameBoy"
-                        else -> "Авто"
+                        else -> stringResource(R.string.auto)
                     }
-                    ContextBtn(Icons.Filled.Memory, "Ядро для игры: $curLabel", colors.text2) { onSetCoreOverride(nextCore) }
+                    ContextBtn(Icons.Filled.Memory, stringResource(R.string.ctx_core_fmt, curLabel), colors.text) { onSetCoreOverride(nextCore) }
                 }
-                ContextBtn(Icons.Filled.Tune, "Применить патч (IPS / UPS / BPS)", colors.text2, onPickSoftPatch)
-                ContextBtn(Icons.Filled.Refresh, "Обновить обложку (Libretro)", colors.text2, onRefreshBoxArt)
-                ContextBtn(Icons.Filled.Image, "Выбрать свою обложку", colors.text2, onPickCustomCover)
+                ContextBtn(Icons.Filled.Tune, stringResource(R.string.ctx_patch), colors.text, onPickSoftPatch)
+                ContextBtn(Icons.Filled.Refresh, stringResource(R.string.ctx_refresh_cover), colors.text, onRefreshBoxArt)
+                ContextBtn(Icons.Filled.Image, stringResource(R.string.ctx_custom_cover), colors.text, onPickCustomCover)
                 if (!boxArtPath.isNullOrBlank()) {
-                    ContextBtn(Icons.Filled.Image, "Просмотреть обложку", colors.green) { onViewCover(boxArtPath) }
+                    ContextBtn(Icons.Filled.Image, stringResource(R.string.ctx_view_cover), colors.green) { onViewCover(boxArtPath) }
                 }
-                ContextBtn(Icons.Filled.Info, "Техническая информация", colors.text2, onShowInfo)
+                ContextBtn(Icons.Filled.Info, stringResource(R.string.ctx_info), colors.text, onShowInfo)
             }
         }
     }

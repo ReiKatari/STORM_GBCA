@@ -4,11 +4,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>STORM_GBCA_1.1.0_Setup</AssemblyName>
+    <AssemblyName>STORM_GBCA_1.2.0_Setup</AssemblyName>
     <RootNamespace>StormGbca.Installer</RootNamespace>
-    <Version>1.1.0</Version>
-    <AssemblyVersion>1.1.0.0</AssemblyVersion>
-    <FileVersion>1.1.0.0</FileVersion>
+    <Version>1.2.0</Version>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <FileVersion>1.2.0.0</FileVersion>
     <Company>STORM SOFT</Company>
     <Product>STORM GBCA Setup</Product>
     <ApplicationIcon>..\..\assets\AppIcon.ico</ApplicationIcon>

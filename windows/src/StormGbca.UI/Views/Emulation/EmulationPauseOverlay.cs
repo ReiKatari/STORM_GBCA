@@ -13,6 +13,7 @@ using Storm.AuroraFluid.Kit.Icons;
 using Storm.AuroraFluid.Kit.Services;
 using StormGbca.Core.Configuration;
 using StormGbca.Core.Engine;
+using StormGbca.Core.Localization;
 using StormGbca.Core.Native;
 using StormGbca.Core.Paths;
 using StormGbca.UI.Common;
@@ -28,8 +29,11 @@ namespace StormGbca.UI.Views.Emulation;
 public class EmulationPauseOverlay : Border
 {
     private readonly StackPanel _bodyPanel;
-    private readonly StackPanel _tabBar;
+    private readonly WrapPanel _tabBar;
+    private readonly TextBlock _bannerGameTitle;
+    private readonly TextBlock _bannerTelemetry;
     private int _activeTab;
+    private DateTime _sessionOpenedUtc = DateTime.UtcNow;
 
     public event Action? ResumeRequested;
     public event Action? StopRequested;
@@ -56,11 +60,24 @@ public class EmulationPauseOverlay : Border
 
         var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto") };
 
-        // Header
+        // STORM DS-Style Top Game Banner with PAUSED Badge + Live Telemetry
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 0, 0, 10) };
-        var titleStack = new StackPanel { Spacing = 2 };
-        titleStack.Children.Add(new TextBlock { Text = "ПАУЗА И БЫСТРАЯ НАСТРОЙКА", FontSize = 16, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.Accent });
-        titleStack.Children.Add(new TextBlock { Text = "Нажмите Escape для возврата в игру", FontSize = 11.5, Foreground = StormThemeBrushes.SecondaryText });
+        var titleStack = new StackPanel { Spacing = 4 };
+        var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        _bannerGameTitle = new TextBlock { Text = "STORM GBCA", FontSize = 16, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center };
+        var pausedBadge = new Border
+        {
+            CornerRadius = new CornerRadius(6),
+            Background = new SolidColorBrush(Color.Parse("#EF4444")),
+            Padding = new Thickness(8, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { Text = GbcaLoc.T("PauseBadge"), FontSize = 10, FontWeight = FontWeight.Black, Foreground = Brushes.White }
+        };
+        titleRow.Children.Add(_bannerGameTitle);
+        titleRow.Children.Add(pausedBadge);
+        titleStack.Children.Add(titleRow);
+        _bannerTelemetry = new TextBlock { Text = "ESC - Resume", FontSize = 11.5, Foreground = StormThemeBrushes.SecondaryText };
+        titleStack.Children.Add(_bannerTelemetry);
         header.Children.Add(titleStack);
 
         var resumeBtn = new AuroraVolumetricButton { IsHero = true, Height = 36, Width = 155 };
@@ -70,14 +87,15 @@ public class EmulationPauseOverlay : Border
         Grid.SetColumn(resumeBtn, 1);
         root.Children.Add(header);
 
-        // Tabs
-        _tabBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 0, 0, 12) };
-        AddTab(0, "Сохранения (10)");
-        AddTab(1, "Корпус и оверлей");
-        AddTab(2, "Графика и мощь");
-        AddTab(3, "Аудиомикшер");
-        AddTab(4, "Сенсоры и ядро");
-        AddTab(5, "Поиск в RAM");
+        // Tabs (WrapPanel: ZERO horizontal scrolling!)
+        _tabBar = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
+        AddTab(0, GbcaLoc.T("PauseTabSlots"));
+        AddTab(1, GbcaLoc.T("PauseTabSkins"));
+        AddTab(2, GbcaLoc.T("PauseTabVideo"));
+        AddTab(3, GbcaLoc.T("PauseTabAudio"));
+        AddTab(4, GbcaLoc.T("PauseTabLink"));
+        AddTab(5, GbcaLoc.T("PauseTabSensors"));
+        AddTab(6, GbcaLoc.T("PauseTabRam"));
         root.Children.Add(_tabBar);
         Grid.SetRow(_tabBar, 1);
 
@@ -106,13 +124,22 @@ public class EmulationPauseOverlay : Border
         RefreshTab();
     }
 
-    public void RefreshOnOpen() => RefreshTab();
+    public void RefreshOnOpen()
+    {
+        var rom = StormGbcaUiState.Instance.SelectedRom;
+        _bannerGameTitle.Text = rom?.GetDisplayTitle() ?? "STORM GBCA";
+        var link = StormGbcaUiState.Instance.Emulator.GetLinkStatus();
+        string linkTag = link.Mode == StormLinkMode.None ? "" : $"  |  LINK: {link.Mode} ({link.PlayerCount}P)";
+        _bannerTelemetry.Text = $"{DateTime.Now:HH:mm}  |  {StormGbcaUiState.Instance.Emulator.ActivePlatform}  |  ESC: {GbcaLoc.T("MenuResume")}{linkTag}";
+        RefreshTab();
+    }
 
     private void AddTab(int idx, string title)
     {
         var b = new Border
         {
             Height = 30,
+            Margin = new Thickness(0, 0, 6, 6),
             Padding = new Thickness(10, 4),
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
@@ -149,8 +176,9 @@ public class EmulationPauseOverlay : Border
             case 1: BuildSkinOverlayTab(); break;
             case 2: BuildVideoTab(); break;
             case 3: BuildAudioMixerTab(); break;
-            case 4: BuildSensorsCoreTab(); break;
-            case 5: BuildRamFinderTab(); break;
+            case 4: BuildLinkTab(); break;
+            case 5: BuildSensorsCoreTab(); break;
+            case 6: BuildRamFinderTab(); break;
         }
     }
 
@@ -368,6 +396,42 @@ public class EmulationPauseOverlay : Border
                 StormGbcaUiState.Instance.SaveSettings();
             }));
         }
+    }
+
+    private void BuildLinkTab()
+    {
+        var s = StormGbcaUiState.Instance.Settings;
+        var emu = StormGbcaUiState.Instance.Emulator;
+        var st = emu.GetLinkStatus();
+        _bodyPanel.Children.Add(new TextBlock
+        {
+            Text = st.Mode == StormLinkMode.None
+                ? $"Link Status: {GbcaLoc.T("MpDisconnected")}"
+                : $"Link Active: {st.Mode} | Players: {st.PlayerCount} | Port: {st.Port} | {st.StatusText}",
+            FontSize = 12,
+            FontWeight = FontWeight.Bold,
+            Foreground = st.Connected ? new SolidColorBrush(Color.Parse("#34D399")) : StormThemeBrushes.Accent
+        });
+
+        var quickWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+        void AddQuick(string label, Color col, Action act)
+        {
+            var p = CreateActionPill(label, col, act);
+            p.Margin = new Thickness(0, 0, 8, 8);
+            quickWrap.Children.Add(p);
+        }
+        AddQuick("Host LAN Link (2P-4P)", Color.Parse("#10B981"), () => { emu.StartLink(StormLinkMode.LanHost, "", s.MultiplayerPort, 0, s.MultiplayerRoomName); RefreshTab(); });
+        AddQuick("Join LAN (" + s.MultiplayerLastHostIp + ")", Color.Parse("#38BDF8"), () => { emu.StartLink(StormLinkMode.LanClient, s.MultiplayerLastHostIp, s.MultiplayerPort, 0, s.MultiplayerRoomName); RefreshTab(); });
+        AddQuick("GBA Wireless Host (RFU)", Color.Parse("#8B5CF6"), () => { emu.StartLink(StormLinkMode.WirelessHost, "", s.MultiplayerPort, 0, s.MultiplayerRoomName); RefreshTab(); });
+        AddQuick("GBC IR Host", Color.Parse("#F59E0B"), () => { emu.StartLink(StormLinkMode.IrHost, "", s.MultiplayerPort, 0, s.MultiplayerRoomName); RefreshTab(); });
+        AddQuick("Dolphin JoyBus (GC)", Color.Parse("#06B6D4"), () => { emu.StartLink(StormLinkMode.DolphinJoyBus, s.DolphinIp, s.DolphinDataPort, s.DolphinClockPort, "Dolphin"); RefreshTab(); });
+        AddQuick("Game Boy Printer (PNG)", Color.Parse("#EC4899"), () => { emu.StartLink(StormLinkMode.GbPrinter, "", 0, 0, "GBPrinter"); RefreshTab(); });
+        AddQuick("Local Loopback", Color.Parse("#22C55E"), () => { emu.StartLink(StormLinkMode.LocalLoopback, "", 0, 0, "Loopback"); RefreshTab(); });
+        if (st.Mode != StormLinkMode.None)
+        {
+            AddQuick(GbcaLoc.T("MpBtnDisconnect"), Color.Parse("#EF4444"), () => { emu.StopLink(); RefreshTab(); });
+        }
+        _bodyPanel.Children.Add(quickWrap);
     }
 
     private void BuildSensorsCoreTab()

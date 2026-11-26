@@ -1,6 +1,7 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -30,12 +31,12 @@ public enum GbcaSortMode
 
 /// <summary>
 /// Scans user ROM folders for .gb, .gbc, .gba, .sgb, .zip, .7z using storm_gbca_inspect_rom_file,
-/// tracks Favorites and Recently Played, and fetches/caches boxart from Libretro Thumbnails.
+/// tracks Favorites and Recently Played, and fetches/caches official boxart via bundled 9,132-title
+/// Libretro index (raw.githubusercontent.com + cdn.jsdelivr.net mirror) or RetroAchievements.
 /// </summary>
 public sealed partial class GbcaRomLibrary
 {
     private static readonly Regex s_parensTagRegex = new(@"\s*[\(\[][^\)\]]*[\)\]]", RegexOptions.Compiled);
-    private static readonly Regex s_hrefPngRegex = new(@"href=""([^""]+\.png)""", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex s_nonAlnumRegex = new(@"[^a-z0-9]+", RegexOptions.Compiled);
 
     private readonly List<GbcaRomRecord> _roms = [];
@@ -57,7 +58,7 @@ public sealed partial class GbcaRomLibrary
 
     public GbcaRomLibrary()
     {
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) STORM_GBCA/1.1.0");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.2.0 (Windows)");
         LoadCache();
     }
 
@@ -199,14 +200,12 @@ public sealed partial class GbcaRomLibrary
             ActiveCoreHint = info.GetActiveCore(),
         };
 
-        // Check Russian localization markers in filename
         string upperName = rec.FileName.ToUpperInvariant();
         if (upperName.Contains("[RUS]") || upperName.Contains("[M. RUS]") || upperName.Contains("(RU)"))
         {
             rec.Region = "Russia";
         }
 
-        // Check cached cover art immediately
         string cachedCover = GetExpectedCoverCachePath(rec);
         if (File.Exists(cachedCover) && new FileInfo(cachedCover).Length > 512)
         {
@@ -329,8 +328,31 @@ public sealed partial class GbcaRomLibrary
         return Path.Combine(StormGbcaPaths.CoversDirectory, $"{key}.png");
     }
 
+    public int ClearCoverCache()
+    {
+        int removed = 0;
+        try
+        {
+            if (Directory.Exists(StormGbcaPaths.CoversDirectory))
+            {
+                foreach (var f in Directory.EnumerateFiles(StormGbcaPaths.CoversDirectory, "*.png"))
+                {
+                    try { File.Delete(f); removed++; } catch { }
+                }
+            }
+            lock (_syncLock)
+            {
+                foreach (var r in _roms) r.CoverLocalPath = string.Empty;
+            }
+            SaveCache();
+            LibraryChanged?.Invoke();
+        }
+        catch { }
+        return removed;
+    }
+
     /// <summary>
-    /// Downloads all missing covers in parallel (up to 4 concurrent workers) using the cached Libretro directory index.
+    /// Downloads all missing covers in parallel (up to 4 concurrent workers) when enabled by user.
     /// </summary>
     public async Task PreloadAllMissingCoversAsync(CancellationToken ct = default)
     {
@@ -361,8 +383,8 @@ public sealed partial class GbcaRomLibrary
     }
 
     /// <summary>
-    /// Downloads and locally caches official boxart from Libretro Thumbnails repositories
-    /// using full HTML directory index (30-day local cache) + O(1) normalized & fuzzy token matching.
+    /// Downloads and locally caches official boxart using bundled 9,132-title Libretro index
+    /// (raw.githubusercontent.com primary + cdn.jsdelivr.net mirror fallback).
     /// </summary>
     public async Task<string?> EnsureCoverArtAsync(GbcaRomRecord rom, CancellationToken ct = default)
     {
@@ -373,61 +395,85 @@ public sealed partial class GbcaRomLibrary
             return localPath;
         }
 
-        string repoSystem = rom.Platform switch
-        {
-            StormPlatform.Gb or StormPlatform.Sgb => "Nintendo - Game Boy",
-            StormPlatform.Gbc => "Nintendo - Game Boy Color",
-            _ => "Nintendo - Game Boy Advance",
-        };
-
         Directory.CreateDirectory(StormGbcaPaths.CoversDirectory);
 
-        string rawName = Path.GetFileNameWithoutExtension(rom.FileName);
-        string baseClean = s_parensTagRegex.Replace(rawName, string.Empty).Trim();
-
-        // 1. Try Libretro directory index fuzzy/exact match first (handles USA/Europe/Rev/Special chars reliably!)
-        var indexEntries = await GetOrFetchDirectoryIndexAsync(repoSystem, ct).ConfigureAwait(false);
-        string? matchedPng = FindBestIndexMatch(indexEntries, rawName, baseClean, rom.Title);
-        if (!string.IsNullOrWhiteSpace(matchedPng))
+        var systemsToTry = rom.Platform switch
         {
-            string url = $"https://thumbnails.libretro.com/{Uri.EscapeDataString(repoSystem)}/Named_Boxarts/{Uri.EscapeDataString(matchedPng)}";
-            if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
+            StormPlatform.Gb or StormPlatform.Sgb => new[] { "gb", "gbc" },
+            StormPlatform.Gbc => new[] { "gbc", "gb" },
+            _ => new[] { "gba" },
+        };
+
+        string rawName = Path.GetFileNameWithoutExtension(rom.FileName);
+        string baseClean = s_parensTagRegex.Replace(rawName, string.Empty).Replace('_', ' ').Trim();
+
+        foreach (string sysKey in systemsToTry)
+        {
+            var indexEntries = await GetOrLoadIndexAsync(sysKey, ct).ConfigureAwait(false);
+            string? matchedPng = FindBestIndexMatch(indexEntries, rawName, baseClean, rom.Title);
+            if (!string.IsNullOrWhiteSpace(matchedPng))
             {
-                rom.CoverLocalPath = localPath;
-                SaveCache();
-                CoverArtUpdated?.Invoke(rom);
-                return localPath;
+                foreach (string url in BuildLibretroImageUrls(sysKey, matchedPng))
+                {
+                    if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
+                    {
+                        rom.CoverLocalPath = localPath;
+                        SaveCache();
+                        CoverArtUpdated?.Invoke(rom);
+                        return localPath;
+                    }
+                }
             }
         }
 
-        // 2. Direct candidate URL fallback
+        // Direct fallback probing
+        string primarySys = systemsToTry[0];
         var candidates = new List<string>();
         if (!string.IsNullOrWhiteSpace(rawName)) candidates.Add(rawName);
         if (!string.IsNullOrWhiteSpace(baseClean))
         {
+            candidates.Add($"{baseClean} (USA, Europe)");
             candidates.Add($"{baseClean} (USA)");
             candidates.Add($"{baseClean} (Europe)");
-            candidates.Add($"{baseClean} (USA, Europe)");
-            candidates.Add($"{baseClean} (Japan)");
             candidates.Add($"{baseClean} (World)");
-            candidates.Add(baseClean);
+            candidates.Add($"{baseClean} (Japan)");
         }
 
         foreach (string nameCandidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             if (ct.IsCancellationRequested) break;
-            string sanitized = SanitizeLibretroFileName(nameCandidate);
-            string url = $"https://thumbnails.libretro.com/{Uri.EscapeDataString(repoSystem)}/Named_Boxarts/{Uri.EscapeDataString(sanitized)}.png";
-            if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
+            string sanitized = SanitizeLibretroFileName(nameCandidate) + ".png";
+            foreach (string url in BuildLibretroImageUrls(primarySys, sanitized))
             {
-                rom.CoverLocalPath = localPath;
-                SaveCache();
-                CoverArtUpdated?.Invoke(rom);
-                return localPath;
+                if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
+                {
+                    rom.CoverLocalPath = localPath;
+                    SaveCache();
+                    CoverArtUpdated?.Invoke(rom);
+                    return localPath;
+                }
             }
         }
 
         return null;
+    }
+
+    private static string RepoNameForKey(string sysKey) => sysKey switch
+    {
+        "gb" => "Nintendo_-_Game_Boy",
+        "gbc" => "Nintendo_-_Game_Boy_Color",
+        _ => "Nintendo_-_Game_Boy_Advance",
+    };
+
+    private static string[] BuildLibretroImageUrls(string sysKey, string fileName)
+    {
+        string repo = RepoNameForKey(sysKey);
+        string encoded = Uri.EscapeDataString(fileName);
+        return
+        [
+            $"https://raw.githubusercontent.com/libretro-thumbnails/{repo}/master/Named_Boxarts/{encoded}",
+            $"https://cdn.jsdelivr.net/gh/libretro-thumbnails/{repo}@master/Named_Boxarts/{encoded}",
+        ];
     }
 
     private async Task<bool> TryDownloadCoverAsync(string url, string localPath, CancellationToken ct)
@@ -437,7 +483,7 @@ public sealed partial class GbcaRomLibrary
             using var resp = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode) return false;
             byte[] bytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
-            if (bytes.Length <= 512) return false;
+            if (!IsValidImageBytes(bytes)) return false;
             await File.WriteAllBytesAsync(localPath, bytes, ct).ConfigureAwait(false);
             return true;
         }
@@ -447,42 +493,74 @@ public sealed partial class GbcaRomLibrary
         }
     }
 
-    private async Task<List<string>> GetOrFetchDirectoryIndexAsync(string repoSystem, CancellationToken ct)
+    private static bool IsValidImageBytes(byte[] bytes)
+    {
+        if (bytes.Length < 256) return false;
+        bool isPng = bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47;
+        bool isJpg = bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
+        bool isWebp = bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46;
+        return isPng || isJpg || isWebp;
+    }
+
+    private async Task<List<string>> GetOrLoadIndexAsync(string sysKey, CancellationToken ct)
     {
         await _indexLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (_indexCache.TryGetValue(repoSystem, out var cached)) return cached;
+            if (_indexCache.TryGetValue(sysKey, out var cached)) return cached;
 
-            string safeName = StormGbcaPaths.SanitizeFileKey(repoSystem);
-            string cacheFile = Path.Combine(StormGbcaPaths.CacheDirectory, $"libretro_idx_{safeName}.txt");
-            if (File.Exists(cacheFile) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(cacheFile)).TotalDays < 30)
+            // 1. Instant 0 ms bundled offline asset index (next to EXE or in workspace)
+            string[] bundledCandidates =
+            [
+                Path.Combine(AppContext.BaseDirectory, "assets", "boxart_index", $"{sysKey}.txt"),
+                Path.Combine(AppContext.BaseDirectory, "boxart_index", $"{sysKey}.txt"),
+                Path.Combine(StormGbcaPaths.CacheDirectory, $"gh_idx_{sysKey}_v2.txt"),
+            ];
+
+            foreach (string path in bundledCandidates)
             {
-                var lines = (await File.ReadAllLinesAsync(cacheFile, ct).ConfigureAwait(false))
-                    .Where(l => l.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-                if (lines.Count > 50)
+                if (File.Exists(path) && new FileInfo(path).Length > 1024)
                 {
-                    _indexCache[repoSystem] = lines;
-                    return lines;
+                    var lines = (await File.ReadAllLinesAsync(path, ct).ConfigureAwait(false))
+                        .Where(l => l.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    if (lines.Count > 50)
+                    {
+                        _indexCache[sysKey] = lines;
+                        return lines;
+                    }
                 }
             }
 
-            string idxUrl = $"https://thumbnails.libretro.com/{Uri.EscapeDataString(repoSystem)}/Named_Boxarts/";
+            // 2. Fallback: live GitHub Trees API
+            string repo = RepoNameForKey(sysKey);
+            string apiUrl = $"https://api.github.com/repos/libretro-thumbnails/{repo}/git/trees/master?recursive=1";
             try
             {
-                string html = await _httpClient.GetStringAsync(idxUrl, ct).ConfigureAwait(false);
-                var names = new List<string>(2048);
-                foreach (Match m in s_hrefPngRegex.Matches(html))
+                string json = await _httpClient.GetStringAsync(apiUrl, ct).ConfigureAwait(false);
+                using var doc = JsonDocument.Parse(json);
+                var names = new List<string>(4096);
+                if (doc.RootElement.TryGetProperty("tree", out var tree))
                 {
-                    string decoded = Uri.UnescapeDataString(m.Groups[1].Value);
-                    if (!decoded.Contains('/')) names.Add(decoded);
+                    foreach (var item in tree.EnumerateArray())
+                    {
+                        if (item.TryGetProperty("path", out var pEl))
+                        {
+                            string p = pEl.GetString() ?? "";
+                            if (p.StartsWith("Named_Boxarts/", StringComparison.Ordinal) &&
+                                p.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                            {
+                                names.Add(p["Named_Boxarts/".Length..]);
+                            }
+                        }
+                    }
                 }
-                if (names.Count > 0)
+                if (names.Count > 50)
                 {
                     Directory.CreateDirectory(StormGbcaPaths.CacheDirectory);
+                    string cacheFile = Path.Combine(StormGbcaPaths.CacheDirectory, $"gh_idx_{sysKey}_v2.txt");
                     await File.WriteAllLinesAsync(cacheFile, names, ct).ConfigureAwait(false);
-                    _indexCache[repoSystem] = names;
+                    _indexCache[sysKey] = names;
                     return names;
                 }
             }
@@ -502,53 +580,63 @@ public sealed partial class GbcaRomLibrary
     {
         if (index.Count == 0) return null;
 
-        string targetNorm = NormalizeTitle(baseClean);
-        if (string.IsNullOrEmpty(targetNorm)) targetNorm = NormalizeTitle(rawName);
-        if (string.IsNullOrEmpty(targetNorm)) targetNorm = NormalizeTitle(internalTitle);
-        if (string.IsNullOrEmpty(targetNorm)) return null;
-
-        string[] targetTokens = targetNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (targetTokens.Length == 0) return null;
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(baseClean)) candidates.Add(baseClean);
+        if (!string.IsNullOrWhiteSpace(rawName)) candidates.Add(rawName);
+        if (!string.IsNullOrWhiteSpace(internalTitle) && internalTitle.Length >= 3) candidates.Add(internalTitle);
 
         string? bestMatch = null;
         double bestScore = 0.0;
 
-        foreach (string entry in index)
+        foreach (string cand in candidates)
         {
-            string stem = Path.GetFileNameWithoutExtension(entry);
-            string stemBase = s_parensTagRegex.Replace(stem, string.Empty).Trim();
-            string norm = NormalizeTitle(stemBase);
-            if (norm == targetNorm)
+            string targetNorm = NormalizeTitle(cand);
+            if (string.IsNullOrEmpty(targetNorm)) continue;
+
+            string[] targetTokens = targetNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (targetTokens.Length == 0) continue;
+
+            foreach (string entry in index)
             {
-                double regBonus = stem.Contains("(USA", StringComparison.OrdinalIgnoreCase) ? 1.05
-                    : (stem.Contains("(Europe", StringComparison.OrdinalIgnoreCase) ? 1.03 : 1.0);
-                if (regBonus > bestScore)
+                string stem = Path.GetFileNameWithoutExtension(entry);
+                string stemBase = s_parensTagRegex.Replace(stem, string.Empty).Trim();
+                string norm = NormalizeTitle(stemBase);
+                if (norm == targetNorm)
                 {
-                    bestScore = regBonus;
+                    double regBonus = stem.Contains("(USA, Europe", StringComparison.OrdinalIgnoreCase) ? 1.08
+                        : stem.Contains("(USA", StringComparison.OrdinalIgnoreCase) ? 1.06
+                        : stem.Contains("(World", StringComparison.OrdinalIgnoreCase) ? 1.04
+                        : stem.Contains("(Europe", StringComparison.OrdinalIgnoreCase) ? 1.02 : 1.0;
+                    if (regBonus > bestScore)
+                    {
+                        bestScore = regBonus;
+                        bestMatch = entry;
+                    }
+                    continue;
+                }
+
+                string[] entryTokens = norm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (entryTokens.Length == 0) continue;
+
+                int intersect = 0;
+                foreach (string tt in targetTokens)
+                {
+                    if (entryTokens.Contains(tt)) intersect++;
+                }
+                if (intersect == 0) continue;
+
+                double union = targetTokens.Length + entryTokens.Length - intersect;
+                double jaccard = intersect / union;
+                double contain = (double)intersect / Math.Min(targetTokens.Length, entryTokens.Length);
+                double score = jaccard * 0.72 + contain * 0.28;
+                if (norm.StartsWith(targetNorm, StringComparison.Ordinal) || targetNorm.StartsWith(norm, StringComparison.Ordinal))
+                    score += 0.08;
+                if (stem.Contains("(USA", StringComparison.OrdinalIgnoreCase)) score += 0.02;
+                if (score > bestScore && score >= 0.58)
+                {
+                    bestScore = score;
                     bestMatch = entry;
                 }
-                continue;
-            }
-
-            string[] entryTokens = norm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (entryTokens.Length == 0) continue;
-
-            int intersect = 0;
-            foreach (string tt in targetTokens)
-            {
-                if (entryTokens.Contains(tt)) intersect++;
-            }
-            if (intersect == 0) continue;
-
-            double union = targetTokens.Length + entryTokens.Length - intersect;
-            double jaccard = intersect / union;
-            double contain = (double)intersect / Math.Min(targetTokens.Length, entryTokens.Length);
-            double score = jaccard * 0.65 + contain * 0.35;
-            if (stem.Contains("(USA", StringComparison.OrdinalIgnoreCase)) score += 0.02;
-            if (score > bestScore && score >= 0.62)
-            {
-                bestScore = score;
-                bestMatch = entry;
             }
         }
 
@@ -558,7 +646,14 @@ public sealed partial class GbcaRomLibrary
     private static string NormalizeTitle(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return string.Empty;
-        string s = s_parensTagRegex.Replace(input, " ").ToLowerInvariant();
+        string decomposed = input.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(decomposed.Length);
+        foreach (char c in decomposed)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        }
+        string s = s_parensTagRegex.Replace(sb.ToString(), " ").ToLowerInvariant();
         s = s.Replace("&", " and ").Replace("'", "").Replace("_", " ");
         s = s_nonAlnumRegex.Replace(s, " ").Trim();
         return s;

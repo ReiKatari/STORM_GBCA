@@ -258,4 +258,28 @@ object NativeCore {
     @JvmStatic external fun nativeVkResize(width: Int, height: Int)
     @JvmStatic external fun nativeVkRender(handle: Long, vpX: Int, vpY: Int, vpW: Int, vpH: Int, linearFilter: Boolean, rotDeg: Int)
     @JvmStatic external fun nativeVkDestroy()
+
+    // v1.2.0 Device Optimization & Full Multiplayer / Link Cable / Wireless / JoyBus / GB Printer
+    const val OPT_LITE = 0
+    const val OPT_BALANCED = 1
+    const val OPT_PERFORMANCE = 2
+    const val OPT_HIGH_ACCURACY = 3
+
+    const val LINK_NONE = 0
+    const val LINK_LAN_HOST = 1
+    const val LINK_LAN_CLIENT = 2
+    const val LINK_WIRELESS_HOST = 3
+    const val LINK_WIRELESS_CLIENT = 4
+    const val LINK_IR_HOST = 5
+    const val LINK_IR_CLIENT = 6
+    const val LINK_DOLPHIN_JOYBUS = 7
+    const val LINK_GB_PRINTER = 8
+    const val LINK_LOCAL_LOOPBACK = 9
+
+    @JvmStatic external fun nativeSetOptimizationProfile(handle: Long, profile: Int)
+    @JvmStatic external fun nativeLinkStart(handle: Long, mode: Int, hostIp: String, port: Int, clockPort: Int, roomName: String): Int
+    @JvmStatic external fun nativeLinkStop(handle: Long)
+    @JvmStatic external fun nativeLinkGetStatus(handle: Long): String
+    @JvmStatic external fun nativeLanDiscover(timeoutMs: Int): String
+    @JvmStatic external fun nativePollPrinterImage(handle: Long, outWH: IntArray): IntArray?
 }

@@ -48,6 +48,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import com.stormgbca.emulator.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -199,7 +201,7 @@ private fun LayoutEditorScreen(
                 Icon(Icons.Filled.OpenWith, contentDescription = null, tint = colors.green, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Экран ${activeSystem.label} (${if (isLandscape) "Альбом" else "Портрет"})",
+                    text = stringResource(R.string.layout_screen_title_fmt, activeSystem.label, stringResource(if (isLandscape) R.string.layout_landscape else R.string.layout_portrait)),
                     color = Color.White,
                     fontFamily = SpaceGrotesk,
                     fontWeight = FontWeight.Bold,
@@ -212,7 +214,7 @@ private fun LayoutEditorScreen(
                     fontSize = 10.sp,
                 )
                 Text(
-                    text = "Тяните экран или угол для масштаба",
+                    text = stringResource(R.string.layout_drag_hint),
                     color = colors.text3,
                     fontSize = 9.sp,
                 )
@@ -249,7 +251,7 @@ private fun LayoutEditorScreen(
 
         // Draggable Virtual Controls
         DraggableNode(
-            label = "Крестовина",
+            label = stringResource(R.string.layout_dpad),
             pos = profile.dpadPos,
             containerW = w,
             containerH = h,
@@ -340,7 +342,7 @@ private fun LayoutEditorScreen(
                         .padding(horizontal = 8.dp, vertical = 5.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Экран", color = colors.text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.layout_screen_btn), color = colors.text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         Icon(
                             if (panelExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                             contentDescription = null,
@@ -360,7 +362,7 @@ private fun LayoutEditorScreen(
                         }
                         .padding(horizontal = 9.dp, vertical = 5.dp),
                 ) {
-                    Text("Сброс", color = colors.text2, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.reset), color = colors.text2, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Box(
                     modifier = Modifier
@@ -372,7 +374,7 @@ private fun LayoutEditorScreen(
                         }
                         .padding(horizontal = 11.dp, vertical = 5.dp),
                 ) {
-                    Text("Готово", color = Color(0xFF05060A), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.layout_done), color = Color(0xFF05060A), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -391,7 +393,7 @@ private fun LayoutEditorScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            "Геометрия экрана ${activeSystem.label} (${if (isLandscape) "Альбом" else "Портрет"})",
+                            stringResource(R.string.layout_geometry_fmt, activeSystem.label, stringResource(if (isLandscape) R.string.layout_landscape else R.string.layout_portrait)),
                             color = colors.text,
                             fontFamily = SpaceGrotesk,
                             fontWeight = FontWeight.Bold,
@@ -408,7 +410,7 @@ private fun LayoutEditorScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.CenterFocusStrong, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("По центру", color = colors.text, fontSize = 10.sp)
+                                Text(stringResource(R.string.layout_center), color = colors.text, fontSize = 10.sp)
                             }
                         }
                         Spacer(Modifier.width(6.dp))
@@ -429,7 +431,8 @@ private fun LayoutEditorScreen(
 
                     // Aspect mode selector
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        listOf(0 to "Оригинал", 1 to "Целое", 2 to "Растянуть", 3 to "Свободно").forEach { (m, label) ->
+                        listOf(0 to R.string.vid_aspect_orig, 1 to R.string.vid_aspect_int, 2 to R.string.vid_aspect_full, 3 to R.string.layout_aspect_free).forEach { (m, labelRes) ->
+                            val label = stringResource(labelRes)
                             val sel = currentScreenCfg.aspectMode == m
                             Box(
                                 modifier = Modifier
@@ -445,16 +448,16 @@ private fun LayoutEditorScreen(
                         }
                     }
 
-                    ScreenSliderRow("Ширина экрана", "${(currentScreenCfg.widthFraction * 100).roundToInt()}%", currentScreenCfg.widthFraction, 0.25f..1.0f) { v ->
+                    ScreenSliderRow(stringResource(R.string.layout_width), "${(currentScreenCfg.widthFraction * 100).roundToInt()}%", currentScreenCfg.widthFraction, 0.25f..1.0f) { v ->
                         updateScreenCfg { it.copy(useCustom = true, widthFraction = v) }
                     }
-                    ScreenSliderRow("Высота экрана", "${(currentScreenCfg.heightFraction * 100).roundToInt()}%", currentScreenCfg.heightFraction, 0.20f..1.0f) { v ->
+                    ScreenSliderRow(stringResource(R.string.layout_height), "${(currentScreenCfg.heightFraction * 100).roundToInt()}%", currentScreenCfg.heightFraction, 0.20f..1.0f) { v ->
                         updateScreenCfg { it.copy(useCustom = true, heightFraction = v) }
                     }
-                    ScreenSliderRow("Позиция X", "${(currentScreenCfg.centerX * 100).roundToInt()}%", currentScreenCfg.centerX, 0.10f..0.90f) { v ->
+                    ScreenSliderRow(stringResource(R.string.layout_pos_x), "${(currentScreenCfg.centerX * 100).roundToInt()}%", currentScreenCfg.centerX, 0.10f..0.90f) { v ->
                         updateScreenCfg { it.copy(useCustom = true, centerX = v) }
                     }
-                    ScreenSliderRow("Позиция Y", "${(currentScreenCfg.centerY * 100).roundToInt()}%", currentScreenCfg.centerY, 0.10f..0.90f) { v ->
+                    ScreenSliderRow(stringResource(R.string.layout_pos_y), "${(currentScreenCfg.centerY * 100).roundToInt()}%", currentScreenCfg.centerY, 0.10f..0.90f) { v ->
                         updateScreenCfg { it.copy(useCustom = true, centerY = v) }
                     }
                 }

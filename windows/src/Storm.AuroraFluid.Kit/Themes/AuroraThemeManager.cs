@@ -50,8 +50,8 @@ public sealed class AuroraThemeManager
             BorderColor: Color.Parse("#2E2850"),
             DefaultAccentColor: Color.Parse("#8B5CF6"),
             DefaultAccentSecondaryColor: Color.Parse("#A78BFA"),
-            TextPrimaryColor: Color.Parse("#F8FAFC"),
-            TextSecondaryColor: Color.Parse("#94A3B8"),
+            TextPrimaryColor: Color.Parse("#FFFFFF"),
+            TextSecondaryColor: Color.Parse("#F1F5F9"),
             GlowColor: Color.Parse("#8B5CF6"),
             IsDark: true
         );
@@ -67,7 +67,7 @@ public sealed class AuroraThemeManager
             DefaultAccentColor: Color.Parse("#00F0FF"),
             DefaultAccentSecondaryColor: Color.Parse("#38BDF8"),
             TextPrimaryColor: Color.Parse("#FFFFFF"),
-            TextSecondaryColor: Color.Parse("#94A3B8"),
+            TextSecondaryColor: Color.Parse("#F1F5F9"),
             GlowColor: Color.Parse("#00F0FF"),
             IsDark: true
         );
@@ -82,8 +82,8 @@ public sealed class AuroraThemeManager
             BorderColor: Color.Parse("#2C3446"),
             DefaultAccentColor: Color.Parse("#00D2FF"),
             DefaultAccentSecondaryColor: Color.Parse("#38BDF8"),
-            TextPrimaryColor: Color.Parse("#F1F5F9"),
-            TextSecondaryColor: Color.Parse("#94A3B8"),
+            TextPrimaryColor: Color.Parse("#FFFFFF"),
+            TextSecondaryColor: Color.Parse("#F1F5F9"),
             GlowColor: Color.Parse("#00D2FF"),
             IsDark: true
         );
@@ -98,8 +98,8 @@ public sealed class AuroraThemeManager
             BorderColor: Color.Parse("#E2E8F0"),
             DefaultAccentColor: Color.Parse("#0284C7"),
             DefaultAccentSecondaryColor: Color.Parse("#0EA5E9"),
-            TextPrimaryColor: Color.Parse("#0F172A"),
-            TextSecondaryColor: Color.Parse("#475569"),
+            TextPrimaryColor: Color.Parse("#000000"),
+            TextSecondaryColor: Color.Parse("#0F172A"),
             GlowColor: Color.Parse("#0284C7"),
             IsDark: false
         );
@@ -114,8 +114,8 @@ public sealed class AuroraThemeManager
             BorderColor: Color.Parse("#2A3563"),
             DefaultAccentColor: Color.Parse("#D4AF37"),
             DefaultAccentSecondaryColor: Color.Parse("#F59E0B"),
-            TextPrimaryColor: Color.Parse("#FFFBEB"),
-            TextSecondaryColor: Color.Parse("#CBD5E1"),
+            TextPrimaryColor: Color.Parse("#FFFFFF"),
+            TextSecondaryColor: Color.Parse("#F1F5F9"),
             GlowColor: Color.Parse("#D4AF37"),
             IsDark: true
         );
@@ -131,7 +131,7 @@ public sealed class AuroraThemeManager
             DefaultAccentColor: Color.Parse("#FCEE09"),
             DefaultAccentSecondaryColor: Color.Parse("#FF007F"),
             TextPrimaryColor: Color.Parse("#FFFFFF"),
-            TextSecondaryColor: Color.Parse("#A3A0B5"),
+            TextSecondaryColor: Color.Parse("#F1F5F9"),
             GlowColor: Color.Parse("#FCEE09"),
             IsDark: true
         );
@@ -146,8 +146,8 @@ public sealed class AuroraThemeManager
             BorderColor: Color.Parse("#322B22"),
             DefaultAccentColor: Color.Parse("#CA8A04"),
             DefaultAccentSecondaryColor: Color.Parse("#D4AF37"),
-            TextPrimaryColor: Color.Parse("#FDF6E2"),
-            TextSecondaryColor: Color.Parse("#A8A29E"),
+            TextPrimaryColor: Color.Parse("#FFFFFF"),
+            TextSecondaryColor: Color.Parse("#F1F5F9"),
             GlowColor: Color.Parse("#CA8A04"),
             IsDark: true
         );
@@ -162,8 +162,8 @@ public sealed class AuroraThemeManager
             BorderColor: Color.Parse("#203D4E"),
             DefaultAccentColor: Color.Parse("#10B981"),
             DefaultAccentSecondaryColor: Color.Parse("#34D399"),
-            TextPrimaryColor: Color.Parse("#ECFDF5"),
-            TextSecondaryColor: Color.Parse("#94A3B8"),
+            TextPrimaryColor: Color.Parse("#FFFFFF"),
+            TextSecondaryColor: Color.Parse("#F1F5F9"),
             GlowColor: Color.Parse("#10B981"),
             IsDark: true
         );
@@ -178,8 +178,8 @@ public sealed class AuroraThemeManager
             BorderColor: Color.Parse("#282254"),
             DefaultAccentColor: Color.Parse("#A855F7"),
             DefaultAccentSecondaryColor: Color.Parse("#EC4899"),
-            TextPrimaryColor: Color.Parse("#FAF5FF"),
-            TextSecondaryColor: Color.Parse("#A8A29E"),
+            TextPrimaryColor: Color.Parse("#FFFFFF"),
+            TextSecondaryColor: Color.Parse("#F1F5F9"),
             GlowColor: Color.Parse("#A855F7"),
             IsDark: true
         );
@@ -270,8 +270,8 @@ public sealed class AuroraThemeManager
         res["StormAccentGlowBrush"] = new SolidColorBrush(Color.FromArgb(90, accentPrimary.R, accentPrimary.G, accentPrimary.B));
 
         // Typography Colors (Enforcing Law 10: 0% black text in dark themes)
-        var primaryText = theme.IsDark ? (theme.TextPrimaryColor.R < 180 && theme.TextPrimaryColor.G < 180 && theme.TextPrimaryColor.B < 180 ? Color.Parse("#F8FAFC") : theme.TextPrimaryColor) : theme.TextPrimaryColor;
-        var secondaryText = theme.IsDark ? (theme.TextSecondaryColor.R < 120 && theme.TextSecondaryColor.G < 120 && theme.TextSecondaryColor.B < 120 ? Color.Parse("#94A3B8") : theme.TextSecondaryColor) : theme.TextSecondaryColor;
+        var primaryText = theme.IsDark ? Color.Parse("#FFFFFF") : Color.Parse("#000000");
+        var secondaryText = theme.IsDark ? Color.Parse("#F1F5F9") : Color.Parse("#0F172A");
 
         res["StormTextPrimaryBrush"] = new SolidColorBrush(primaryText);
         res["StormTextSecondaryBrush"] = new SolidColorBrush(secondaryText);

@@ -85,7 +85,7 @@ public sealed class StormGbcaUiState
             {
                 SelectRom(Library.AllRoms[0]);
             }
-            if (Settings.AutoFetchCovers)
+            if (Settings.ShowLibretroCovers)
             {
                 _ = Library.PreloadAllMissingCoversAsync();
             }
@@ -104,6 +104,11 @@ public sealed class StormGbcaUiState
         RetroAchievements.Points = Settings.RetroAchievementsPoints;
         RetroAchievements.SoftcorePoints = Settings.RetroAchievementsSoftcorePoints;
         RetroAchievements.Rank = Settings.RetroAchievementsRank;
+        RetroAchievements.IsEnabled = Settings.RetroAchievementsEnabled;
+        RetroAchievements.IsEncoreMode = Settings.RetroAchievementsEncoreMode;
+        RetroAchievements.IsUnofficialEnabled = Settings.RetroAchievementsUnofficial;
+        RetroAchievements.NotificationsEnabled = Settings.RetroAchievementsNotifications;
+        RetroAchievements.LeaderboardsEnabled = Settings.RetroAchievementsLeaderboards;
     }
 
     public void SaveSettings(bool notify = false)
@@ -126,7 +131,7 @@ public sealed class StormGbcaUiState
         SelectedRom = rom;
         RomSelected?.Invoke(rom);
         StateChanged?.Invoke();
-        if (rom != null && string.IsNullOrWhiteSpace(rom.CoverLocalPath))
+        if (rom != null && Settings.ShowLibretroCovers && string.IsNullOrWhiteSpace(rom.CoverLocalPath))
         {
             _ = Library.EnsureCoverArtAsync(rom);
         }

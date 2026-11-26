@@ -43,6 +43,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.stormgbca.emulator.R
+import com.stormgbca.emulator.data.BoxArtRepository
 import com.stormgbca.emulator.data.GbcaPrefs
 import com.stormgbca.emulator.data.RaGameSession
 import com.stormgbca.emulator.data.RetroAchievementsClient
@@ -118,7 +120,9 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
     private val showSkinPickerState = androidx.compose.runtime.mutableStateOf(false)
     private val showOverlayPickerState = androidx.compose.runtime.mutableStateOf(false)
     private val showRamFinderState = androidx.compose.runtime.mutableStateOf(false)
+    private val showMultiplayerState = androidx.compose.runtime.mutableStateOf(false)
     private val showRaAccountState = androidx.compose.runtime.mutableStateOf(false)
+    private val linkStatusState = androidx.compose.runtime.mutableStateOf(LinkStatusInfo())
     private val activeCoreLabelState = androidx.compose.runtime.mutableStateOf("mGBA")
     private val activeBackendLabelState = androidx.compose.runtime.mutableStateOf("GLES 3.2")
     private val rewindFramesState = androidx.compose.runtime.mutableIntStateOf(0)
@@ -150,7 +154,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         val rawJson = intent.getStringExtra(EXTRA_ROM_JSON)
         romEntry = rawJson?.let { runCatching { json.decodeFromString<RomEntry>(it) }.getOrNull() }
         val rom = romEntry ?: run {
-            Toast.makeText(this, "Не удалось открыть ROM", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.toast_open_rom_fail), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -287,27 +291,30 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                             coreLock.withLock {
                                 if (nativeHandle != 0L) NativeCore.nativeSetFastForward(nativeHandle, mult)
                             }
-                            showToast(if (next) "Ускорение x${mult.toInt()}" else "Нормальная скорость")
+                            showToast(if (next) getString(R.string.toast_ff_on_fmt, mult.toInt()) else getString(R.string.toast_ff_off))
                         },
                         onRewindTap = { performRewindStep() },
                         onOpenMenu = { togglePauseMenu() },
                     )
 
-                    // Subtle live HUD pill (Core + Platform + Backend + Scale)
+                    // Subtle live HUD pill (Core + Platform + Backend + Scale + Link)
                     if (!showPauseMenuState.value) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(top = 8.dp, end = 10.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x99060912))
+                                .background(Color(0xB3060912))
                                 .padding(horizontal = 8.dp, vertical = 3.dp),
                         ) {
                             val ffTag = if (fastForward.get()) " | FF" else ""
                             val scaleTag = if (coreCfg.resolutionScale > 1) " | ${coreCfg.resolutionScale}x" else ""
+                            val linkTag = if (linkStatusState.value.mode != NativeCore.LINK_NONE && linkStatusState.value.connected) {
+                                " | LINK ${linkStatusState.value.playerCount}P"
+                            } else ""
                             Text(
-                                text = "${activeCoreLabelState.value} | ${activeSystem.label} | ${activeBackendLabelState.value}$scaleTag$ffTag",
-                                color = Color(0xCC94A3B8),
+                                text = "${activeCoreLabelState.value} | ${activeSystem.label} | ${activeBackendLabelState.value}$scaleTag$ffTag$linkTag",
+                                color = Color.White,
                                 fontFamily = WatermelonMono,
                                 fontSize = 10.sp,
                             )
@@ -328,17 +335,23 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     }
 
                     if (showPauseMenuState.value) {
+                        val coverPath = remember(rom) {
+                            BoxArtRepository.getCachedBoxArtPath(this@EmulatorActivity, rom, allowLibretro = true, allowRa = true)
+                        }
                         PauseMenuOverlay(
                             rom = rom,
                             system = activeSystem,
+                            boxArtPath = coverPath,
+                            sessionStartMs = sessionStartMs,
                             activeCoreName = activeCoreLabelState.value,
                             activeBackendLabel = activeBackendLabelState.value,
                             fastForwardActive = fastForward.get(),
                             rewindAvailableFrames = rewindFramesState.intValue,
                             raSession = raSessionState.value,
+                            linkStatus = linkStatusState.value,
                             onResume = { setPaused(false) },
-                            onQuickSave = { saveStateSlot(0) },
-                            onQuickLoad = { loadStateSlot(0) },
+                            onQuickSave = { slot -> saveStateSlot(slot) },
+                            onQuickLoad = { slot -> loadStateSlot(slot) },
                             onSaveSlot = { slot -> saveStateSlot(slot) },
                             onLoadSlot = { slot -> loadStateSlot(slot) },
                             onRewindStep = { performRewindStep() },
@@ -359,6 +372,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                                 startActivity(intent)
                             },
                             onOpenRamFinder = { showRamFinderState.value = true },
+                            onOpenMultiplayer = { showMultiplayerState.value = true },
                             onOpenRaAccount = { showRaAccountState.value = true },
                             onConfigApplied = { applyCoreConfig() },
                             onCheatsUpdated = { list -> applyCheats(list) },
@@ -377,6 +391,29 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                                 flushSram()
                                 finish()
                             },
+                        )
+                    }
+
+                    if (showMultiplayerState.value) {
+                        MultiplayerDialog(
+                            nativeHandle = nativeHandle,
+                            onStartLink = { mode, ip, port, clockPort, rname ->
+                                val rc = coreLock.withLock {
+                                    if (nativeHandle != 0L) {
+                                        NativeCore.nativeLinkStart(nativeHandle, mode, ip, port, clockPort, rname)
+                                    } else -1
+                                }
+                                refreshLinkStatus()
+                                rc
+                            },
+                            onStopLink = {
+                                coreLock.withLock {
+                                    if (nativeHandle != 0L) NativeCore.nativeLinkStop(nativeHandle)
+                                }
+                                refreshLinkStatus()
+                            },
+                            onStatusRefresh = { refreshLinkStatus() },
+                            onDismiss = { showMultiplayerState.value = false },
                         )
                     }
 
@@ -505,7 +542,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     vulkanReady.set(false)
                     useVulkanState.value = false
                     activeBackendLabelState.value = "GLES 3.2"
-                    showToast("Vulkan недоступен на этом устройстве - переключено на OpenGL ES 3.2")
+                    showToast(getString(R.string.toast_vulkan_fallback))
                 }
             }
 
@@ -549,7 +586,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             val cachedRom = RomRepository.materializeRomToCache(this@EmulatorActivity, rom)
             if (cachedRom == null) {
                 activityScope.launch(Dispatchers.Main) {
-                    Toast.makeText(this@EmulatorActivity, "Ошибка чтения ROM", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@EmulatorActivity, getString(R.string.toast_rom_read_error), Toast.LENGTH_LONG).show()
                     finish()
                 }
                 return@launch
@@ -577,7 +614,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     NativeCore.nativeDestroy(h)
                     nativeHandle = 0L
                     activityScope.launch(Dispatchers.Main) {
-                        Toast.makeText(this@EmulatorActivity, "Ядро не смогло запустить ROM", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@EmulatorActivity, getString(R.string.toast_core_start_fail), Toast.LENGTH_LONG).show()
                         finish()
                     }
                     return@launch
@@ -692,6 +729,12 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 }
 
                 frameCounter++
+                if (frameCounter % 30 == 0) {
+                    pollAndSavePrinterImage()
+                }
+                if (frameCounter % 120 == 0 && linkStatusState.value.mode != NativeCore.LINK_NONE) {
+                    refreshLinkStatus()
+                }
                 if (frameCounter % 300 == 0) {
                     flushSramIfDirty()
                 }
@@ -739,10 +782,46 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         )
         NativeCore.nativeSetUpscale(h, cfg.resolutionScale, cfg.upscaleMode)
         NativeCore.nativeSetPerformance(h, cfg.cpuOverclockPct, cfg.frameSkip)
+        NativeCore.nativeSetOptimizationProfile(h, GbcaPrefs.getEffectiveOptimizationProfile())
         NativeCore.nativeSetSolarLux(h, cfg.solarLux)
         NativeCore.getRomInfo(h)?.let { info ->
             activeCoreLabelState.value = info.activeCore.ifBlank { "mGBA" }
         }
+    }
+
+    private fun refreshLinkStatus(): LinkStatusInfo {
+        val st = coreLock.withLock {
+            if (nativeHandle != 0L) parseLinkStatus(NativeCore.nativeLinkGetStatus(nativeHandle)) else LinkStatusInfo()
+        }
+        linkStatusState.value = st
+        return st
+    }
+
+    private fun pollAndSavePrinterImage() {
+        val wh = IntArray(2)
+        val pixels = coreLock.withLock {
+            if (nativeHandle != 0L) NativeCore.nativePollPrinterImage(nativeHandle, wh) else null
+        } ?: return
+        val w = wh[0]
+        val h = wh[1]
+        if (w <= 0 || h <= 0 || pixels.size < w * h) return
+
+        for (i in pixels.indices) {
+            val v = pixels[i]
+            val r = v and 0xFF
+            val g = (v ushr 8) and 0xFF
+            val b = (v ushr 16) and 0xFF
+            pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+        }
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        bmp.setPixels(pixels, 0, w, 0, 0, w, h)
+        runCatching {
+            val dir = java.io.File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "GBPrinter").apply { mkdirs() }
+            val out = java.io.File(dir, "gb_print_${System.currentTimeMillis()}.png")
+            FileOutputStream(out).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        bmp.recycle()
+        showToast(getString(R.string.mp_printer_saved))
     }
 
     private fun applyCheats(cheats: List<CheatItem>) {
@@ -788,7 +867,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     }
                     bmp.recycle()
                 }
-                showToast(if (slot == 0) "Быстрое сохранение выполнено" else "Сохранено в слот $slot")
+                showToast(if (slot == 0) getString(R.string.toast_quicksave_ok) else getString(R.string.toast_slot_saved_fmt, slot))
             }
         }
     }
@@ -820,7 +899,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     true
                 }.getOrDefault(false)
                 bmp.recycle()
-                showToast(if (saved) "Скриншот сохранен: ${outFile.name}" else "Ошибка сохранения скриншота")
+                showToast(if (saved) getString(R.string.toast_screenshot_saved_fmt, outFile.name) else getString(R.string.toast_screenshot_fail))
             }
         }
     }
@@ -835,7 +914,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         }.getOrDefault(false)
         if (!copied) {
             cachePatch.delete()
-            showToast("Не удалось прочитать файл патча")
+            showToast(getString(R.string.toast_patch_read_fail))
             return
         }
         val rc = coreLock.withLock {
@@ -844,9 +923,9 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         cachePatch.delete()
         if (rc == 0) {
             setPaused(false)
-            showToast("Мягкий патч успешно применен")
+            showToast(getString(R.string.toast_patch_applied))
         } else {
-            showToast("Патч несовместим с этим ROM")
+            showToast(getString(R.string.toast_patch_incompatible))
         }
     }
 
@@ -854,14 +933,14 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         val rom = romEntry ?: return
         val file = RomRepository.getStateFile(this, rom, slot)
         if (!file.exists()) {
-            showToast("Слот $slot пуст")
+            showToast(getString(R.string.toast_slot_empty_fmt, slot))
             return
         }
         coreLock.withLock {
             if (nativeHandle == 0L) return
             if (NativeCore.nativeLoadStateFile(nativeHandle, file.absolutePath) == 0) {
                 requestVideoRender()
-                showToast(if (slot == 0) "Быстрое состояние загружено" else "Загружен слот $slot")
+                showToast(if (slot == 0) getString(R.string.toast_quickload_ok) else getString(R.string.toast_slot_loaded_fmt, slot))
             }
         }
     }
@@ -873,7 +952,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 rewindFramesState.intValue = NativeCore.nativeRewindAvailableFrames(nativeHandle)
                 requestVideoRender()
             } else {
-                showToast("Нет кадров для перемотки")
+                showToast(getString(R.string.toast_rewind_empty))
             }
         }
     }
@@ -1104,12 +1183,12 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             PhysicalAction.SOLAR_UP -> if (pressed) {
                 GbcaPrefs.updateCoreConfig { it.copy(solarLux = (it.solarLux + 1).coerceAtMost(10)) }
                 applyCoreConfig()
-                showToast("Солнце: ${GbcaPrefs.coreConfigState.value.solarLux}/10")
+                showToast(getString(R.string.toast_solar_fmt, GbcaPrefs.coreConfigState.value.solarLux))
             }
             PhysicalAction.SOLAR_DOWN -> if (pressed) {
                 GbcaPrefs.updateCoreConfig { it.copy(solarLux = (it.solarLux - 1).coerceAtLeast(0)) }
                 applyCoreConfig()
-                showToast("Солнце: ${GbcaPrefs.coreConfigState.value.solarLux}/10")
+                showToast(getString(R.string.toast_solar_fmt, GbcaPrefs.coreConfigState.value.solarLux))
             }
             else -> {}
         }
