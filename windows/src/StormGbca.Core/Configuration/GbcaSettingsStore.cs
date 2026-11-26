@@ -83,15 +83,27 @@ public enum GbcaScaleMode
     StretchFill = 2,
 }
 
+public sealed class ScreenRectSettings
+{
+    public bool UseCustom { get; set; } = false;
+    public float CenterX { get; set; } = 0.50f;
+    public float CenterY { get; set; } = 0.46f;
+    public float WidthFraction { get; set; } = 0.84f;
+    public float HeightFraction { get; set; } = 0.80f;
+    public int RotationDeg { get; set; } = 0; // 0, 90, 180, 270
+}
+
 public sealed class SystemOverlayProfile
 {
     public OverlayBezelStyle OverlayLayout { get; set; } = OverlayBezelStyle.GlassDeck;
     public OverlayButtonStyle ButtonStyle { get; set; } = OverlayButtonStyle.StormNeon;
     public StormVideoFilter LcdFilter { get; set; } = StormVideoFilter.LcdGrid;
+    public string RetroArchShaderPath { get; set; } = string.Empty;
     public float Opacity { get; set; } = 0.88f;
     public float Scale { get; set; } = 1.0f;
     public bool ShowControlsDeck { get; set; } = true;
     public bool ShowLR { get; set; } = false;
+    public ScreenRectSettings ScreenRect { get; set; } = new();
 }
 
 public sealed class GbcaAppSettings
@@ -108,7 +120,8 @@ public sealed class GbcaAppSettings
     public bool UiTactileAudioEnabled { get; set; } = true;
     public bool AutoCheckUpdates { get; set; } = true;
     public string SkippedUpdateVersion { get; set; } = string.Empty;
-    public bool Show3DBootSplash { get; set; } = true;
+    public bool Show3DBootSplash { get; set; } = false;
+    public bool AutoFetchCovers { get; set; } = true;
 
     // Emulation Cores & Hardware
     public StormCoreBackend PreferredCoreGb { get; set; } = StormCoreBackend.SameBoy;
@@ -136,6 +149,10 @@ public sealed class GbcaAppSettings
     public int LcdGhosting { get; set; } = 15;
     public StormVideoFilter VideoFilter { get; set; } = StormVideoFilter.LcdGrid;
     public GbcaScaleMode ScaleMode { get; set; } = GbcaScaleMode.AspectFit;
+    public int ResolutionScale { get; set; } = 1; // 1..4x internal upscaling
+    public StormUpscaleMode UpscaleMode { get; set; } = StormUpscaleMode.None;
+    public int CpuOverclockPct { get; set; } = 100; // 50..400%
+    public int FrameSkip { get; set; } = 0; // 0..4
 
     // Audio & 6-Channel Mixer
     public StormAudioHighpassMode AudioHighpassMode { get; set; } = StormAudioHighpassMode.Accurate;
@@ -216,6 +233,9 @@ public sealed class GbcaAppSettings
     public string RetroAchievementsToken { get; set; } = string.Empty;
     public bool RetroAchievementsHardcoreMode { get; set; } = false;
     public bool RetroAchievementsRichPresence { get; set; } = true;
+    public int RetroAchievementsPoints { get; set; } = 0;
+    public int RetroAchievementsSoftcorePoints { get; set; } = 0;
+    public int RetroAchievementsRank { get; set; } = 0;
 
     // Library
     public List<string> RomDirectories { get; set; } = [];
@@ -299,6 +319,7 @@ public sealed class RetroAchievementsQueueItem
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(GbcaAppSettings))]
 [JsonSerializable(typeof(SystemOverlayProfile))]
+[JsonSerializable(typeof(ScreenRectSettings))]
 [JsonSerializable(typeof(List<GbcaRomRecord>))]
 [JsonSerializable(typeof(List<GbcaCheatEntry>))]
 [JsonSerializable(typeof(List<RetroAchievementsQueueItem>))]
@@ -363,6 +384,12 @@ public static class GbcaSettingsStore
         s.GbOverlayProfile ??= new SystemOverlayProfile { ButtonStyle = OverlayButtonStyle.DmgMagenta, ShowLR = false };
         s.GbcOverlayProfile ??= new SystemOverlayProfile { ButtonStyle = OverlayButtonStyle.GbcAtomicPurple, ShowLR = false };
         s.GbaOverlayProfile ??= new SystemOverlayProfile { ButtonStyle = OverlayButtonStyle.GbaIndigo, ShowLR = true };
+        s.GbOverlayProfile.ScreenRect ??= new ScreenRectSettings();
+        s.GbcOverlayProfile.ScreenRect ??= new ScreenRectSettings();
+        s.GbaOverlayProfile.ScreenRect ??= new ScreenRectSettings();
+        s.ResolutionScale = Math.Clamp(s.ResolutionScale, 1, 4);
+        s.CpuOverclockPct = Math.Clamp(s.CpuOverclockPct, 50, 400);
+        s.FrameSkip = Math.Clamp(s.FrameSkip, 0, 4);
         s.KeyBindings ??= new Dictionary<string, string>();
         s.RomDirectories ??= [];
         s.FavoriteRoms ??= [];

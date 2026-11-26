@@ -1,6 +1,7 @@
 #ifdef ANDROID
 
 #include <jni.h>
+#include <android/native_window_jni.h>
 #include "storm_gbca_core.h"
 #include <algorithm>
 #include <cstdio>
@@ -15,9 +16,21 @@ void android_audio_pause(bool paused);
 
 bool gles_init(const std::string& shader_source);
 void gles_resize(int w, int h);
+void gles_set_rotation(int deg);
 void gles_render(const uint32_t* rgba, int w, int h, int vp_x, int vp_y, int vp_w, int vp_h,
                  int display_mode, float ghosting, float cc_strength, bool is_grayscale, bool integer_scaling);
 void gles_destroy();
+
+bool librashader_is_available();
+std::string librashader_status();
+void librashader_set_preset(const std::string& path);
+
+bool vk_probe_support(std::string& device_name);
+bool vk_init(ANativeWindow* window, const std::string& custom_driver_path);
+void vk_resize(int w, int h);
+void vk_render(const uint32_t* rgba, int w, int h, int vp_x, int vp_y, int vp_w, int vp_h, bool linear_filter, int rotation_deg);
+void vk_destroy();
+std::string vk_device_name();
 }
 
 static std::string sanitize_field(const char* src) {
@@ -445,6 +458,21 @@ Java_ru_stormgames_gbca_NativeCore_nativeGlesRender(
         storm::gles_render(nullptr, 0, 0, vpX, vpY, vpW, vpH, displayMode, ghosting, ccStrength, isGrayscale == JNI_TRUE, integerScaling == JNI_TRUE);
         return;
     }
+    int uw = 0, uh = 0;
+    if (storm_gbca_get_upscaled_size(ctx, &uw, &uh) == 0 && uw > 0 && uh > 0) {
+        int raw_w = 0, raw_h = 0;
+        storm_gbca_get_video_info(ctx, &raw_w, &raw_h, nullptr);
+        if (uw > raw_w || uh > raw_h) {
+            static thread_local std::vector<uint32_t> up_buf;
+            up_buf.resize(static_cast<size_t>(uw) * static_cast<size_t>(uh));
+            int out_w = uw, out_h = uh;
+            if (storm_gbca_copy_upscaled_frame(ctx, up_buf.data(), uw, STORM_PIXEL_FORMAT_RGBA8888, &out_w, &out_h) == 0) {
+                storm::gles_render(up_buf.data(), out_w, out_h, vpX, vpY, vpW, vpH,
+                                   displayMode, ghosting, ccStrength, isGrayscale == JNI_TRUE, integerScaling == JNI_TRUE);
+                return;
+            }
+        }
+    }
     const uint32_t* raw = nullptr;
     int w = 0, h = 0;
     if (storm_gbca_get_raw_frame_rgba(ctx, &raw, &w, &h) != 0 || !raw) {
@@ -455,8 +483,160 @@ Java_ru_stormgames_gbca_NativeCore_nativeGlesRender(
 }
 
 JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeGlesSetRotation(JNIEnv*, jclass, jint rotDeg) {
+    storm::gles_set_rotation(rotDeg);
+}
+
+JNIEXPORT void JNICALL
 Java_ru_stormgames_gbca_NativeCore_nativeGlesDestroy(JNIEnv*, jclass) {
     storm::gles_destroy();
+}
+
+// --- v1.1.0 Upscaling, Performance, RAM Cheat Finder, RetroArch librashader, Vulkan ---
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeSetUpscale(JNIEnv*, jclass, jlong handle, jint scale, jint mode) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (ctx) storm_gbca_set_upscale(ctx, scale, mode);
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeSetPerformance(JNIEnv*, jclass, jlong handle, jint cpuOverclockPct, jint frameSkip) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (ctx) storm_gbca_set_performance(ctx, cpuOverclockPct, frameSkip);
+}
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeWriteMemory(JNIEnv*, jclass, jlong handle, jint region, jint addr, jint value, jint sizeBytes) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (!ctx) return -1;
+    uint8_t bytes[4] = {
+        static_cast<uint8_t>(value & 0xFF),
+        static_cast<uint8_t>((value >> 8) & 0xFF),
+        static_cast<uint8_t>((value >> 16) & 0xFF),
+        static_cast<uint8_t>((value >> 24) & 0xFF),
+    };
+    size_t n = (sizeBytes == 2 || sizeBytes == 4) ? static_cast<size_t>(sizeBytes) : 1;
+    return storm_gbca_write_memory(ctx, region, static_cast<uint32_t>(addr), bytes, n);
+}
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeMemSearchReset(JNIEnv*, jclass, jlong handle, jint region, jint valueSize) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (!ctx) return -1;
+    return storm_gbca_mem_search_reset(ctx, region, valueSize);
+}
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeMemSearchFilter(JNIEnv*, jclass, jlong handle, jint cmpOp, jint targetValue) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (!ctx) return -1;
+    return storm_gbca_mem_search_filter(ctx, cmpOp, static_cast<uint32_t>(targetValue));
+}
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeMemSearchGetResults(JNIEnv* env, jclass, jlong handle, jintArray outAddrs, jintArray outVals) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (!ctx || !outAddrs || !outVals) return 0;
+    jsize maxN = std::min(env->GetArrayLength(outAddrs), env->GetArrayLength(outVals));
+    if (maxN <= 0) return 0;
+    std::vector<uint32_t> addrs(static_cast<size_t>(maxN));
+    std::vector<uint32_t> vals(static_cast<size_t>(maxN));
+    int got = storm_gbca_mem_search_get_results(ctx, addrs.data(), vals.data(), static_cast<int>(maxN));
+    if (got > 0) {
+        env->SetIntArrayRegion(outAddrs, 0, got, reinterpret_cast<const jint*>(addrs.data()));
+        env->SetIntArrayRegion(outVals, 0, got, reinterpret_cast<const jint*>(vals.data()));
+    }
+    return got;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeIsLibrashaderAvailable(JNIEnv*, jclass) {
+    return storm::librashader_is_available() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jstring JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeGetLibrashaderStatus(JNIEnv* env, jclass) {
+    return env->NewStringUTF(storm::librashader_status().c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeSetRetroArchShader(JNIEnv* env, jclass, jstring presetPath) {
+    std::string p;
+    if (presetPath) {
+        const char* c = env->GetStringUTFChars(presetPath, nullptr);
+        if (c) {
+            p = c;
+            env->ReleaseStringUTFChars(presetPath, c);
+        }
+    }
+    storm::librashader_set_preset(p);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeIsVulkanSupported(JNIEnv*, jclass) {
+    std::string dev;
+    return storm::vk_probe_support(dev) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jstring JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeGetVulkanDeviceName(JNIEnv* env, jclass) {
+    std::string dev;
+    storm::vk_probe_support(dev);
+    return env->NewStringUTF(dev.c_str());
+}
+
+JNIEXPORT jboolean JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeVkInit(JNIEnv* env, jclass, jobject surface, jstring customDriverPath) {
+    if (!surface) return JNI_FALSE;
+    ANativeWindow* win = ANativeWindow_fromSurface(env, surface);
+    if (!win) return JNI_FALSE;
+    std::string drv;
+    if (customDriverPath) {
+        const char* c = env->GetStringUTFChars(customDriverPath, nullptr);
+        if (c) {
+            drv = c;
+            env->ReleaseStringUTFChars(customDriverPath, c);
+        }
+    }
+    bool ok = storm::vk_init(win, drv);
+    ANativeWindow_release(win);
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeVkResize(JNIEnv*, jclass, jint width, jint height) {
+    storm::vk_resize(width, height);
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeVkRender(
+    JNIEnv*, jclass, jlong handle,
+    jint vpX, jint vpY, jint vpW, jint vpH,
+    jboolean linearFilter, jint rotDeg
+) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (!ctx) return;
+    int uw = 0, uh = 0;
+    if (storm_gbca_get_upscaled_size(ctx, &uw, &uh) == 0 && uw > 0 && uh > 0) {
+        static thread_local std::vector<uint32_t> vk_buf;
+        vk_buf.resize(static_cast<size_t>(uw) * static_cast<size_t>(uh));
+        int out_w = uw, out_h = uh;
+        if (storm_gbca_copy_upscaled_frame(ctx, vk_buf.data(), uw, STORM_PIXEL_FORMAT_RGBA8888, &out_w, &out_h) == 0) {
+            storm::vk_render(vk_buf.data(), out_w, out_h, vpX, vpY, vpW, vpH, linearFilter == JNI_TRUE, rotDeg);
+            return;
+        }
+    }
+    const uint32_t* raw = nullptr;
+    int w = 0, h = 0;
+    if (storm_gbca_get_raw_frame_rgba(ctx, &raw, &w, &h) == 0 && raw) {
+        storm::vk_render(raw, w, h, vpX, vpY, vpW, vpH, linearFilter == JNI_TRUE, rotDeg);
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeVkDestroy(JNIEnv*, jclass) {
+    storm::vk_destroy();
 }
 
 } // extern "C"

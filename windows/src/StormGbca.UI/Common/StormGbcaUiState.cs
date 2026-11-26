@@ -85,6 +85,10 @@ public sealed class StormGbcaUiState
             {
                 SelectRom(Library.AllRoms[0]);
             }
+            if (Settings.AutoFetchCovers)
+            {
+                _ = Library.PreloadAllMissingCoversAsync();
+            }
             StateChanged?.Invoke();
         };
 
@@ -97,6 +101,9 @@ public sealed class StormGbcaUiState
         RetroAchievements.Token = Settings.RetroAchievementsToken;
         RetroAchievements.IsHardcoreMode = Settings.RetroAchievementsHardcoreMode;
         RetroAchievements.IsRichPresenceEnabled = Settings.RetroAchievementsRichPresence;
+        RetroAchievements.Points = Settings.RetroAchievementsPoints;
+        RetroAchievements.SoftcorePoints = Settings.RetroAchievementsSoftcorePoints;
+        RetroAchievements.Rank = Settings.RetroAchievementsRank;
     }
 
     public void SaveSettings(bool notify = false)

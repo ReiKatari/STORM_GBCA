@@ -86,8 +86,8 @@ public static class GbcaConsoleSkinRenderer
     };
 
     /// <summary>
-    /// Computes the exact LCD viewport rectangle inside a container of size (width, height)
-    /// when a 3D console skin is active (or fills space when skin is None).
+    /// Computes the exact LCD viewport rectangle inside a container of size (width, height),
+    /// honoring per-system custom screen size, position, and rotation settings.
     /// </summary>
     public static Rect ComputeScreenViewport(
         double width,
@@ -97,9 +97,50 @@ public static class GbcaConsoleSkinRenderer
         StormPlatform platform,
         GbcaAppSettings settings)
     {
-        double aspect = (double)Math.Max(1, nativeW) / Math.Max(1, nativeH);
-        bool none = IsSkinNone(platform, settings);
         var overlay = settings.GetOverlayProfileForPlatform(platform);
+        var custom = overlay.ScreenRect;
+        bool rotated = custom != null && (custom.RotationDeg == 90 || custom.RotationDeg == 270);
+        double srcW = Math.Max(1, rotated ? nativeH : nativeW);
+        double srcH = Math.Max(1, rotated ? nativeW : nativeH);
+        double aspect = srcW / srcH;
+
+        if (custom != null && custom.UseCustom)
+        {
+            double boxW = Math.Max(80, width * Math.Clamp(custom.WidthFraction, 0.25f, 1.0f));
+            double boxH = Math.Max(64, height * Math.Clamp(custom.HeightFraction, 0.20f, 1.0f));
+            double cDrawW, cDrawH;
+            if (settings.ScaleMode == GbcaScaleMode.StretchFill)
+            {
+                cDrawW = boxW;
+                cDrawH = boxH;
+            }
+            else if (settings.ScaleMode == GbcaScaleMode.IntegerPixelPerfect)
+            {
+                int k = Math.Max(1, (int)Math.Floor(Math.Min(boxW / srcW, boxH / srcH)));
+                cDrawW = Math.Min(boxW, srcW * k);
+                cDrawH = Math.Min(boxH, srcH * k);
+            }
+            else
+            {
+                if (boxW / boxH > aspect)
+                {
+                    cDrawH = boxH;
+                    cDrawW = cDrawH * aspect;
+                }
+                else
+                {
+                    cDrawW = boxW;
+                    cDrawH = cDrawW / aspect;
+                }
+            }
+            double cx = width * Math.Clamp(custom.CenterX, 0.10f, 0.90f);
+            double cy = height * Math.Clamp(custom.CenterY, 0.10f, 0.90f);
+            double left = Math.Clamp(cx - cDrawW * 0.5, 0, Math.Max(0, width - cDrawW));
+            double top = Math.Clamp(cy - cDrawH * 0.5, 0, Math.Max(0, height - cDrawH));
+            return new Rect(Math.Round(left), Math.Round(top), Math.Round(cDrawW), Math.Round(cDrawH));
+        }
+
+        bool none = IsSkinNone(platform, settings);
         double deckReserve = overlay.ShowControlsDeck ? Math.Clamp(height * 0.20, 76, 145) : 14;
 
         double padX = none ? 14 : Math.Clamp(width * 0.08, 28, 120);
@@ -117,9 +158,9 @@ public static class GbcaConsoleSkinRenderer
         }
         else if (settings.ScaleMode == GbcaScaleMode.IntegerPixelPerfect)
         {
-            int k = Math.Max(1, (int)Math.Floor(Math.Min(availW / nativeW, availH / nativeH)));
-            drawW = Math.Min(availW, nativeW * k);
-            drawH = Math.Min(availH, nativeH * k);
+            int k = Math.Max(1, (int)Math.Floor(Math.Min(availW / srcW, availH / srcH)));
+            drawW = Math.Min(availW, srcW * k);
+            drawH = Math.Min(availH, srcH * k);
         }
         else
         {
@@ -201,8 +242,9 @@ public static class GbcaConsoleSkinRenderer
             {
                 using var nonePaint = new SKPaint { Color = SKColor.Parse("#1F2937"), Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true };
                 canvas.DrawRoundRect(new SKRoundRect(new SKRect(12, 12, w - 12, h - 12), 10), nonePaint);
-                using var txtPaint = new SKPaint { Color = SKColor.Parse("#94A3B8"), TextSize = 13, IsAntialias = true, TextAlign = SKTextAlign.Center };
-                canvas.DrawText("БЕЗ КОРПУСА", w * 0.5f, h * 0.54f, txtPaint);
+                using var txtFont = new SKFont(SKTypeface.Default, 13f);
+                using var txtPaint = new SKPaint { Color = SKColor.Parse("#94A3B8"), IsAntialias = true };
+                canvas.DrawText("БЕЗ КОРПУСА", w * 0.5f, h * 0.54f, SKTextAlign.Center, txtFont, txtPaint);
             }
             return;
         }
@@ -357,16 +399,11 @@ public static class GbcaConsoleSkinRenderer
             StormPlatform.Gbc => "GAME BOY COLOR",
             _ => p.IsMicro ? "GAME BOY MICRO" : (p.IsSpClamshell ? "GAME BOY ADVANCE SP" : "GAME BOY ADVANCE"),
         };
-        using (var brandPaint = new SKPaint
+        using (var brandTypeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyleWeight.Bold, SKFontStyleWidth.Normal, SKFontStyleSlant.Italic))
+        using (var brandFont = new SKFont(brandTypeface, isPreview ? 7.5f : Math.Clamp(bezelPadBottom * 0.44f, 11f, 16f)))
+        using (var brandPaint = new SKPaint { Color = p.IsNeon ? p.AccentColor : SKColor.Parse("#CBD5E1"), IsAntialias = true })
         {
-            Color = p.IsNeon ? p.AccentColor : SKColor.Parse("#CBD5E1"),
-            TextSize = isPreview ? 7.5f : Math.Clamp(bezelPadBottom * 0.44f, 11f, 16f),
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyleWeight.Bold, SKFontStyleWidth.Normal, SKFontStyleSlant.Italic),
-            TextAlign = SKTextAlign.Center,
-            IsAntialias = true
-        })
-        {
-            canvas.DrawText(brandLabel, bezelRect.MidX, bezelRect.Bottom - (isPreview ? 4f : bezelPadBottom * 0.28f), brandPaint);
+            canvas.DrawText(brandLabel, bezelRect.MidX, bezelRect.Bottom - (isPreview ? 4f : bezelPadBottom * 0.28f), SKTextAlign.Center, brandFont, brandPaint);
         }
 
         // 8. Recessed LCD Inner Shadow or Preview Screen Mockup
@@ -384,8 +421,9 @@ public static class GbcaConsoleSkinRenderer
                 IsAntialias = true
             };
             canvas.DrawRect(lcdRect, lcdFill);
-            using var dot = new SKPaint { Color = p.AccentColor, TextSize = 9, TextAlign = SKTextAlign.Center, IsAntialias = true };
-            canvas.DrawText("STORM", lcdRect.MidX, lcdRect.MidY + 3, dot);
+            using var dotFont = new SKFont(SKTypeface.Default, 9f);
+            using var dotPaint = new SKPaint { Color = p.AccentColor, IsAntialias = true };
+            canvas.DrawText("STORM", lcdRect.MidX, lcdRect.MidY + 3, SKTextAlign.Center, dotFont, dotPaint);
         }
         else
         {

@@ -255,7 +255,43 @@ public class SettingsView : Grid
     private void BuildVideoTab(StackPanel p)
     {
         var s = StormGbcaUiState.Instance.Settings;
-        p.Children.Add(CreateSectionTitle("Цветокоррекция LCD, палитры DMG и шейдерные фильтры"));
+        p.Children.Add(CreateSectionTitle("Увеличение разрешения (1x..4x), апскейлинг и производительность"));
+        p.Children.Add(CreateCombo("Внутреннее увеличение разрешения (Internal Scale):",
+        [
+            "1x (Нативное разрешение)",
+            "2x HD (480x320 / 320x288)",
+            "3x Full HD (720x480 / 480x432)",
+            "4x Ultra HD (960x640 / 640x576)"
+        ], Math.Clamp(s.ResolutionScale - 1, 0, 3), i =>
+        {
+            s.ResolutionScale = i + 1;
+            if (s.ResolutionScale > 1 && s.UpscaleMode == StormUpscaleMode.None)
+            {
+                s.UpscaleMode = StormUpscaleMode.Xbrz;
+            }
+        }));
+
+        p.Children.Add(CreateCombo("Алгоритм апскейлинга изображения:",
+        [
+            "Nearest (Без сглаживания)",
+            "xBRZ HD (Сглаживание диагоналей)",
+            "Scale2x / EPX (Классический пиксель-арт)",
+            "MMPX Sharp (Четкие контуры)",
+            "LCD Subpixel HD (Субпиксельная сетка HD)",
+            "CRT Scanlines HD (ЭЛТ-развертка HD)"
+        ], (int)s.UpscaleMode, i =>
+        {
+            s.UpscaleMode = (StormUpscaleMode)i;
+            if (s.UpscaleMode != StormUpscaleMode.None && s.ResolutionScale < 2)
+            {
+                s.ResolutionScale = 2;
+            }
+        }));
+
+        p.Children.Add(CreateSlider("Разгон процессора консоли (CPU Overclock):", 50, 400, s.CpuOverclockPct, "%", v => s.CpuOverclockPct = Math.Clamp(((int)v / 25) * 25, 50, 400)));
+        p.Children.Add(CreateCombo("Пропуск кадров (Frame Skip):", ["Выкл (0)", "1 кадр", "2 кадра", "3 кадра", "4 кадра"], Math.Clamp(s.FrameSkip, 0, 4), i => s.FrameSkip = i));
+
+        p.Children.Add(CreateSectionTitle("Цветокоррекция LCD, палитры DMG и фильтры"));
         p.Children.Add(CreateCombo("Режим цветокоррекции (7 режимов + GBA):",
         [
             "Отключена (Сырой RGB)",
@@ -290,6 +326,7 @@ public class SettingsView : Grid
 
         p.Children.Add(CreateSlider("Инерционность матрицы LCD (Ghosting):", 0, 100, s.LcdGhosting, "%", v => s.LcdGhosting = (int)v));
         p.Children.Add(CreateCheck("Отображать декоративные рамки Super Game Boy (SGB)", s.SgbBorders, v => s.SgbBorders = v));
+        p.Children.Add(CreateCheck("Автоматически загружать обложки игр (Libretro Thumbnails)", s.AutoFetchCovers, v => s.AutoFetchCovers = v));
         p.Children.Add(CreateCheck("Показывать 3D-заставку STORM при запуске игры", s.Show3DBootSplash, v => s.Show3DBootSplash = v));
     }
 
@@ -453,14 +490,53 @@ public class SettingsView : Grid
     {
         var s = StormGbcaUiState.Instance.Settings;
         var ra = StormGbcaUiState.Instance.RetroAchievements;
-        p.Children.Add(CreateSectionTitle("Учетная запись RetroAchievements"));
-        p.Children.Add(CreateTextRow("Имя пользователя:", s.RetroAchievementsUsername, t => s.RetroAchievementsUsername = t));
-        p.Children.Add(CreateTextRow("Web API Token:", s.RetroAchievementsToken, t => s.RetroAchievementsToken = t));
+        p.Children.Add(CreateSectionTitle("Аккаунт RetroAchievements (Статус и очки)"));
 
-        var passBox = new TextBox { PlaceholderText = "Пароль для получения токена по API (не сохраняется)", PasswordChar = '*', Height = 32 };
-        var statusTxt = new TextBlock { Text = ra.IsLoggedIn ? $"Выполнен вход: {ra.Username}" : "Токен не получен", FontSize = 11.5, Foreground = StormThemeBrushes.AccentSecondary };
-        var loginBtn = new AuroraVolumetricButton { Height = 32, Width = 220, HorizontalAlignment = HorizontalAlignment.Left };
-        loginBtn.Content = new TextBlock { Text = "Войти через RetroAchievements", FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var statusBanner = new Border
+        {
+            Padding = new Thickness(14, 10),
+            CornerRadius = new CornerRadius(10),
+            Background = ra.IsLoggedIn
+                ? new SolidColorBrush(Color.FromArgb(40, 16, 185, 129))
+                : StormThemeBrushes.RowSurface,
+            BorderBrush = ra.IsLoggedIn ? new SolidColorBrush(Color.Parse("#10B981")) : StormThemeBrushes.SubtleBorder,
+            BorderThickness = new Thickness(1)
+        };
+        var statusCol = new StackPanel { Spacing = 4 };
+        var statusTitle = new TextBlock
+        {
+            Text = ra.IsLoggedIn ? $"Подключен: {ra.Username}" : "Аккаунт RetroAchievements не подключен",
+            FontSize = 13.5,
+            FontWeight = FontWeight.Bold,
+            Foreground = ra.IsLoggedIn ? new SolidColorBrush(Color.Parse("#34D399")) : StormThemeBrushes.PrimaryText
+        };
+        var statusSub = new TextBlock
+        {
+            Text = ra.IsLoggedIn
+                ? $"Hardcore: {ra.Points} pts  |  Softcore: {ra.SoftcorePoints} pts{(ra.Rank > 0 ? $"  |  Рейтинг: #{ra.Rank}" : "")}"
+                : "Введите логин и пароль RetroAchievements для синхронизации очков и трофеев",
+            FontSize = 11.5,
+            Foreground = StormThemeBrushes.SecondaryText
+        };
+        statusCol.Children.Add(statusTitle);
+        statusCol.Children.Add(statusSub);
+        statusBanner.Child = statusCol;
+        p.Children.Add(statusBanner);
+
+        p.Children.Add(CreateTextRow("Логин (Username):", s.RetroAchievementsUsername, t => s.RetroAchievementsUsername = t));
+
+        var passGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,260"), Margin = new Thickness(0, 4) };
+        passGrid.Children.Add(new TextBlock { Text = "Пароль (не сохраняется):", FontSize = 11.5, Foreground = StormThemeBrushes.BodyText, VerticalAlignment = VerticalAlignment.Center });
+        var passBox = new TextBox { PlaceholderText = "Введите пароль RetroAchievements", PasswordChar = '*', Height = 32 };
+        passGrid.Children.Add(passBox);
+        Grid.SetColumn(passBox, 1);
+        p.Children.Add(passGrid);
+
+        var statusTxt = new TextBlock { Text = ra.LastStatusMessage, FontSize = 11.5, Foreground = StormThemeBrushes.AccentSecondary };
+        var btnRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 4) };
+
+        var loginBtn = new AuroraVolumetricButton { IsHero = true, Height = 34, Padding = new Thickness(16, 0) };
+        loginBtn.Content = new TextBlock { Text = "Войти в RetroAchievements", FontSize = 12, FontWeight = FontWeight.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         loginBtn.Click += async (_, _) =>
         {
             statusTxt.Text = "Авторизация на retroachievements.org...";
@@ -471,35 +547,61 @@ public class SettingsView : Grid
                 {
                     s.RetroAchievementsUsername = ra.Username;
                     s.RetroAchievementsToken = ra.Token;
+                    s.RetroAchievementsPoints = ra.Points;
+                    s.RetroAchievementsSoftcorePoints = ra.SoftcorePoints;
+                    s.RetroAchievementsRank = ra.Rank;
                     CommitSave(true);
+                    LoadTab(_activeTabIndex);
                 }
-                statusTxt.Text = res.Message;
+                else
+                {
+                    statusTxt.Text = res.Message;
+                }
             });
         };
-        p.Children.Add(passBox);
-        p.Children.Add(loginBtn);
+        btnRow.Children.Add(loginBtn);
+
+        if (ra.IsLoggedIn)
+        {
+            var logoutBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(14, 0) };
+            logoutBtn.Content = new TextBlock { Text = "Выйти из аккаунта", FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Color.Parse("#F87171")), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            logoutBtn.Click += (_, _) =>
+            {
+                ra.Logout();
+                s.RetroAchievementsUsername = string.Empty;
+                s.RetroAchievementsToken = string.Empty;
+                s.RetroAchievementsPoints = 0;
+                s.RetroAchievementsSoftcorePoints = 0;
+                s.RetroAchievementsRank = 0;
+                CommitSave(true);
+                LoadTab(_activeTabIndex);
+            };
+            btnRow.Children.Add(logoutBtn);
+        }
+
+        p.Children.Add(btnRow);
         p.Children.Add(statusTxt);
 
-        p.Children.Add(CreateCheck("Хардкорный режим (запрещает загрузку состояний, перемотку и читы)", s.RetroAchievementsHardcoreMode, v => s.RetroAchievementsHardcoreMode = v));
+        p.Children.Add(CreateCheck("Режим Hardcore (запрещает загрузку состояний, перемотку и читы)", s.RetroAchievementsHardcoreMode, v => s.RetroAchievementsHardcoreMode = v));
         p.Children.Add(CreateCheck("Rich Presence статус активности", s.RetroAchievementsRichPresence, v => s.RetroAchievementsRichPresence = v));
     }
 
     private void BuildThemesTab(StackPanel p)
     {
         var s = StormGbcaUiState.Instance.Settings;
-        p.Children.Add(CreateSectionTitle("9 Динамических тем оформления STORM"));
+        p.Children.Add(CreateSectionTitle("9 Dynamic Themes (English Names)"));
 
-        (string Id, string Sub)[] themes =
+        (string Id, string Title, string Sub)[] themes =
         [
-            ("MIDNIGHT", "Аметистовая ночь"),
-            ("NIGHT", "Глубокий OLED"),
-            ("DARK", "Темный кибер"),
-            ("DAY", "Светлая тема"),
-            ("FANTASY", "Королевское золото"),
-            ("CYBERPUNK", "Неон Найт-Сити"),
-            ("WARHAMMER 40K", "Имперская готика"),
-            ("ELEMENTAL", "Изумрудный шторм"),
-            ("STORM", "Фирменный градиент")
+            ("MIDNIGHT", "STORM MIDNIGHT", "Deep Violet"),
+            ("NIGHT", "STORM NIGHT", "OLED Dark"),
+            ("DARK", "STORM DARK", "Slate Cyber"),
+            ("DAY", "STORM DAY", "Light Mode"),
+            ("FANTASY", "STORM FANTASY", "Royal Gold"),
+            ("CYBERPUNK", "STORM CYBERPUNK", "Night City Neon"),
+            ("WARHAMMER 40K", "STORM WARHAMMER 40K", "Imperial Gothic"),
+            ("ELEMENTAL", "STORM ELEMENTAL", "Emerald Matrix"),
+            ("STORM", "STORM AURORA", "Plasma Gradient")
         ];
 
         var themesGrid = new UniformGrid { Columns = 3 };
@@ -518,14 +620,14 @@ public class SettingsView : Grid
                 HorizontalContentAlignment = HorizontalAlignment.Center
             };
             var st = new StackPanel { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Center };
-            st.Children.Add(new TextBlock { Text = t.Id, FontSize = 11, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center });
+            st.Children.Add(new TextBlock { Text = t.Title, FontSize = 11, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center });
             st.Children.Add(new TextBlock { Text = t.Sub, FontSize = 9.5, Foreground = StormThemeBrushes.SecondaryText, HorizontalAlignment = HorizontalAlignment.Center });
             btn.Content = st;
             btn.Click += (_, _) =>
             {
                 AuroraTactileFeedbackService.Instance.PlayClick();
                 AuroraThemeManager.Instance.ApplyTheme(t.Id);
-                s.Theme = "STORM " + t.Id;
+                s.Theme = t.Title;
                 CommitSave();
             };
             themesGrid.Children.Add(btn);

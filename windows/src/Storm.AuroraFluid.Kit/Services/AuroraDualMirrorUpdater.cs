@@ -168,7 +168,7 @@ public sealed class AuroraDualMirrorUpdater
 
     static AuroraDualMirrorUpdater()
     {
-        s_httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM_GBCA-AuroraFluid-Updater/1.0.0 (Windows; Android; Linux)");
+        s_httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM_GBCA-AuroraFluid-Updater/1.1.0 (Windows; Android; Linux)");
     }
 
     public const string DefaultGitHubOwner = "ReiKatari";

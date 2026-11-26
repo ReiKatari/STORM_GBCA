@@ -1,6 +1,9 @@
 package com.stormgbca.emulator.ui.emulator.overlay
 
 import android.content.Intent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,14 +28,17 @@ import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,33 +50,59 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.documentfile.provider.DocumentFile
 import com.stormgbca.emulator.data.GbcaPrefs
+import com.stormgbca.emulator.data.ShaderRepository
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.OverlayLayoutPreset
 import com.stormgbca.emulator.ui.common.WatermelonSwitch
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.WatermelonMono
 import com.stormgbca.emulator.ui.theme.watermelon
+import kotlinx.coroutines.launch
 import ru.stormgames.gbca.NativeCore
 
 private val SHADER_OPTIONS = listOf(
     NativeCore.FILTER_RGB_SUBPIXEL to "SkyEmu ЖК-субпиксели",
     NativeCore.FILTER_LCD_GRID to "DMG Оливковая матрица / Сетка",
-    NativeCore.FILTER_SHARP_BILINEAR to "Чёткий билинейный (AGS-101)",
-    NativeCore.FILTER_CRT_SCANLINES to "CRT Строки развёртки",
+    NativeCore.FILTER_SHARP_BILINEAR to "Четкий билинейный (AGS-101)",
+    NativeCore.FILTER_CRT_SCANLINES to "CRT Строки развертки",
     NativeCore.FILTER_XBRZ_LITE to "xBRZ-Lite Сглаживание",
-    NativeCore.FILTER_NEAREST to "Чёткие пиксели (Nearest)",
+    NativeCore.FILTER_NEAREST to "Четкие пиксели (Nearest)",
     NativeCore.FILTER_BILINEAR to "Мягкое сглаживание (Bilinear)",
 )
 
 @Composable
 fun OverlayPickerDialog(
     initialSystem: ConsoleSystem,
+    onShaderChanged: ((ConsoleSystem, String) -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     val colors = watermelon
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var activeTab by remember { mutableStateOf(initialSystem) }
+    var shaderListTick by remember { mutableIntStateOf(0) }
+
+    val raPresets = remember(shaderListTick) { ShaderRepository.listPresets(context) }
+    val librashaderReady = remember { runCatching { NativeCore.nativeIsLibrashaderAvailable() }.getOrDefault(false) }
+
+    val shaderImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val docName = runCatching { DocumentFile.fromSingleUri(context, uri)?.name }.getOrNull()
+                val imported = ShaderRepository.importCustomShader(context, uri, docName)
+                if (imported != null) {
+                    GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(retroArchShaderPath = imported.path) }
+                    onShaderChanged?.invoke(activeTab, imported.path)
+                    shaderListTick++
+                    Toast.makeText(context, "Шейдер RetroArch добавлен: ${imported.name}", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Не удалось импортировать шейдер", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     val profile = when (activeTab) {
         ConsoleSystem.GB -> GbcaPrefs.gbOverlayState.value
@@ -106,8 +138,8 @@ fun OverlayPickerDialog(
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Управление и оверлей", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Независимые настройки для GB, GBC и GBA", color = colors.text2, fontSize = 11.sp)
+                        Text("Экран, оверлей и шейдеры", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Независимые профили для GB, GBC и GBA", color = colors.text2, fontSize = 11.sp)
                     }
                     Box(
                         modifier = Modifier
@@ -154,12 +186,12 @@ fun OverlayPickerDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 490.dp)
+                        .heightIn(max = 510.dp)
                         .verticalScroll(rememberScrollState())
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    // Open Drag-and-Drop Layout Editor
+                    // Open Interactive Screen Size + Position + Buttons Editor
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -177,7 +209,64 @@ fun OverlayPickerDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.OpenWith, contentDescription = null, tint = Color(0xFF05060A), modifier = Modifier.size(17.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Редактор позиций кнопок (${activeTab.label})", color = Color(0xFF05060A), fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Редактор экрана и кнопок (${activeTab.label})", color = Color(0xFF05060A), fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+
+                    // RetroArch .slangp Shader Selector (librashader)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Шейдер RetroArch .slangp (${activeTab.label})",
+                                color = colors.text2,
+                                fontFamily = WatermelonMono,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                if (librashaderReady) "librashader активен (GLES3 + Vulkan)" else "Встроенный fallback",
+                                color = if (librashaderReady) Color(0xFF22C55E) else colors.text3,
+                                fontSize = 10.sp,
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.greenDim)
+                                .border(1.dp, colors.green.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                .clickable { shaderImportLauncher.launch(arrayOf("*/*")) }
+                                .padding(horizontal = 9.dp, vertical = 5.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Add, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Импорт .slangp", color = colors.green, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        raPresets.forEach { preset ->
+                            val selected = profile.retroArchShaderPath == preset.path
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (selected) colors.greenDim else colors.surface2)
+                                    .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(retroArchShaderPath = preset.path) }
+                                        onShaderChanged?.invoke(activeTab, preset.path)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(preset.name, color = if (selected) colors.green else colors.text, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(preset.description, color = colors.text3, fontSize = 10.sp)
+                                }
+                                if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = colors.green, modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
 
@@ -244,8 +333,8 @@ fun OverlayPickerDialog(
                         }
                     }
 
-                    // Shader Overlay
-                    Text("Экранный фильтр (${activeTab.label})", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    // Built-in GLSL Shader Overlay (used when RetroArch preset is Off)
+                    Text("Встроенный фильтр (${activeTab.label})", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         SHADER_OPTIONS.forEach { (mode, title) ->
                             val selected = profile.shaderOverlay == mode

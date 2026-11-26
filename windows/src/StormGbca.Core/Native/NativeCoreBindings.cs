@@ -118,6 +118,28 @@ public enum StormMemoryRegion : int
     SystemBus = 9,
 }
 
+public enum StormUpscaleMode : int
+{
+    None = 0,
+    Xbrz = 1,
+    ScaleEpx = 2,
+    Mmpx = 3,
+    LcdHd = 4,
+    CrtHd = 5,
+}
+
+public enum StormSearchCmp : int
+{
+    Eq = 0,
+    Neq = 1,
+    Gt = 2,
+    Lt = 3,
+    Changed = 4,
+    Unchanged = 5,
+    Increased = 6,
+    Decreased = 7,
+}
+
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct StormGbcaRomInfo
 {
@@ -455,4 +477,29 @@ public static unsafe class NativeCoreBindings
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern byte* storm_gbca_get_dmg_palette_name(int index);
+
+    // v1.1.0 Upscaling, Performance, Memory Write & RAM Cheat Finder
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_write_memory(nint ctx, int region, uint addr, byte* src, nuint len);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void storm_gbca_set_upscale(nint ctx, int scale_1_to_4, int upscale_mode);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void storm_gbca_get_upscaled_size(nint ctx, int* out_w, int* out_h);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_copy_upscaled_frame(nint ctx, uint* dst, int dst_stride_px, int pixel_format, int* out_w, int* out_h);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void storm_gbca_set_performance(nint ctx, int cpu_overclock_pct, int frame_skip);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_mem_search_reset(nint ctx, int region, int value_size_bytes);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_mem_search_filter(nint ctx, int cmp_op, uint target_value);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_mem_search_get_results(nint ctx, uint* out_addrs, uint* out_vals, int max_results);
 }

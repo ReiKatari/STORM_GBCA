@@ -249,6 +249,10 @@ public class SingleScreenSessionView : Grid
         _lcdImage.Width = vp.Width;
         _lcdImage.Height = vp.Height;
         _lcdImage.Margin = new Thickness(vp.X, vp.Y, 0, 0);
+        var activeProf = settings.GetOverlayProfileForPlatform(plat);
+        int rot = activeProf.ScreenRect?.RotationDeg ?? 0;
+        _lcdImage.RenderTransformOrigin = RelativePoint.Center;
+        _lcdImage.RenderTransform = rot != 0 ? new RotateTransform(rot) : null;
 
         var interp = settings.VideoFilter is StormVideoFilter.Nearest or StormVideoFilter.LcdGrid or StormVideoFilter.RgbSubpixel
             ? BitmapInterpolationMode.None

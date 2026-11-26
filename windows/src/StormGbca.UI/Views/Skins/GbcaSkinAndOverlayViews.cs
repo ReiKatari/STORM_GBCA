@@ -269,6 +269,111 @@ public class GbcaSkinAndOverlayViews : Grid
         overlayCard.Content = ovGrid;
         _bodyStack.Children.Add(overlayCard);
         UpdateOverlayPreview(plat, prof);
+
+        // 3. Per-System Screen Size, Position, Rotation & RetroArch Shader Preset
+        var scr = prof.ScreenRect ?? new ScreenRectSettings();
+        prof.ScreenRect = scr;
+
+        var screenCard = new AuroraGlassCard { Padding = new Thickness(16), SpotlightEnabled = true };
+        var screenStack = new StackPanel { Spacing = 8 };
+        screenStack.Children.Add(new TextBlock
+        {
+            Text = $"РАЗМЕР, РАСПОЛОЖЕНИЕ ЭКРАНА И ШЕЙДЕР RETROARCH ДЛЯ {plat}",
+            FontSize = 11.5,
+            FontWeight = FontWeight.Bold,
+            Foreground = StormThemeBrushes.Accent
+        });
+
+        var customCheck = new AuroraNeonCheckBox { Label = "Включить пользовательский размер и позицию экрана", IsChecked = scr.UseCustom };
+        customCheck.IsCheckedChanged += (_, v) =>
+        {
+            scr.UseCustom = v;
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+        };
+        screenStack.Children.Add(customCheck);
+
+        screenStack.Children.Add(CreateSlider("Ширина экрана (%):", 25, 100, Math.Round(scr.WidthFraction * 100), "%", v =>
+        {
+            scr.UseCustom = true;
+            scr.WidthFraction = (float)(v / 100.0);
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+        }));
+        screenStack.Children.Add(CreateSlider("Высота экрана (%):", 20, 100, Math.Round(scr.HeightFraction * 100), "%", v =>
+        {
+            scr.UseCustom = true;
+            scr.HeightFraction = (float)(v / 100.0);
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+        }));
+        screenStack.Children.Add(CreateSlider("Позиция X (центр %):", 10, 90, Math.Round(scr.CenterX * 100), "%", v =>
+        {
+            scr.UseCustom = true;
+            scr.CenterX = (float)(v / 100.0);
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+        }));
+        screenStack.Children.Add(CreateSlider("Позиция Y (центр %):", 10, 90, Math.Round(scr.CenterY * 100), "%", v =>
+        {
+            scr.UseCustom = true;
+            scr.CenterY = (float)(v / 100.0);
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+        }));
+
+        int[] rotAngles = [0, 90, 180, 270];
+        int rotIdx = Math.Max(0, Array.IndexOf(rotAngles, scr.RotationDeg));
+        screenStack.Children.Add(CreateCombo("Поворот экрана:", ["0 градусов", "90 градусов", "180 градусов", "270 градусов"], rotIdx, idx =>
+        {
+            scr.RotationDeg = rotAngles[Math.Clamp(idx, 0, rotAngles.Length - 1)];
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+        }));
+
+        // RetroArch .slangp shader presets installed in shaders/
+        var shaderFiles = DiscoverRetroArchShaders();
+        var shaderLabels = new List<string> { "Отключен (Встроенный шейдер)" };
+        shaderLabels.AddRange(shaderFiles.Select(Path.GetFileNameWithoutExtension)!);
+        int shaderIdx = 0;
+        if (!string.IsNullOrWhiteSpace(prof.RetroArchShaderPath))
+        {
+            int found = shaderFiles.FindIndex(f => string.Equals(f, prof.RetroArchShaderPath, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(Path.GetFileName(f), Path.GetFileName(prof.RetroArchShaderPath), StringComparison.OrdinalIgnoreCase));
+            if (found >= 0) shaderIdx = found + 1;
+        }
+        screenStack.Children.Add(CreateCombo("Шейдер RetroArch (.slangp):", shaderLabels.ToArray(), shaderIdx, idx =>
+        {
+            prof.RetroArchShaderPath = idx == 0 ? string.Empty : shaderFiles[idx - 1];
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+        }));
+
+        var resetBtn = new AuroraVolumetricButton { Height = 32, Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
+        resetBtn.Content = new TextBlock { Text = "Сбросить геометрию экрана", FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        resetBtn.Click += (_, _) =>
+        {
+            prof.ScreenRect = new ScreenRectSettings();
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+            RefreshBody();
+        };
+        screenStack.Children.Add(resetBtn);
+
+        screenCard.Content = screenStack;
+        _bodyStack.Children.Add(screenCard);
+    }
+
+    private static List<string> DiscoverRetroArchShaders()
+    {
+        var dirs = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "shaders"),
+            Path.Combine(AppContext.BaseDirectory, "assets", "shaders"),
+            @"F:\STORM GBCA\windows\assets\shaders"
+        };
+        foreach (string dir in dirs)
+        {
+            if (Directory.Exists(dir))
+            {
+                return Directory.EnumerateFiles(dir, "*.slangp", SearchOption.TopDirectoryOnly)
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+        }
+        return [];
     }
 
     private void UpdateOverlayPreview(StormPlatform plat, SystemOverlayProfile prof)

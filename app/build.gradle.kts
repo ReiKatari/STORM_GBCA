@@ -69,8 +69,8 @@ android {
         applicationId = "com.stormgbca.emulator"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10000
-        versionName = "1.0.0"
+        versionCode = 10100
+        versionName = "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -193,9 +193,9 @@ tasks.register("copyNamedReleaseApk") {
     doLast {
         val releaseDir = layout.buildDirectory.dir("outputs/apk/release").get().asFile
         val defaultApk = File(releaseDir, "app-release.apk")
-        val targetApk = File(releaseDir, "STORM_GBCA_1.0.0.apk")
+        val targetApk = File(releaseDir, "STORM_GBCA_1.1.0.apk")
         val releasesDir = rootDir.resolve("releases").apply { mkdirs() }
-        val persistentApk = File(releasesDir, "STORM_GBCA_1.0.0.apk")
+        val persistentApk = File(releasesDir, "STORM_GBCA_1.1.0.apk")
         if (defaultApk.exists()) {
             defaultApk.copyTo(targetApk, overwrite = true)
             defaultApk.copyTo(persistentApk, overwrite = true)

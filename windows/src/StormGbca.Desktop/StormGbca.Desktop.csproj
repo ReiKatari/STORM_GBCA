@@ -8,9 +8,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>STORM GBCA</AssemblyName>
     <RootNamespace>StormGbca.Desktop</RootNamespace>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
     <Company>STORM TEAM</Company>
     <Product>STORM GBCA</Product>
     <ApplicationIcon>..\..\..\assets\AppIcon.ico</ApplicationIcon>
@@ -38,6 +38,7 @@
     <None Include="..\..\..\core\build_win\storm_gbca_core.dll" Link="storm_gbca_core.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\..\core\build_win\storm_gbca_core.dll')" />
     <None Include="..\..\..\assets\AppIcon.ico" Link="assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\..\assets\AppIcon.ico')" />
     <None Include="..\..\..\assets\icon_512.png" Link="assets\icon_512.png" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\..\assets\icon_512.png')" />
+    <None Include="..\..\assets\shaders\**\*.*" Link="shaders\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\assets\shaders')" />
   </ItemGroup>
 
 </Project>

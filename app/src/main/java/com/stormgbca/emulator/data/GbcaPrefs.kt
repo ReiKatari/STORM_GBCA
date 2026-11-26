@@ -235,11 +235,46 @@ object GbcaPrefs {
     fun getRaUsername(): String = prefs.getString("ra_username", "") ?: ""
     fun getRaToken(): String = prefs.getString("ra_token", "") ?: ""
     fun isRaHardcore(): Boolean = prefs.getBoolean("ra_hardcore", false)
+    fun isRaEncore(): Boolean = prefs.getBoolean("ra_encore", false)
+    fun isRaUnofficial(): Boolean = prefs.getBoolean("ra_unofficial", false)
+    fun isRaNotifications(): Boolean = prefs.getBoolean("ra_notifications", true)
+    fun getRaPoints(): Int = prefs.getInt("ra_points", 0)
+    fun getRaSoftcorePoints(): Int = prefs.getInt("ra_softcore_points", 0)
+    fun getRaRank(): Int = prefs.getInt("ra_rank", 0)
+    fun getRaMotto(): String = prefs.getString("ra_motto", "") ?: ""
+
     fun setRaCredentials(username: String, token: String) {
         prefs.edit().putString("ra_username", username).putString("ra_token", token).apply()
     }
+    fun setRaProfileStats(points: Int, softcorePoints: Int, rank: Int, motto: String) {
+        prefs.edit()
+            .putInt("ra_points", points)
+            .putInt("ra_softcore_points", softcorePoints)
+            .putInt("ra_rank", rank)
+            .putString("ra_motto", motto)
+            .apply()
+    }
     fun setRaHardcore(hardcore: Boolean) {
         prefs.edit().putBoolean("ra_hardcore", hardcore).apply()
+    }
+    fun setRaEncore(encore: Boolean) {
+        prefs.edit().putBoolean("ra_encore", encore).apply()
+    }
+    fun setRaUnofficial(unofficial: Boolean) {
+        prefs.edit().putBoolean("ra_unofficial", unofficial).apply()
+    }
+    fun setRaNotifications(enabled: Boolean) {
+        prefs.edit().putBoolean("ra_notifications", enabled).apply()
+    }
+    fun clearRaAccount() {
+        prefs.edit()
+            .remove("ra_username")
+            .remove("ra_token")
+            .remove("ra_points")
+            .remove("ra_softcore_points")
+            .remove("ra_rank")
+            .remove("ra_motto")
+            .apply()
     }
 
     fun getSkippedUpdateVersion(): String = prefs.getString("skipped_update_version", "") ?: ""

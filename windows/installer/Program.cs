@@ -23,7 +23,7 @@ namespace StormGbca.Installer;
 
 public static class Program
 {
-    public const string AppVersion = "1.0.0";
+    public const string AppVersion = "1.1.0";
 
     public static string GetDefaultInstallDirectory(bool perMachine)
     {

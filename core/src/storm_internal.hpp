@@ -111,6 +111,36 @@ bool apply_soft_patch(const uint8_t* rom, size_t rom_size,
                       const uint8_t* patch, size_t patch_size,
                       std::vector<uint8_t>& out_rom);
 
+// High-resolution pixel upscaler (1x..4x: xBRZ, EPX/Scale2x, MMPX, LCD HD, CRT HD)
+void upscale_rgba_frame(const uint32_t* src, int sw, int sh,
+                        int scale, int mode,
+                        std::vector<uint32_t>& out, int& out_w, int& out_h);
+
+// Live RAM Cheat Finder session
+class MemSearchSession {
+public:
+    struct Candidate {
+        uint32_t offset = 0;
+        uint32_t last_val = 0;
+    };
+
+    void reset(int region, int value_size, const uint8_t* mem, size_t mem_len);
+    int filter(int op, uint32_t target, const uint8_t* mem, size_t mem_len);
+    int get_results(uint32_t* out_addrs, uint32_t* out_vals, int max_count,
+                    const uint8_t* mem, size_t mem_len) const;
+    int region() const { return region_; }
+    int value_size() const { return value_size_; }
+    int count() const { return static_cast<int>(candidates_.size()); }
+    bool initialized() const { return initialized_; }
+
+private:
+    int region_ = STORM_MEM_WRAM;
+    int value_size_ = 1;
+    bool initialized_ = false;
+    std::vector<uint8_t> prev_snapshot_;
+    std::vector<Candidate> candidates_;
+};
+
 // Cheat normalization (GameShark / ActionReplay / CodeBreaker / GameGenie / Raw)
 struct NormalizedCheatLine {
     std::string code;

@@ -10,6 +10,10 @@
 
 namespace storm {
 
+extern bool librashader_apply_gl(GLuint src_tex, uint32_t src_w, uint32_t src_h,
+                                 int vp_x, int vp_y, uint32_t vp_w, uint32_t vp_h, int rotation_deg);
+extern void librashader_reset_gl();
+
 static std::string strip_version_directive(const std::string& src) {
     std::string out = src;
     size_t pos = 0;
@@ -176,6 +180,13 @@ public:
             has_prev_ = true;
         }
 
+        // First try full RetroArch .slangp multi-pass shader via librashader if preset is active!
+        if (librashader_apply_gl(tex_[cur_tex_], static_cast<uint32_t>(w), static_cast<uint32_t>(h),
+                                 vp_x, vp_y, static_cast<uint32_t>(vp_w), static_cast<uint32_t>(vp_h), rotation_deg_)) {
+            cur_tex_ = prev;
+            return;
+        }
+
         glViewport(vp_x, vp_y, vp_w, vp_h);
         glUseProgram(prog_);
 
@@ -206,7 +217,12 @@ public:
         cur_tex_ = prev;
     }
 
+    void set_rotation(int deg) {
+        rotation_deg_ = ((deg % 360) + 360) % 360;
+    }
+
     void destroy() {
+        librashader_reset_gl();
         if (vbo_) { glDeleteBuffers(1, &vbo_); vbo_ = 0; }
         if (vao_) { glDeleteVertexArrays(1, &vao_); vao_ = 0; }
         if (tex_[0] || tex_[1]) { glDeleteTextures(2, tex_); tex_[0] = tex_[1] = 0; }
@@ -227,6 +243,7 @@ private:
     int last_h_ = 0;
     int surface_w_ = 1;
     int surface_h_ = 1;
+    int rotation_deg_ = 0;
 
     GLint loc_tex_ = -1;
     GLint loc_prev_tex_ = -1;
@@ -247,6 +264,7 @@ static Gles3Renderer g_gles3;
 
 bool gles_init(const std::string& shader_source) { return g_gles3.init(shader_source); }
 void gles_resize(int w, int h) { g_gles3.resize(w, h); }
+void gles_set_rotation(int deg) { g_gles3.set_rotation(deg); }
 void gles_render(const uint32_t* rgba, int w, int h, int vp_x, int vp_y, int vp_w, int vp_h,
                  int display_mode, float ghosting, float cc_strength, bool is_grayscale, bool integer_scaling) {
     g_gles3.render(rgba, w, h, vp_x, vp_y, vp_w, vp_h, display_mode, ghosting, cc_strength, is_grayscale, integer_scaling);

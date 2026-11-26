@@ -125,13 +125,17 @@ set(STORM_CORE_SRC
     src/storm_rewind.cpp
     src/storm_patcher.cpp
     src/storm_cheats.cpp
+    src/storm_upscaler.cpp
+    src/storm_mem_search.cpp
 )
 
 if(ANDROID)
     list(APPEND STORM_CORE_SRC
         jni/storm_gbca_jni.cpp
         jni/storm_oboe_audio.cpp
+        jni/storm_librashader.cpp
         jni/storm_gles3_renderer.cpp
+        jni/storm_vulkan_renderer.cpp
     )
 endif()
 
@@ -145,12 +149,13 @@ target_include_directories(storm_gbca_core
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party/mgba/src"
         "${CMAKE_CURRENT_BINARY_DIR}/third_party/mgba/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rcheevos/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/librashader"
 )
 target_compile_definitions(storm_gbca_core PRIVATE STORM_GBCA_EXPORTS M_CORE_GB M_CORE_GBA ${MGBA_COMPILE_DEFS})
 target_link_libraries(storm_gbca_core PRIVATE mgba sameboy_core rcheevos)
 
 if(ANDROID)
-    target_link_libraries(storm_gbca_core PRIVATE oboe GLESv3 EGL android log z)
+    target_link_libraries(storm_gbca_core PRIVATE oboe GLESv3 EGL android log z dl)
     target_link_options(storm_gbca_core PRIVATE "-Wl,-z,max-page-size=16384")
 elseif(WIN32)
     target_link_libraries(storm_gbca_core PRIVATE ws2_32 shlwapi)

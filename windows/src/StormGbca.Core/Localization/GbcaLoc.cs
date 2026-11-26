@@ -13,7 +13,7 @@ public sealed record GbcaLanguageInfo(string Code, string NativeName, string Eng
 /// </summary>
 public static class GbcaLoc
 {
-    public const string AppVersion = "1.0.0";
+    public const string AppVersion = "1.1.0";
 
     public static event Action<string>? LanguageChanged;
 

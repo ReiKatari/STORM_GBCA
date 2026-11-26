@@ -143,6 +143,8 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         lock (_coreLock)
         {
             NativeCoreBindings.storm_gbca_set_config(_ctx, &cfg);
+            NativeCoreBindings.storm_gbca_set_upscale(_ctx, Math.Clamp(settings.ResolutionScale, 1, 4), (int)settings.UpscaleMode);
+            NativeCoreBindings.storm_gbca_set_performance(_ctx, Math.Clamp(settings.CpuOverclockPct, 50, 400), Math.Clamp(settings.FrameSkip, 0, 4));
             NativeCoreBindings.storm_gbca_set_solar_lux(_ctx, settings.SolarLuxLevel);
             NativeCoreBindings.storm_gbca_set_rtc(_ctx, settings.UseHostRtc ? 1 : 0, 0);
             RefreshVideoInfoLocked();
@@ -557,6 +559,52 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         }
     }
 
+    public int MemSearchReset(StormMemoryRegion region, int valueSizeBytes)
+    {
+        lock (_coreLock)
+        {
+            return _ctx != nint.Zero ? NativeCoreBindings.storm_gbca_mem_search_reset(_ctx, (int)region, valueSizeBytes) : 0;
+        }
+    }
+
+    public int MemSearchFilter(StormSearchCmp cmpOp, uint targetValue)
+    {
+        lock (_coreLock)
+        {
+            return _ctx != nint.Zero ? NativeCoreBindings.storm_gbca_mem_search_filter(_ctx, (int)cmpOp, targetValue) : 0;
+        }
+    }
+
+    public List<(uint Offset, uint Value)> MemSearchGetResults(int maxResults = 64)
+    {
+        var list = new List<(uint, uint)>();
+        lock (_coreLock)
+        {
+            if (_ctx == nint.Zero) return list;
+            int cap = Math.Clamp(maxResults, 1, 256);
+            uint* addrs = stackalloc uint[cap];
+            uint* vals = stackalloc uint[cap];
+            int count = NativeCoreBindings.storm_gbca_mem_search_get_results(_ctx, addrs, vals, cap);
+            for (int i = 0; i < count; i++) list.Add((addrs[i], vals[i]));
+        }
+        return list;
+    }
+
+    public bool WriteMemoryValue(StormMemoryRegion region, uint offset, uint value, int sizeBytes)
+    {
+        lock (_coreLock)
+        {
+            if (_ctx == nint.Zero) return false;
+            int sz = Math.Clamp(sizeBytes, 1, 4);
+            byte* buf = stackalloc byte[4];
+            buf[0] = (byte)(value & 0xFF);
+            buf[1] = (byte)((value >> 8) & 0xFF);
+            buf[2] = (byte)((value >> 16) & 0xFF);
+            buf[3] = (byte)((value >> 24) & 0xFF);
+            return NativeCoreBindings.storm_gbca_write_memory(_ctx, (int)region, offset, buf, (nuint)sz) == 0;
+        }
+    }
+
     private void RefreshVideoInfoLocked()
     {
         if (_ctx == nint.Zero) return;
@@ -564,6 +612,9 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         float fps = 0f;
         if (NativeCoreBindings.storm_gbca_get_video_info(_ctx, &w, &h, &fps) == 0 && w > 0 && h > 0)
         {
+            int upW = w, upH = h;
+            NativeCoreBindings.storm_gbca_get_upscaled_size(_ctx, &upW, &upH);
+            if (upW > 0 && upH > 0) { w = upW; h = upH; }
             lock (_frameLock)
             {
                 _frameWidth = w;
@@ -578,15 +629,20 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
     private void CopyFrameLocked()
     {
         if (_ctx == nint.Zero) return;
+        int upW = 0, upH = 0;
+        NativeCoreBindings.storm_gbca_get_upscaled_size(_ctx, &upW, &upH);
         lock (_frameLock)
         {
-            int w = _frameWidth;
-            int h = _frameHeight;
+            int w = upW > 0 ? upW : _frameWidth;
+            int h = upH > 0 ? upH : _frameHeight;
+            _frameWidth = w;
+            _frameHeight = h;
             int need = w * h * 4;
             if (_frameBgra.Length != need) _frameBgra = new byte[need];
             fixed (byte* dst = _frameBgra)
             {
-                NativeCoreBindings.storm_gbca_copy_frame(_ctx, (uint*)dst, w, (int)StormPixelFormat.Bgra8888);
+                int outW = w, outH = h;
+                NativeCoreBindings.storm_gbca_copy_upscaled_frame(_ctx, (uint*)dst, w, (int)StormPixelFormat.Bgra8888, &outW, &outH);
             }
         }
     }

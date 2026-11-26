@@ -1,7 +1,6 @@
 package com.stormgbca.emulator.ui.settings
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
 import android.widget.Toast
@@ -22,32 +21,29 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
-import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
-import androidx.compose.material.TextFieldDefaults
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Gamepad
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,15 +52,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import com.stormgbca.emulator.BuildConfig
 import com.stormgbca.emulator.data.GbcaPrefs
-import com.stormgbca.emulator.data.RetroAchievementsClient
 import com.stormgbca.emulator.data.RomRepository
+import com.stormgbca.emulator.data.ShaderRepository
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.PhysicalAction
 import com.stormgbca.emulator.ui.common.UnifiedBackButton
@@ -72,8 +68,10 @@ import com.stormgbca.emulator.ui.common.WatermelonCard
 import com.stormgbca.emulator.ui.common.WatermelonRowSeparator
 import com.stormgbca.emulator.ui.common.WatermelonSectionLabel
 import com.stormgbca.emulator.ui.common.WatermelonSwitch
+import com.stormgbca.emulator.ui.emulator.overlay.LayoutEditorActivity
 import com.stormgbca.emulator.ui.emulator.overlay.OverlayPickerDialog
 import com.stormgbca.emulator.ui.emulator.skin.ConsoleSkinPickerDialog
+import com.stormgbca.emulator.ui.ra.RetroAchievementsAccountDialog
 import com.stormgbca.emulator.ui.theme.ACCENT_PRESETS
 import com.stormgbca.emulator.ui.theme.AppThemeManager
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
@@ -91,6 +89,8 @@ import ru.stormgames.gbca.NativeCore
 class SettingsActivity : AppCompatActivity() {
     private val awaitingActionState = mutableStateOf<PhysicalAction?>(null)
     private var pendingBiosTarget: String? = null
+    private var pendingShaderSystem: ConsoleSystem = ConsoleSystem.GBA
+    private val shaderRefreshTick = mutableIntStateOf(0)
 
     private val biosPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val target = pendingBiosTarget ?: return@registerForActivityResult
@@ -108,7 +108,33 @@ class SettingsActivity : AppCompatActivity() {
                             else -> cfg
                         }
                     }
-                    Toast.makeText(this@SettingsActivity, "BIOS сохранён: ${f.name}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@SettingsActivity, "BIOS сохранен: ${f.name}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private val driverPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            lifecycleScope.launch {
+                val f = RomRepository.materializeUriToCache(this@SettingsActivity, uri, "vulkan_drivers")
+                if (f != null) {
+                    GbcaPrefs.updateCoreConfig { it.copy(customVulkanDriverPath = f.absolutePath) }
+                    Toast.makeText(this@SettingsActivity, "Драйвер Vulkan сохранен: ${f.name}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private val shaderImportPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            lifecycleScope.launch {
+                val docName = runCatching { DocumentFile.fromSingleUri(this@SettingsActivity, uri)?.name }.getOrNull()
+                val imported = ShaderRepository.importCustomShader(this@SettingsActivity, uri, docName)
+                if (imported != null) {
+                    GbcaPrefs.updateOverlayProfile(pendingShaderSystem) { it.copy(retroArchShaderPath = imported.path) }
+                    shaderRefreshTick.intValue++
+                    Toast.makeText(this@SettingsActivity, "Шейдер RetroArch установлен (${pendingShaderSystem.label}): ${imported.name}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -125,21 +151,48 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        supportActionBar?.hide()
         AppThemeManager.applyEdgeToEdgeTheme(this)
+        AppThemeManager.applyImmersiveFullscreen(this)
 
         setContent {
             StormWatermelonTheme {
                 SettingsScreen(
                     awaitingAction = awaitingActionState.value,
+                    shaderTick = shaderRefreshTick.intValue,
                     onBack = { finish() },
                     onPickBios = { target ->
                         pendingBiosTarget = target
                         biosPicker.launch(arrayOf("*/*"))
                     },
+                    onPickVulkanDriver = { driverPicker.launch(arrayOf("*/*")) },
+                    onImportShader = { sys ->
+                        pendingShaderSystem = sys
+                        shaderImportPicker.launch(arrayOf("*/*"))
+                    },
+                    onOpenLayoutEditor = { sys ->
+                        val intent = Intent(this@SettingsActivity, LayoutEditorActivity::class.java).apply {
+                            putExtra("system", sys.name)
+                        }
+                        startActivity(intent)
+                    },
                     onStartBindKey = { action -> awaitingActionState.value = action },
                     onExportBackup = { backupExportPicker.launch("storm_gbca_backup.json") },
                 )
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        supportActionBar?.hide()
+        AppThemeManager.applyImmersiveFullscreen(this)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            AppThemeManager.applyImmersiveFullscreen(this)
         }
     }
 
@@ -158,8 +211,12 @@ class SettingsActivity : AppCompatActivity() {
 @Composable
 private fun SettingsScreen(
     awaitingAction: PhysicalAction?,
+    shaderTick: Int,
     onBack: () -> Unit,
     onPickBios: (String) -> Unit,
+    onPickVulkanDriver: () -> Unit,
+    onImportShader: (ConsoleSystem) -> Unit,
+    onOpenLayoutEditor: (ConsoleSystem) -> Unit,
     onStartBindKey: (PhysicalAction) -> Unit,
     onExportBackup: () -> Unit,
 ) {
@@ -170,23 +227,42 @@ private fun SettingsScreen(
 
     var skinDialogSystem by remember { mutableStateOf<ConsoleSystem?>(null) }
     var overlayDialogSystem by remember { mutableStateOf<ConsoleSystem?>(null) }
+    var shaderTabSystem by remember { mutableStateOf(ConsoleSystem.GBA) }
     var showInputDialog by remember { mutableStateOf(false) }
     var showRaDialog by remember { mutableStateOf(false) }
+    var raRefreshTick by remember { mutableIntStateOf(0) }
     var foundUpdate by remember { mutableStateOf<UpdateReleaseInfo?>(null) }
     var downloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
+
+    val vkSupported = remember { runCatching { NativeCore.nativeIsVulkanSupported() }.getOrDefault(false) }
+    val vkGpuName = remember { runCatching { NativeCore.nativeGetVulkanDeviceName() }.getOrDefault("") }
+    val librashaderReady = remember { runCatching { NativeCore.nativeIsLibrashaderAvailable() }.getOrDefault(false) }
+    val shaderPresets = remember(shaderTick) { ShaderRepository.listPresets(context) }
+
+    val raSubtitle = remember(raRefreshTick) {
+        val u = GbcaPrefs.getRaUsername()
+        val tok = GbcaPrefs.getRaToken()
+        if (u.isNotBlank() && tok.isNotBlank()) {
+            val pts = GbcaPrefs.getRaPoints()
+            val mode = if (GbcaPrefs.isRaHardcore()) "Hardcore" else "Softcore"
+            "Подключен: $u ($pts pts | $mode)"
+        } else {
+            "Не авторизован - нажмите для входа"
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
-            .systemBarsPadding(),
+            .padding(top = 8.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             UnifiedBackButton(onClick = onBack)
             Spacer(Modifier.width(14.dp))
@@ -202,7 +278,7 @@ private fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 6.dp),
         ) {
-            WatermelonSectionLabel("Тема и оформление (9 тем + 12 акцентов)")
+            WatermelonSectionLabel("Themes & Style (9 Themes + 12 Accents)")
             WatermelonCard {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
@@ -220,7 +296,7 @@ private fun SettingsScreen(
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                             ) {
                                 Text(
-                                    text = t.displayNameRu,
+                                    text = t.displayName,
                                     color = if (selected) Color(0xFF05060A) else colors.text,
                                     fontFamily = SpaceGrotesk,
                                     fontSize = 12.sp,
@@ -265,16 +341,259 @@ private fun SettingsScreen(
                         }
                     }
 
-                    SettingsSwitchRow("3D заставка при запуске", cfg.showBootSplash) { c ->
-                        GbcaPrefs.updateCoreConfig { it.copy(showBootSplash = c) }
+                    SettingsSwitchRow("Автозагрузка обложек (Libretro)", cfg.autoFetchCovers) { c ->
+                        GbcaPrefs.updateCoreConfig { it.copy(autoFetchCovers = c) }
                     }
                 }
             }
 
-            WatermelonSectionLabel("Персонализация по консолям (GB / GBC / GBA)")
+            WatermelonSectionLabel("Графика, Vulkan 1.1 и апскейлинг")
+            WatermelonCard {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Графический API", color = colors.text2, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(0 to "OpenGL ES 3.2", 1 to "Vulkan 1.1").forEach { (id, title) ->
+                            val enabled = id == 0 || vkSupported
+                            val sel = cfg.graphicsBackend == id
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (sel) colors.green else colors.surface2)
+                                    .border(1.dp, if (sel) colors.green else colors.line, RoundedCornerShape(10.dp))
+                                    .clickable(enabled = enabled) {
+                                        GbcaPrefs.updateCoreConfig { it.copy(graphicsBackend = id) }
+                                    }
+                                    .padding(vertical = 9.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    title,
+                                    color = if (!enabled) colors.text3 else if (sel) Color(0xFF05060A) else colors.text,
+                                    fontFamily = SpaceGrotesk,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                    if (vkGpuName.isNotBlank()) {
+                        Text(
+                            text = "GPU Vulkan: $vkGpuName",
+                            color = if (vkSupported) Color(0xFF22C55E) else colors.text3,
+                            fontFamily = WatermelonMono,
+                            fontSize = 10.5.sp,
+                        )
+                    }
+                    if (cfg.graphicsBackend == 1) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(colors.surface2)
+                                    .border(1.dp, colors.line, RoundedCornerShape(9.dp))
+                                    .clickable(onClick = onPickVulkanDriver)
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                            ) {
+                                Text(
+                                    text = if (cfg.customVulkanDriverPath.isBlank()) "Выбрать кастомный драйвер Turnip (.so)" else "Драйвер: ${java.io.File(cfg.customVulkanDriverPath).name}",
+                                    color = colors.text,
+                                    fontSize = 11.5.sp,
+                                )
+                            }
+                            if (cfg.customVulkanDriverPath.isNotBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(9.dp))
+                                        .background(colors.red.copy(alpha = 0.2f))
+                                        .clickable { GbcaPrefs.updateCoreConfig { it.copy(customVulkanDriverPath = "") } }
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                ) {
+                                    Text("Сброс", color = colors.red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    Text("Увеличение разрешения (Internal Scale)", color = colors.text2, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(1, 2, 3, 4).forEach { sc ->
+                            val sel = cfg.resolutionScale == sc
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(if (sel) colors.green else colors.surface2)
+                                    .border(1.dp, if (sel) colors.green else colors.line, RoundedCornerShape(9.dp))
+                                    .clickable {
+                                        GbcaPrefs.updateCoreConfig {
+                                            val mode = if (sc > 1 && it.upscaleMode == NativeCore.UPSCALE_NONE) NativeCore.UPSCALE_XBRZ else it.upscaleMode
+                                            it.copy(resolutionScale = sc, upscaleMode = mode)
+                                        }
+                                    }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("${sc}x", color = if (sel) Color(0xFF05060A) else colors.text, fontFamily = WatermelonMono, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    Text("Алгоритм апскейлинга", color = colors.text2, fontSize = 12.sp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    ) {
+                        listOf(
+                            NativeCore.UPSCALE_NONE to "Nearest",
+                            NativeCore.UPSCALE_XBRZ to "xBRZ HD",
+                            NativeCore.UPSCALE_SCALE_EPX to "Scale2x / EPX",
+                            NativeCore.UPSCALE_MMPX to "MMPX Sharp",
+                            NativeCore.UPSCALE_LCD_HD to "LCD HD",
+                            NativeCore.UPSCALE_CRT_HD to "CRT HD",
+                        ).forEach { (id, title) ->
+                            val sel = cfg.upscaleMode == id
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(if (sel) colors.greenDim else colors.surface2)
+                                    .border(1.dp, if (sel) colors.green else colors.line, RoundedCornerShape(9.dp))
+                                    .clickable {
+                                        GbcaPrefs.updateCoreConfig {
+                                            val sc = if (id != NativeCore.UPSCALE_NONE && it.resolutionScale < 2) 2 else it.resolutionScale
+                                            it.copy(upscaleMode = id, resolutionScale = sc)
+                                        }
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            ) {
+                                Text(title, color = if (sel) colors.green else colors.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Разгон процессора (CPU Overclock)", color = colors.text, fontSize = 13.sp)
+                        Text("${cfg.cpuOverclockPct}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
+                    }
+                    Slider(
+                        value = cfg.cpuOverclockPct.toFloat(),
+                        onValueChange = { v ->
+                            val snapped = ((v / 25f).toInt() * 25).coerceIn(50, 400)
+                            GbcaPrefs.updateCoreConfig { it.copy(cpuOverclockPct = snapped) }
+                        },
+                        valueRange = 50f..400f,
+                        colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
+                    )
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Пропуск кадров (Frame Skip)", color = colors.text, fontSize = 13.sp)
+                        Text(if (cfg.frameSkip == 0) "Выкл" else "${cfg.frameSkip}", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        (0..4).forEach { fs ->
+                            val sel = cfg.frameSkip == fs
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (sel) colors.green else colors.surface2)
+                                    .clickable { GbcaPrefs.updateCoreConfig { it.copy(frameSkip = fs) } }
+                                    .padding(vertical = 7.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("$fs", color = if (sel) Color(0xFF05060A) else colors.text, fontFamily = WatermelonMono, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            WatermelonSectionLabel("Шейдеры RetroArch (.slangp via librashader)")
+            WatermelonCard {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = if (librashaderReady) "librashader: Активен (GLES3 + Vulkan)" else "librashader: Резервный режим",
+                            color = if (librashaderReady) Color(0xFF22C55E) else colors.text3,
+                            fontFamily = WatermelonMono,
+                            fontSize = 11.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.greenDim)
+                                .border(1.dp, colors.green.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                .clickable { onImportShader(shaderTabSystem) }
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                        ) {
+                            Text("Импорт .slangp", color = colors.green, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ConsoleSystem.entries.forEach { sys ->
+                            val sel = sys == shaderTabSystem
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(if (sel) colors.green else colors.surface2)
+                                    .clickable { shaderTabSystem = sys }
+                                    .padding(vertical = 7.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(sys.label, color = if (sel) Color(0xFF05060A) else colors.text, fontFamily = WatermelonMono, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                            }
+                        }
+                    }
+
+                    val activeShaderPath = when (shaderTabSystem) {
+                        ConsoleSystem.GB -> GbcaPrefs.gbOverlayState.value.retroArchShaderPath
+                        ConsoleSystem.GBC -> GbcaPrefs.gbcOverlayState.value.retroArchShaderPath
+                        ConsoleSystem.GBA -> GbcaPrefs.gbaOverlayState.value.retroArchShaderPath
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    ) {
+                        shaderPresets.forEach { preset ->
+                            val sel = activeShaderPath == preset.path
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (sel) colors.greenDim else colors.surface2)
+                                    .border(1.dp, if (sel) colors.green else colors.line, RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        GbcaPrefs.updateOverlayProfile(shaderTabSystem) { it.copy(retroArchShaderPath = preset.path) }
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            ) {
+                                Text(preset.name, color = if (sel) colors.green else colors.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            WatermelonSectionLabel("Экраны, корпуса и оверлеи (GB / GBC / GBA)")
             WatermelonCard {
                 ConsoleSystem.entries.forEachIndexed { idx, sys ->
                     if (idx > 0) WatermelonRowSeparator()
+                    val ov = when (sys) {
+                        ConsoleSystem.GB -> GbcaPrefs.gbOverlayState.value
+                        ConsoleSystem.GBC -> GbcaPrefs.gbcOverlayState.value
+                        ConsoleSystem.GBA -> GbcaPrefs.gbaOverlayState.value
+                    }
+                    val scrTag = if (ov.portraitScreen.useCustom || ov.landscapeScreen.useCustom) "Пользовательский" else "Авто"
+                    SettingsActionRow(
+                        icon = Icons.Filled.AspectRatio,
+                        title = "Размер и позиция экрана ${sys.label}",
+                        subtitle = "Режим: $scrTag (Портрет и Альбом раздельно)",
+                        onClick = { onOpenLayoutEditor(sys) },
+                    )
+                    WatermelonRowSeparator()
                     SettingsActionRow(
                         icon = Icons.Filled.Devices,
                         title = "Корпус ${sys.label}",
@@ -285,7 +604,7 @@ private fun SettingsScreen(
                     SettingsActionRow(
                         icon = Icons.Filled.Gamepad,
                         title = "Оверлей и кнопки ${sys.label}",
-                        subtitle = "Профиль: ${GbcaPrefs.getOverlayProfile(sys).buttonStyle}",
+                        subtitle = "Профиль: ${ov.buttonStyle}",
                         onClick = { overlayDialogSystem = sys },
                     )
                 }
@@ -391,7 +710,7 @@ private fun SettingsScreen(
                 SettingsActionRow(
                     icon = Icons.Filled.EmojiEvents,
                     title = "RetroAchievements",
-                    subtitle = GbcaPrefs.getRaUsername().ifBlank { "Не авторизован" },
+                    subtitle = raSubtitle,
                     onClick = { showRaDialog = true },
                 )
                 WatermelonRowSeparator()
@@ -442,7 +761,12 @@ private fun SettingsScreen(
     }
 
     if (showRaDialog) {
-        RetroAchievementsLoginDialog(onDismiss = { showRaDialog = false })
+        RetroAchievementsAccountDialog(
+            onDismiss = {
+                showRaDialog = false
+                raRefreshTick++
+            },
+        )
     }
 
     foundUpdate?.let { rel ->
@@ -610,83 +934,6 @@ private fun PhysicalInputSetupDialog(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text("Сбросить по умолчанию", color = colors.text2, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RetroAchievementsLoginDialog(onDismiss: () -> Unit) {
-    val colors = watermelon
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var username by remember { mutableStateOf(GbcaPrefs.getRaUsername()) }
-    var password by remember { mutableStateOf("") }
-    var hardcore by remember { mutableStateOf(GbcaPrefs.isRaHardcore()) }
-    var status by remember { mutableStateOf<String?>(null) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = colors.surface,
-            modifier = Modifier.fillMaxWidth().border(1.dp, colors.line, RoundedCornerShape(18.dp)),
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("RetroAchievements", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
-                }
-                val tfColors = TextFieldDefaults.outlinedTextFieldColors(
-                    textColor = colors.text,
-                    focusedBorderColor = colors.green,
-                    unfocusedBorderColor = colors.line,
-                    focusedLabelColor = colors.green,
-                    unfocusedLabelColor = colors.text3,
-                )
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Логин RetroAchievements") },
-                    singleLine = true,
-                    colors = tfColors,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Пароль") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    colors = tfColors,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Режим Hardcore", color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    WatermelonSwitch(
-                        checked = hardcore,
-                        onCheckedChange = {
-                            hardcore = it
-                            GbcaPrefs.setRaHardcore(it)
-                        },
-                    )
-                }
-                status?.let { Text(it, color = colors.green, fontSize = 12.sp) }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.green)
-                        .clickable {
-                            status = "Авторизация..."
-                            scope.launch {
-                                val res = RetroAchievementsClient.login(username, password)
-                                status = if (res.success) "Вход выполнен: ${res.username} (${res.score} pts)" else "Ошибка: ${res.error}"
-                            }
-                        }
-                        .padding(vertical = 11.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Войти", color = Color(0xFF05060A), fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold)
                 }
             }
         }

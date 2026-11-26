@@ -1,23 +1,23 @@
-# STORM GBCA 1.0.0
+# STORM GBCA 1.1.0
 
-Первый официальный кроссплатформенный релиз флагманского эмулятора **Nintendo Game Boy, Game Boy Color и Game Boy Advance** для **Android** и **Windows x64** в фирменном стиле **STORM Watermelon / AuroraFluid**.
+Крупное обновление кроссплатформенного эмулятора **Nintendo Game Boy, Game Boy Color и Game Boy Advance** для **Android** и **Windows x64** с поддержкой **Vulkan 1.1**, полных шейдеров **RetroArch (`.slangp` via `librashader`)**, внутреннего **апскейлинга `1x..4x`**, истинного полноэкранного режима и нового центра **RetroAchievements**.
 
-## Главные возможности релиза 1.0.0
-- **Двойное нативное ядро**: **mGBA (`master`, 2026)** в качестве основного ядра для GB / GBC / SGB / GBA и **SameBoy (`v1.0.5`)** в качестве опционального высокоточного ядра для GB / GBC / SGB.
-- **Лучшее из лучших эмуляторов GB/GBC/GBA**:
-  - Шейдер LCD + RGB-субпиксели + гостинг и 64-байтная XOR дельта-перемотка назад (по мотивам **SkyEmu**).
-  - Эрмитова (Hermite) HQ-интерполяция аудио 48 кГц и цветовые матрицы AGB-001 / AGS-101 (по мотивам **NanoBoyAdvance phoenix**).
-  - 7 режимов цветокоррекции LCD и 3-режимный фильтр верхних частот аудио (**SameBoy**).
-  - Динамический контроль частоты аудио (DRC) и упреждение кадров **Run-Ahead 0..2** с детерминированным захватом кадра (по мотивам **ares**).
-  - 28 кураторских палитр DMG/GBC/SGB, 6-канальный аудиомикшер, универсальный парсер читов (GameShark / Action Replay / CodeBreaker / Game Genie), мягкое патчирование **IPS / IPS32 / UPS / BPS**, датчики **Solar LUX / Gyro / Tilt / Rumble / RTC**, рамки **Super Game Boy** и **RetroAchievements (`rcheevos v12.5.0`)**.
-- **Независимые 3D-скины отдельно для GB, GBC и GBA**: 26 процедурных 3D-корпусов (DMG, Pocket, Light, SGB, GBC Atomic Purple/Berry/Teal/Kiwi/Dandelion/Grape/Pikachu, GBA Indigo/Glacier/White/Spice Orange/Fuchsia, GBA SP Cobalt/Onyx/NES Classic, Game Boy Micro Famicom и STORM Aurora) + режим «Без корпуса».
-- **Независимые оверлеи, раскладки и стили кнопок отдельно для GB, GBC и GBA**: раздельные настройки раскладки, стиля кнопок, экранного LCD-шейдера, прозрачности, масштаба и шифтов `L`/`R` (скрыты по умолчанию на GB/GBC, активны на GBA).
-- **Единый интерфейс STORM**: 9 тем оформления, 12/13 акцентов, 3D-анимация запуска GB/GBC/GBA, плашки платформ (`GB`, `GBC`, `GBA`, `SGB`), регионов и аппаратных функций, автозагрузка обложек Libretro Thumbnails и двойное зеркало автообновлений (**GitHub** + **STORM GAMES WORLD**).
+## Главные исправления и нововведения 1.1.0
+- **Истинно полноэкранный режим на Android**: полностью скрываются верхняя и нижняя системные панели во всех экранах приложения (`MainActivity`, `SettingsActivity`, `EmulatorActivity`, `LayoutEditorActivity`) с поддержкой вырезов экрана.
+- **Убрана стартовая анимация при запуске**: эмулятор открывается мгновенно сразу в библиотеке ROM (как в **STORM 3DS**).
+- **Английские названия всех тем оформления**: `STORM NIGHT`, `STORM DAY`, `STORM MIDNIGHT`, `STORM CYBERPUNK`, `STORM GOTHIC`, `STORM MATRIX`, `STORM SOLAR`, `STORM SAKURA`, `CLASSIC OLED` (Android) и каноничная линейка `STORM ...` на Windows.
+- **Полностью переработанный центр RetroAchievements**: удобные поля ввода с показом пароля, аватар профиля, статус подключения, очки Hardcore и Softcore, глобальный рейтинг, переключатели режимов (`Hardcore` / `Encore` / `Unofficial` / `Notifications`) и детальное окно достижений игры с прогресс-баром, очками, фильтрами и настоящими иконками трофеев.
+- **Автоматическая загрузка обложек игр (Libretro Thumbnails Index)**: полная индексация каталогов GB/GBC/GBA с 30-дневным локальным кэшем, нечетким сопоставлением названий и 4-поточной фоновой загрузкой на Android и Windows.
+- **Полноценная настройка размера, позиции и поворота экрана отдельно для GB, GBC и GBA**: интерактивное перетаскивание и изменение размера игрового окна в редакторе раскладок Android (раздельно для Портрета и Альбома) и точные настройки геометрии экрана на Windows.
+- **Полная поддержка шейдеров RetroArch (`.slangp` / `.slang`) через `librashader`**: встроенная библиотека `liblibrashader.so` (`arm64-v8a`, `armeabi-v7a`, `x86_64`), 10 готовых пресетов (`LCD GBA Grid`, `LCD DMG Olive`, `LCD 3x Sharp`, `GBA Color AGS-101`, `GBC Color Accurate`, `xBRZ Smooth HD`, `Sharp Bilinear`, `CRT Scanlines`, `Vibrant HD`, `Game Boy Pocket`) и импорт пользовательских `.slangp`/`.slang` отдельно для GB, GBC и GBA.
+- **Графический бэкенд Vulkan 1.1 + кастомные драйверы Turnip (`.so`)**: аппаратный Vulkan 1.1 рендерер на Android с определением GPU и автоматическим резервным откатом на OpenGL ES 3.2.
+- **Внутреннее увеличение разрешения (`1x..4x`) и 6 алгоритмов апскейлинга**: `Nearest`, `xBRZ HD`, `Scale2x / EPX`, `MMPX Sharp`, `LCD Subpixel HD` и `CRT Scanlines HD` на Android и Windows.
+- **Живой поиск читов в RAM (RAM Cheat Finder), разгон CPU (`50%..400%`) и Frame Skip (`0..4`)**: сканирование памяти `IWRAM`/`EWRAM`/`WRAM`/`HRAM`/`SRAM` (8/16/32 бита) с записью значений на лету и добавлением в чит-коды.
 
 ## Файлы релиза
-- `STORM_GBCA_1.0.0.apk` - Подписанная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`, 16 КБ выравнивание ELF)
-- `STORM_GBCA_1.0.0_Windows.zip` - Портативная автономная сборка для Windows 10/11 (x64)
-- `STORM_GBCA_1.0.0_Setup.exe` - Графический установщик для Windows 10/11 (x64) с ярлыками и регистрацией в Windows
+- `STORM_GBCA_1.1.0.apk` - Подписанная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`, 16 КБ выравнивание ELF, включает `libstorm_gbca_core.so` и `liblibrashader.so`)
+- `STORM_GBCA_1.1.0_Windows.zip` - Портативная автономная сборка для Windows 10/11 (x64)
+- `STORM_GBCA_1.1.0_Setup.exe` - Графический установщик для Windows 10/11 (x64) с ярлыками и регистрацией в Windows
 
 ## Ссылки
 - GitHub: https://github.com/ReiKatari/STORM_GBCA

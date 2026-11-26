@@ -74,9 +74,10 @@ public class EmulationPauseOverlay : Border
         _tabBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 0, 0, 12) };
         AddTab(0, "Сохранения (10)");
         AddTab(1, "Корпус и оверлей");
-        AddTab(2, "Видео и палитры");
-        AddTab(3, "Аудиомикшер (6 кан.)");
-        AddTab(4, "Сенсоры, читы и ядро");
+        AddTab(2, "Графика и мощь");
+        AddTab(3, "Аудиомикшер");
+        AddTab(4, "Сенсоры и ядро");
+        AddTab(5, "Поиск в RAM");
         root.Children.Add(_tabBar);
         Grid.SetRow(_tabBar, 1);
 
@@ -149,6 +150,7 @@ public class EmulationPauseOverlay : Border
             case 2: BuildVideoTab(); break;
             case 3: BuildAudioMixerTab(); break;
             case 4: BuildSensorsCoreTab(); break;
+            case 5: BuildRamFinderTab(); break;
         }
     }
 
@@ -290,6 +292,28 @@ public class EmulationPauseOverlay : Border
     private void BuildVideoTab()
     {
         var s = StormGbcaUiState.Instance.Settings;
+        _bodyPanel.Children.Add(CreateCombo("Увеличение разрешения (Internal Scale):", ["1x (Нативное)", "2x HD", "3x Full HD", "4x Ultra HD"], Math.Clamp(s.ResolutionScale - 1, 0, 3), idx =>
+        {
+            s.ResolutionScale = idx + 1;
+            if (s.ResolutionScale > 1 && s.UpscaleMode == StormUpscaleMode.None) s.UpscaleMode = StormUpscaleMode.Xbrz;
+            StormGbcaUiState.Instance.SaveSettings();
+        }));
+        _bodyPanel.Children.Add(CreateCombo("Алгоритм апскейлинга:", ["Nearest", "xBRZ HD", "Scale2x / EPX", "MMPX Sharp", "LCD Subpixel HD", "CRT Scanlines HD"], (int)s.UpscaleMode, idx =>
+        {
+            s.UpscaleMode = (StormUpscaleMode)idx;
+            if (s.UpscaleMode != StormUpscaleMode.None && s.ResolutionScale < 2) s.ResolutionScale = 2;
+            StormGbcaUiState.Instance.SaveSettings();
+        }));
+        _bodyPanel.Children.Add(CreateSlider("Разгон процессора (CPU Overclock):", 50, 400, s.CpuOverclockPct, "%", v =>
+        {
+            s.CpuOverclockPct = Math.Clamp(((int)v / 25) * 25, 50, 400);
+            StormGbcaUiState.Instance.SaveSettings();
+        }));
+        _bodyPanel.Children.Add(CreateCombo("Пропуск кадров (Frame Skip):", ["Выкл (0)", "1", "2", "3", "4"], Math.Clamp(s.FrameSkip, 0, 4), idx =>
+        {
+            s.FrameSkip = idx;
+            StormGbcaUiState.Instance.SaveSettings();
+        }));
         _bodyPanel.Children.Add(CreateCombo("Цветокоррекция LCD:", Enum.GetNames<StormColorCorrectionMode>(), (int)s.ColorCorrectionMode, idx =>
         {
             s.ColorCorrectionMode = (StormColorCorrectionMode)idx;
@@ -392,6 +416,108 @@ public class EmulationPauseOverlay : Border
             if (rom != null) StormGbcaUiState.Instance.RequestRomModal(rom, 1);
         }));
         _bodyPanel.Children.Add(row);
+    }
+
+    private StormMemoryRegion _ramRegion = StormMemoryRegion.Iwram;
+    private int _ramValSize = 1;
+    private string _ramSearchInput = "0";
+    private string _ramWriteInput = "99";
+    private string _ramStatus = "Нажмите 'Новый поиск' для создания снимка оперативной памяти";
+    private List<(uint Offset, uint Value)> _ramHits = [];
+
+    private void BuildRamFinderTab()
+    {
+        var emu = StormGbcaUiState.Instance.Emulator;
+        bool isGba = emu.ActivePlatform == StormPlatform.Gba;
+        StormMemoryRegion[] regions = isGba
+            ? [StormMemoryRegion.Iwram, StormMemoryRegion.Ewram, StormMemoryRegion.CartRam]
+            : [StormMemoryRegion.Wram, StormMemoryRegion.Hram, StormMemoryRegion.CartRam];
+        string[] regionNames = isGba
+            ? ["IWRAM (32 КБ)", "EWRAM (256 КБ)", "SRAM"]
+            : ["WRAM (8 КБ)", "HRAM", "SRAM"];
+        int regIdx = Array.IndexOf(regions, _ramRegion);
+        if (regIdx < 0) { regIdx = 0; _ramRegion = regions[0]; }
+
+        _bodyPanel.Children.Add(new TextBlock { Text = _ramStatus, FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.Accent });
+
+        _bodyPanel.Children.Add(CreateCombo("Область памяти:", regionNames, regIdx, idx => _ramRegion = regions[idx]));
+        int szIdx = _ramValSize == 4 ? 2 : (_ramValSize == 2 ? 1 : 0);
+        _bodyPanel.Children.Add(CreateCombo("Размер значения:", ["8 бит (1 байт)", "16 бит (2 байта)", "32 бита (4 байта)"], szIdx, idx => _ramValSize = idx == 2 ? 4 : (idx == 1 ? 2 : 1)));
+
+        var inputs = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 10 };
+        var searchBox = new TextBox { Text = _ramSearchInput, PlaceholderText = "Значение поиска", Height = 30 };
+        searchBox.TextChanged += (_, _) => _ramSearchInput = searchBox.Text ?? "0";
+        var writeBox = new TextBox { Text = _ramWriteInput, PlaceholderText = "Значение записи", Height = 30 };
+        writeBox.TextChanged += (_, _) => _ramWriteInput = writeBox.Text ?? "99";
+        inputs.Children.Add(searchBox);
+        inputs.Children.Add(writeBox);
+        Grid.SetColumn(writeBox, 1);
+        _bodyPanel.Children.Add(inputs);
+
+        var row1 = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        row1.Children.Add(CreateActionPill("Новый поиск", Color.Parse("#10B981"), () =>
+        {
+            int n = emu.MemSearchReset(_ramRegion, _ramValSize);
+            _ramHits = n <= 64 ? emu.MemSearchGetResults(48) : [];
+            _ramStatus = $"Снимок создан: {n} адресов";
+            RefreshTab();
+        }));
+        row1.Children.Add(CreateActionPill("Равно", Color.Parse("#38BDF8"), () => RunRamFilter(StormSearchCmp.Eq)));
+        row1.Children.Add(CreateActionPill("Больше", Color.Parse("#38BDF8"), () => RunRamFilter(StormSearchCmp.Gt)));
+        row1.Children.Add(CreateActionPill("Меньше", Color.Parse("#38BDF8"), () => RunRamFilter(StormSearchCmp.Lt)));
+        row1.Children.Add(CreateActionPill("Увеличилось", Color.Parse("#A855F7"), () => RunRamFilter(StormSearchCmp.Increased)));
+        row1.Children.Add(CreateActionPill("Уменьшилось", Color.Parse("#F59E0B"), () => RunRamFilter(StormSearchCmp.Decreased)));
+        _bodyPanel.Children.Add(row1);
+
+        foreach (var hit in _ramHits.Take(24))
+        {
+            uint baseAddr = isGba
+                ? (_ramRegion == StormMemoryRegion.Ewram ? 0x02000000u : 0x03000000u)
+                : (_ramRegion == StormMemoryRegion.Hram ? 0xFF80u : (_ramRegion == StormMemoryRegion.CartRam ? 0xA000u : 0xC000u));
+            uint fullAddr = baseAddr + hit.Offset;
+            string hexAddr = isGba ? $"0x{fullAddr:X8}" : $"0x{fullAddr:X4}";
+
+            var rCard = new Border
+            {
+                Padding = new Thickness(10, 6),
+                CornerRadius = new CornerRadius(8),
+                Background = StormThemeBrushes.RowSurface,
+                BorderBrush = StormThemeBrushes.SubtleBorder,
+                BorderThickness = new Thickness(1)
+            };
+            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            g.Children.Add(new TextBlock
+            {
+                Text = $"{hexAddr}  |  Текущее: {hit.Value} (0x{hit.Value:X})",
+                FontSize = 11.5,
+                FontFamily = new FontFamily("Consolas, monospace"),
+                Foreground = StormThemeBrushes.PrimaryText,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            var wBtn = CreateMiniBtn("Записать", Color.Parse("#10B981"), () =>
+            {
+                uint wv = uint.TryParse(_ramWriteInput.Trim(), out uint parsed) ? parsed : 0;
+                if (emu.WriteMemoryValue(_ramRegion, hit.Offset, wv, _ramValSize))
+                {
+                    _ramStatus = $"Записано {wv} по адресу {hexAddr}";
+                    _ramHits = emu.MemSearchGetResults(48);
+                    RefreshTab();
+                }
+            });
+            g.Children.Add(wBtn);
+            Grid.SetColumn(wBtn, 1);
+            rCard.Child = g;
+            _bodyPanel.Children.Add(rCard);
+        }
+    }
+
+    private void RunRamFilter(StormSearchCmp op)
+    {
+        uint val = uint.TryParse(_ramSearchInput.Trim(), out uint parsed) ? parsed : 0;
+        int n = StormGbcaUiState.Instance.Emulator.MemSearchFilter(op, val);
+        _ramHits = StormGbcaUiState.Instance.Emulator.MemSearchGetResults(48);
+        _ramStatus = $"Найдено совпадений: {n}";
+        RefreshTab();
     }
 
     private static Border CreateMiniBtn(string text, Color accent, Action onClick)

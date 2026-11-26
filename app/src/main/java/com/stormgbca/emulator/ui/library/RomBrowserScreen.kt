@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -37,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
@@ -94,6 +94,7 @@ fun RomBrowserScreen(
     searchQuery: String,
     isScanning: Boolean,
     hasUpdateAvailable: Boolean,
+    raConnected: Boolean = false,
     onSearchQueryChange: (String) -> Unit,
     onFilterChange: (RomFilter) -> Unit,
     onSortChange: (RomSortMode) -> Unit,
@@ -101,6 +102,7 @@ fun RomBrowserScreen(
     onAddFolder: () -> Unit,
     onOpenSingleFile: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenRetroAchievements: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenUpdateDialog: () -> Unit,
     onLaunchRom: (RomEntry) -> Unit,
@@ -109,6 +111,7 @@ fun RomBrowserScreen(
     onPickSoftPatch: (RomEntry) -> Unit,
     onRefreshBoxArt: (RomEntry) -> Unit,
     onPickCustomCover: (RomEntry) -> Unit,
+    onViewRomAchievements: (RomEntry) -> Unit = {},
 ) {
     val colors = watermelon
     var searchOpen by remember { mutableStateOf(false) }
@@ -121,14 +124,14 @@ fun RomBrowserScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
-            .systemBarsPadding(),
+            .padding(top = 8.dp),
     ) {
-        // Watermelon Header
+        // Watermelon Fullscreen Header (no system bars gap)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(58.dp)
+                .height(54.dp)
                 .padding(horizontal = 14.dp),
         ) {
             if (searchOpen) {
@@ -165,6 +168,24 @@ fun RomBrowserScreen(
                 )
                 IconButton(onClick = { searchOpen = true }) {
                     Icon(Icons.Filled.Search, contentDescription = "Поиск", tint = colors.text2)
+                }
+                IconButton(onClick = onOpenRetroAchievements) {
+                    Box {
+                        Icon(
+                            Icons.Filled.EmojiEvents,
+                            contentDescription = "RetroAchievements",
+                            tint = if (raConnected) Color(0xFFFACC15) else colors.text2,
+                        )
+                        if (raConnected) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .align(Alignment.TopEnd)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF22C55E)),
+                            )
+                        }
+                    }
                 }
                 IconButton(onClick = onToggleViewMode) {
                     Icon(
@@ -334,6 +355,7 @@ fun RomBrowserScreen(
             onRefreshBoxArt = { onRefreshBoxArt(rom); contextRom = null },
             onPickCustomCover = { onPickCustomCover(rom); contextRom = null },
             onViewCover = { path -> contextRom = null; fullscreenCoverRom = rom to path },
+            onViewAchievements = { contextRom = null; onViewRomAchievements(rom) },
             onShowInfo = { contextRom = null; infoRom = rom },
         )
     }
@@ -425,6 +447,7 @@ private fun RomContextDialog(
     onRefreshBoxArt: () -> Unit,
     onPickCustomCover: () -> Unit,
     onViewCover: (String) -> Unit,
+    onViewAchievements: () -> Unit,
     onShowInfo: () -> Unit,
 ) {
     val colors = watermelon
@@ -441,6 +464,7 @@ private fun RomContextDialog(
 
                 ContextBtn(Icons.Filled.PlayArrow, "Запустить игру", colors.green, onLaunch)
                 ContextBtn(if (rom.isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline, if (rom.isFavorite) "Убрать из избранного" else "В избранное", WatermelonColors.favoriteStar, onToggleFavorite)
+                ContextBtn(Icons.Filled.EmojiEvents, "Достижения (RetroAchievements)", Color(0xFFFACC15), onViewAchievements)
                 if (rom.platform != NativeCore.PLATFORM_GBA) {
                     val nextCore = when (rom.coreOverride) {
                         -1 -> NativeCore.CORE_MGBA
@@ -455,7 +479,7 @@ private fun RomContextDialog(
                     ContextBtn(Icons.Filled.Memory, "Ядро для игры: $curLabel", colors.text2) { onSetCoreOverride(nextCore) }
                 }
                 ContextBtn(Icons.Filled.Tune, "Применить патч (IPS / UPS / BPS)", colors.text2, onPickSoftPatch)
-                ContextBtn(Icons.Filled.Refresh, "Обновить обложку", colors.text2, onRefreshBoxArt)
+                ContextBtn(Icons.Filled.Refresh, "Обновить обложку (Libretro)", colors.text2, onRefreshBoxArt)
                 ContextBtn(Icons.Filled.Image, "Выбрать свою обложку", colors.text2, onPickCustomCover)
                 if (!boxArtPath.isNullOrBlank()) {
                     ContextBtn(Icons.Filled.Image, "Просмотреть обложку", colors.green) { onViewCover(boxArtPath) }

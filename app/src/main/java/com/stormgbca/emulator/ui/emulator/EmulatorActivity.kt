@@ -18,6 +18,8 @@ import android.os.VibratorManager
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -29,14 +31,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,23 +43,23 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import com.stormgbca.emulator.data.GbcaPrefs
 import com.stormgbca.emulator.data.RaGameSession
 import com.stormgbca.emulator.data.RetroAchievementsClient
 import com.stormgbca.emulator.data.RomRepository
+import com.stormgbca.emulator.data.ShaderRepository
 import com.stormgbca.emulator.model.CheatItem
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.PhysicalAction
 import com.stormgbca.emulator.model.RomEntry
+import com.stormgbca.emulator.ui.emulator.overlay.LayoutEditorActivity
 import com.stormgbca.emulator.ui.emulator.overlay.OverlayPickerDialog
 import com.stormgbca.emulator.ui.emulator.overlay.VirtualGamepadOverlay
 import com.stormgbca.emulator.ui.emulator.skin.ConsoleSkinOverlayView
 import com.stormgbca.emulator.ui.emulator.skin.ConsoleSkinPickerDialog
 import com.stormgbca.emulator.ui.emulator.skin.GbcaSkinId
 import com.stormgbca.emulator.ui.emulator.skin.computeGameViewportRect
+import com.stormgbca.emulator.ui.ra.RetroAchievementsAccountDialog
 import com.stormgbca.emulator.ui.settings.SettingsActivity
 import com.stormgbca.emulator.ui.theme.AppThemeManager
 import com.stormgbca.emulator.ui.theme.StormWatermelonTheme
@@ -74,6 +72,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import ru.stormgames.gbca.NativeCore
 import java.io.FileOutputStream
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
@@ -91,12 +90,17 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
     private val json = Json { ignoreUnknownKeys = true }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val coreLock = ReentrantLock()
+    private val vkLock = ReentrantLock()
 
     private var nativeHandle: Long = 0L
     private var romEntry: RomEntry? = null
     private var activeSystem: ConsoleSystem = ConsoleSystem.GBA
     private var glView: GLSurfaceView? = null
+    private var vkView: SurfaceView? = null
     private var shaderSource: String = ""
+
+    private val useVulkanState = androidx.compose.runtime.mutableStateOf(false)
+    private val vulkanReady = AtomicBoolean(false)
 
     private val isPaused = AtomicBoolean(false)
     private val isRunning = AtomicBoolean(false)
@@ -110,15 +114,18 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
     private var lastRumbleTimeMs = 0L
     private var sessionStartMs = 0L
 
-    private val showPauseMenuState = mutableStateOf(false)
-    private val showSkinPickerState = mutableStateOf(false)
-    private val showOverlayPickerState = mutableStateOf(false)
-    private val activeCoreLabelState = mutableStateOf("mGBA")
-    private val rewindFramesState = mutableIntStateOf(0)
-    private val statusToastState = mutableStateOf<String?>(null)
-    private val raSessionState = mutableStateOf<RaGameSession?>(null)
-    private val videoWidthState = mutableIntStateOf(240)
-    private val videoHeightState = mutableIntStateOf(160)
+    private val showPauseMenuState = androidx.compose.runtime.mutableStateOf(false)
+    private val showSkinPickerState = androidx.compose.runtime.mutableStateOf(false)
+    private val showOverlayPickerState = androidx.compose.runtime.mutableStateOf(false)
+    private val showRamFinderState = androidx.compose.runtime.mutableStateOf(false)
+    private val showRaAccountState = androidx.compose.runtime.mutableStateOf(false)
+    private val activeCoreLabelState = androidx.compose.runtime.mutableStateOf("mGBA")
+    private val activeBackendLabelState = androidx.compose.runtime.mutableStateOf("GLES 3.2")
+    private val rewindFramesState = androidx.compose.runtime.mutableIntStateOf(0)
+    private val statusToastState = androidx.compose.runtime.mutableStateOf<String?>(null)
+    private val raSessionState = androidx.compose.runtime.mutableStateOf<RaGameSession?>(null)
+    private val videoWidthState = androidx.compose.runtime.mutableIntStateOf(240)
+    private val videoHeightState = androidx.compose.runtime.mutableIntStateOf(160)
 
     private val patchPickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) applySoftPatchFromUri(uri)
@@ -126,16 +133,19 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
     @Volatile private var glVpX = 0
     @Volatile private var glVpY = 0
+    @Volatile private var vkVpY = 0
     @Volatile private var glVpW = 1
     @Volatile private var glVpH = 1
     @Volatile private var glSurfaceW = 1
     @Volatile private var glSurfaceH = 1
+    @Volatile private var activeRotationDeg = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        supportActionBar?.hide()
         AppThemeManager.applyEdgeToEdgeTheme(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        hideSystemBars()
+        AppThemeManager.applyImmersiveFullscreen(this)
 
         val rawJson = intent.getStringExtra(EXTRA_ROM_JSON)
         romEntry = rawJson?.let { runCatching { json.decodeFromString<RomEntry>(it) }.getOrNull() }
@@ -148,9 +158,19 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         videoWidthState.intValue = if (activeSystem == ConsoleSystem.GBA) 240 else 160
         videoHeightState.intValue = if (activeSystem == ConsoleSystem.GBA) 160 else 144
 
+        ShaderRepository.ensureExtracted(this)
         shaderSource = runCatching {
             assets.open("storm_gbca_lcd.glsl").bufferedReader().use { it.readText() }
         }.getOrDefault("")
+
+        // Apply active per-system RetroArch .slangp shader immediately before renderer creation
+        val initOverlay = GbcaPrefs.getOverlayProfile(activeSystem)
+        NativeCore.nativeSetRetroArchShader(initOverlay.retroArchShaderPath)
+
+        val wantVulkan = GbcaPrefs.coreConfigState.value.graphicsBackend == 1 &&
+            runCatching { NativeCore.nativeIsVulkanSupported() }.getOrDefault(false)
+        useVulkanState.value = wantVulkan
+        activeBackendLabelState.value = if (wantVulkan) "Vulkan 1.1" else "GLES 3.2"
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -160,41 +180,11 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         }
 
-        val glSurface = GLSurfaceView(this).apply {
-            setEGLContextClientVersion(3)
-            preserveEGLContextOnPause = true
-            setRenderer(object : GLSurfaceView.Renderer {
-                override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-                    NativeCore.nativeGlesInit(shaderSource)
-                }
-
-                override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-                    glSurfaceW = width.coerceAtLeast(1)
-                    glSurfaceH = height.coerceAtLeast(1)
-                    NativeCore.nativeGlesResize(glSurfaceW, glSurfaceH)
-                }
-
-                override fun onDrawFrame(gl: GL10?) {
-                    val h = nativeHandle
-                    if (h == 0L) return
-                    val cfg = GbcaPrefs.coreConfigState.value
-                    val overlayProf = GbcaPrefs.getOverlayProfile(activeSystem)
-                    val displayMode = overlayProf.shaderOverlay
-                    val ghosting = cfg.lcdGhosting / 100f
-                    val ccStrength = if (cfg.colorCorrectionMode == NativeCore.CC_DISABLED) 0f else 1f
-                    val isGray = activeSystem == ConsoleSystem.GB
-                    val intScale = cfg.aspectMode == 1
-                    coreLock.withLock {
-                        NativeCore.nativeGlesRender(
-                            h, glVpX, glVpY, glVpW, glVpH,
-                            displayMode, ghosting, ccStrength, isGray, intScale,
-                        )
-                    }
-                }
-            })
-            renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
-        }
+        val glSurface = createGlSurfaceView()
         glView = glSurface
+
+        val vkSurface = createVulkanSurfaceView()
+        vkView = vkSurface
 
         setContent {
             StormWatermelonTheme {
@@ -214,7 +204,13 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     ConsoleSystem.GBA -> GbcaPrefs.gbaOverlayState.value
                 }
                 val skinId = remember(skinKey, activeSystem) { GbcaSkinId.fromKey(skinKey, activeSystem) }
-                val aspectMode = GbcaPrefs.coreConfigState.value.aspectMode
+                val coreCfg = GbcaPrefs.coreConfigState.value
+                val aspectMode = coreCfg.aspectMode
+                val isVulkanActive = useVulkanState.value
+
+                LaunchedEffect(overlayProfile.retroArchShaderPath) {
+                    NativeCore.nativeSetRetroArchShader(overlayProfile.retroArchShaderPath)
+                }
 
                 BackHandler {
                     togglePauseMenu()
@@ -228,7 +224,15 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     val density = LocalDensity.current
                     val wPx = with(density) { maxWidth.toPx() }.roundToInt().coerceAtLeast(1)
                     val hPx = with(density) { maxHeight.toPx() }.roundToInt().coerceAtLeast(1)
-                    val screenRect = remember(wPx, hPx, activeSystem, skinId, aspectMode, videoWidthState.intValue, videoHeightState.intValue) {
+                    val isLandscape = wPx > hPx
+                    val activeScreenCfg = if (isLandscape) overlayProfile.landscapeScreen else overlayProfile.portraitScreen
+                    activeRotationDeg = activeScreenCfg.rotationDeg
+                    NativeCore.nativeGlesSetRotation(activeScreenCfg.rotationDeg)
+
+                    val screenRect = remember(
+                        wPx, hPx, activeSystem, skinId, aspectMode,
+                        videoWidthState.intValue, videoHeightState.intValue, activeScreenCfg,
+                    ) {
                         computeGameViewportRect(
                             containerW = wPx,
                             containerH = hPx,
@@ -237,18 +241,27 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                             aspectMode = aspectMode,
                             nativeW = videoWidthState.intValue,
                             nativeH = videoHeightState.intValue,
+                            customScreen = activeScreenCfg,
                         )
                     }
 
                     glVpX = screenRect.left.roundToInt()
                     glVpY = (hPx - screenRect.bottom).roundToInt().coerceAtLeast(0)
+                    vkVpY = screenRect.top.roundToInt().coerceAtLeast(0)
                     glVpW = screenRect.width.roundToInt().coerceAtLeast(1)
                     glVpH = screenRect.height.roundToInt().coerceAtLeast(1)
 
-                    AndroidView(
-                        factory = { glSurface },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    if (isVulkanActive) {
+                        AndroidView(
+                            factory = { vkSurface },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        AndroidView(
+                            factory = { glSurface },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
 
                     ConsoleSkinOverlayView(
                         skinId = skinId,
@@ -280,20 +293,20 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                         onOpenMenu = { togglePauseMenu() },
                     )
 
-                    // Subtle live HUD pill (Core + Platform + Fast Forward indicator)
+                    // Subtle live HUD pill (Core + Platform + Backend + Scale)
                     if (!showPauseMenuState.value) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .statusBarsPadding()
                                 .padding(top = 8.dp, end = 10.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0x99060912))
                                 .padding(horizontal = 8.dp, vertical = 3.dp),
                         ) {
                             val ffTag = if (fastForward.get()) " | FF" else ""
+                            val scaleTag = if (coreCfg.resolutionScale > 1) " | ${coreCfg.resolutionScale}x" else ""
                             Text(
-                                text = "${activeCoreLabelState.value} | ${activeSystem.label}$ffTag",
+                                text = "${activeCoreLabelState.value} | ${activeSystem.label} | ${activeBackendLabelState.value}$scaleTag$ffTag",
                                 color = Color(0xCC94A3B8),
                                 fontFamily = WatermelonMono,
                                 fontSize = 10.sp,
@@ -319,6 +332,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                             rom = rom,
                             system = activeSystem,
                             activeCoreName = activeCoreLabelState.value,
+                            activeBackendLabel = activeBackendLabelState.value,
                             fastForwardActive = fastForward.get(),
                             rewindAvailableFrames = rewindFramesState.intValue,
                             raSession = raSessionState.value,
@@ -338,6 +352,14 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                             },
                             onOpenSkinPicker = { showSkinPickerState.value = true },
                             onOpenOverlayPicker = { showOverlayPickerState.value = true },
+                            onOpenLayoutEditor = {
+                                val intent = Intent(this@EmulatorActivity, LayoutEditorActivity::class.java).apply {
+                                    putExtra("system", activeSystem.name)
+                                }
+                                startActivity(intent)
+                            },
+                            onOpenRamFinder = { showRamFinderState.value = true },
+                            onOpenRaAccount = { showRaAccountState.value = true },
                             onConfigApplied = { applyCoreConfig() },
                             onCheatsUpdated = { list -> applyCheats(list) },
                             onApplySoftPatch = { patchPickerLauncher.launch(arrayOf("*/*")) },
@@ -368,7 +390,61 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     if (showOverlayPickerState.value) {
                         OverlayPickerDialog(
                             initialSystem = activeSystem,
+                            onShaderChanged = { sys, path ->
+                                if (sys == activeSystem) {
+                                    NativeCore.nativeSetRetroArchShader(path)
+                                    requestVideoRender()
+                                }
+                            },
                             onDismiss = { showOverlayPickerState.value = false },
+                        )
+                    }
+
+                    if (showRamFinderState.value) {
+                        val romKey = remember(rom) { RomRepository.getRomStorageKey(rom) }
+                        RamCheatFinderDialog(
+                            system = activeSystem,
+                            onResetSearch = { region, size ->
+                                coreLock.withLock {
+                                    if (nativeHandle != 0L) NativeCore.nativeMemSearchReset(nativeHandle, region, size) else 0
+                                }
+                            },
+                            onFilterSearch = { op, target ->
+                                coreLock.withLock {
+                                    if (nativeHandle != 0L) NativeCore.nativeMemSearchFilter(nativeHandle, op, target) else 0
+                                }
+                            },
+                            onFetchResults = {
+                                coreLock.withLock {
+                                    if (nativeHandle == 0L) emptyList() else {
+                                        val addrs = IntArray(64)
+                                        val vals = IntArray(64)
+                                        val n = NativeCore.nativeMemSearchGetResults(nativeHandle, addrs, vals)
+                                        (0 until n).map { idx -> RamSearchHit(addrs[idx], vals[idx]) }
+                                    }
+                                }
+                            },
+                            onWriteValue = { region, offset, value, size ->
+                                coreLock.withLock {
+                                    nativeHandle != 0L && NativeCore.nativeWriteMemory(nativeHandle, region, offset, value, size) == 0
+                                }
+                            },
+                            onAddAsCheat = { name, code ->
+                                val cur = GbcaPrefs.getCheatsForRom(romKey)
+                                val next = cur + CheatItem(UUID.randomUUID().toString(), name, code, true)
+                                GbcaPrefs.saveCheatsForRom(romKey, next)
+                                applyCheats(next)
+                            },
+                            onDismiss = { showRamFinderState.value = false },
+                        )
+                    }
+
+                    if (showRaAccountState.value) {
+                        RetroAchievementsAccountDialog(
+                            onDismiss = {
+                                showRaAccountState.value = false
+                                refreshRaSessionAsync()
+                            },
                         )
                     }
                 }
@@ -376,6 +452,96 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         }
 
         bootNativeCore(rom)
+    }
+
+    private fun createGlSurfaceView(): GLSurfaceView = GLSurfaceView(this).apply {
+        setEGLContextClientVersion(3)
+        preserveEGLContextOnPause = true
+        setRenderer(object : GLSurfaceView.Renderer {
+            override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+                NativeCore.nativeGlesInit(shaderSource)
+                NativeCore.nativeSetRetroArchShader(GbcaPrefs.getOverlayProfile(activeSystem).retroArchShaderPath)
+            }
+
+            override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+                glSurfaceW = width.coerceAtLeast(1)
+                glSurfaceH = height.coerceAtLeast(1)
+                NativeCore.nativeGlesResize(glSurfaceW, glSurfaceH)
+            }
+
+            override fun onDrawFrame(gl: GL10?) {
+                val h = nativeHandle
+                if (h == 0L) return
+                val cfg = GbcaPrefs.coreConfigState.value
+                val overlayProf = GbcaPrefs.getOverlayProfile(activeSystem)
+                val displayMode = overlayProf.shaderOverlay
+                val ghosting = cfg.lcdGhosting / 100f
+                val ccStrength = if (cfg.colorCorrectionMode == NativeCore.CC_DISABLED) 0f else 1f
+                val isGray = activeSystem == ConsoleSystem.GB
+                val intScale = cfg.aspectMode == 1
+                coreLock.withLock {
+                    NativeCore.nativeGlesRender(
+                        h, glVpX, glVpY, glVpW, glVpH,
+                        displayMode, ghosting, ccStrength, isGray, intScale,
+                    )
+                }
+            }
+        })
+        renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
+    }
+
+    private fun createVulkanSurfaceView(): SurfaceView = SurfaceView(this).apply {
+        holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                val driverPath = GbcaPrefs.coreConfigState.value.customVulkanDriverPath
+                val ok = vkLock.withLock {
+                    NativeCore.nativeVkInit(holder.surface, driverPath)
+                }
+                if (ok) {
+                    vulkanReady.set(true)
+                    activeBackendLabelState.value = "Vulkan 1.1"
+                    NativeCore.nativeSetRetroArchShader(GbcaPrefs.getOverlayProfile(activeSystem).retroArchShaderPath)
+                } else {
+                    vulkanReady.set(false)
+                    useVulkanState.value = false
+                    activeBackendLabelState.value = "GLES 3.2"
+                    showToast("Vulkan недоступен на этом устройстве - переключено на OpenGL ES 3.2")
+                }
+            }
+
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                glSurfaceW = width.coerceAtLeast(1)
+                glSurfaceH = height.coerceAtLeast(1)
+                if (vulkanReady.get()) {
+                    vkLock.withLock { NativeCore.nativeVkResize(glSurfaceW, glSurfaceH) }
+                }
+            }
+
+            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                vulkanReady.set(false)
+                vkLock.withLock { NativeCore.nativeVkDestroy() }
+            }
+        })
+    }
+
+    private fun requestVideoRender() {
+        if (useVulkanState.value) {
+            if (vulkanReady.get() && nativeHandle != 0L) {
+                val overlayProf = GbcaPrefs.getOverlayProfile(activeSystem)
+                val linear = overlayProf.shaderOverlay != NativeCore.FILTER_NEAREST
+                vkLock.withLock {
+                    if (vulkanReady.get()) {
+                        coreLock.withLock {
+                            if (nativeHandle != 0L) {
+                                NativeCore.nativeVkRender(nativeHandle, glVpX, vkVpY, glVpW, glVpH, linear, activeRotationDeg)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            glView?.requestRender()
+        }
     }
 
     private fun bootNativeCore(rom: RomEntry) {
@@ -457,10 +623,23 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     val session = RetroAchievementsClient.lookupGameSession(raHash)
                     if (session != null) {
                         raSessionState.value = session
-                        showToast("RetroAchievements: ${session.achievements.size} достижений")
+                        if (GbcaPrefs.isRaNotifications()) {
+                            showToast("RetroAchievements: ${session.unlockedCount}/${session.totalCount} (${session.earnedPoints} pts)")
+                        }
                     }
                 }
             }
+        }
+    }
+
+    private fun refreshRaSessionAsync() {
+        val rom = romEntry ?: return
+        if (GbcaPrefs.getRaToken().isBlank()) return
+        activityScope.launch(Dispatchers.IO) {
+            val cachedRom = RomRepository.materializeRomToCache(this@EmulatorActivity, rom) ?: return@launch
+            val raHash = NativeCore.nativeComputeRaHash(cachedRom.absolutePath, rom.platform) ?: return@launch
+            val session = RetroAchievementsClient.lookupGameSession(raHash)
+            if (session != null) raSessionState.value = session
         }
     }
 
@@ -479,7 +658,8 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 }
 
                 val ff = fastForward.get()
-                val mult = if (ff) GbcaPrefs.coreConfigState.value.fastForwardMultiplier.roundToInt().coerceIn(2, 8) else 1
+                val cfg = GbcaPrefs.coreConfigState.value
+                val mult = if (ff) cfg.fastForwardMultiplier.roundToInt().coerceIn(2, 8) else 1
                 var rumble = 0f
 
                 coreLock.withLock {
@@ -491,7 +671,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     }
                 }
 
-                if (rumble > 0.25f && GbcaPrefs.coreConfigState.value.rumbleEnabled) {
+                if (rumble > 0.25f && cfg.rumbleEnabled) {
                     val now = System.currentTimeMillis()
                     if (now - lastRumbleTimeMs > 60L) {
                         lastRumbleTimeMs = now
@@ -506,7 +686,10 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     }
                 }
 
-                glView?.requestRender()
+                val skip = cfg.frameSkip.coerceIn(0, 4)
+                if (skip == 0 || (frameCounter % (skip + 1)) == 0) {
+                    requestVideoRender()
+                }
 
                 frameCounter++
                 if (frameCounter % 300 == 0) {
@@ -533,6 +716,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         coreLock.withLock {
             if (nativeHandle != 0L) applyCoreConfigLocked(nativeHandle, rom)
         }
+        requestVideoRender()
     }
 
     private fun applyCoreConfigLocked(h: Long, rom: RomEntry) {
@@ -553,6 +737,8 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             cfg.biosGbPath, cfg.biosGbcPath, cfg.biosGbaPath, cfg.biosSgbPath,
             cfg.skipBiosIntro, cfg.dynamicRateControl, cfg.drcMaxSkew,
         )
+        NativeCore.nativeSetUpscale(h, cfg.resolutionScale, cfg.upscaleMode)
+        NativeCore.nativeSetPerformance(h, cfg.cpuOverclockPct, cfg.frameSkip)
         NativeCore.nativeSetSolarLux(h, cfg.solarLux)
         NativeCore.getRomInfo(h)?.let { info ->
             activeCoreLabelState.value = info.activeCore.ifBlank { "mGBA" }
@@ -588,7 +774,6 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 val h = wh[1].coerceAtLeast(144)
                 val px = IntArray(w * h)
                 if (NativeCore.nativeCopyFrame(nativeHandle, px, w, NativeCore.PIXEL_FORMAT_RGBA8888) == 0) {
-                    // Convert RGBA8888 -> Android packed ARGB_8888 and copy cleanly via setPixels
                     for (i in px.indices) {
                         val v = px[i]
                         val r = v and 0xFF
@@ -675,7 +860,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         coreLock.withLock {
             if (nativeHandle == 0L) return
             if (NativeCore.nativeLoadStateFile(nativeHandle, file.absolutePath) == 0) {
-                glView?.requestRender()
+                requestVideoRender()
                 showToast(if (slot == 0) "Быстрое состояние загружено" else "Загружен слот $slot")
             }
         }
@@ -686,7 +871,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             if (nativeHandle == 0L) return
             if (NativeCore.nativeRewindStep(nativeHandle) == 0) {
                 rewindFramesState.intValue = NativeCore.nativeRewindAvailableFrames(nativeHandle)
-                glView?.requestRender()
+                requestVideoRender()
             } else {
                 showToast("Нет кадров для перемотки")
             }
@@ -736,7 +921,6 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 NativeCore.nativeSaveSramFile(nativeHandle, sramFile.absolutePath)
             }
         }
-        // Record play time
         if (sessionStartMs > 0L) {
             val deltaSec = ((System.currentTimeMillis() - sessionStartMs) / 1000L).coerceAtLeast(0L)
             sessionStartMs = System.currentTimeMillis()
@@ -762,7 +946,11 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onResume() {
         super.onResume()
-        glView?.onResume()
+        supportActionBar?.hide()
+        AppThemeManager.applyImmersiveFullscreen(this)
+        if (!useVulkanState.value) glView?.onResume()
+        applyCoreConfig()
+        NativeCore.nativeSetRetroArchShader(GbcaPrefs.getOverlayProfile(activeSystem).retroArchShaderPath)
         if (!showPauseMenuState.value) {
             isPaused.set(false)
             NativeCore.nativeAudioPause(GbcaPrefs.coreConfigState.value.audioMuted)
@@ -775,13 +963,20 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            AppThemeManager.applyImmersiveFullscreen(this)
+        }
+    }
+
     override fun onPause() {
         super.onPause()
         isPaused.set(true)
         NativeCore.nativeAudioPause(true)
         flushSram()
         sensorManager?.unregisterListener(this)
-        glView?.onPause()
+        if (!useVulkanState.value) glView?.onPause()
     }
 
     override fun onStop() {
@@ -799,6 +994,8 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 nativeHandle = 0L
             }
         }
+        vulkanReady.set(false)
+        vkLock.withLock { NativeCore.nativeVkDestroy() }
         NativeCore.nativeGlesDestroy()
         activityScope.cancel()
         super.onDestroy()
@@ -871,7 +1068,6 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             if (ay < -0.45f) maskBits = maskBits or NativeCore.KEY_UP
             if (ay > 0.45f) maskBits = maskBits or NativeCore.KEY_DOWN
 
-            // Analog triggers (L2/R2, Xbox LT/RT, DualSense) mapped cleanly to GBA L/R
             val lTrig = maxOf(
                 event.getAxisValue(MotionEvent.AXIS_LTRIGGER),
                 event.getAxisValue(MotionEvent.AXIS_BRAKE),
@@ -917,12 +1113,5 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             }
             else -> {}
         }
-    }
-
-    private fun hideSystemBars() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val controller = WindowInsetsControllerCompat(window, window.decorView)
-        controller.hide(WindowInsetsCompat.Type.systemBars())
-        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
 }

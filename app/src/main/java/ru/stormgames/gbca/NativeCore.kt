@@ -209,6 +209,7 @@ object NativeCore {
 
     @JvmStatic external fun nativeGlesInit(shaderSource: String): Boolean
     @JvmStatic external fun nativeGlesResize(width: Int, height: Int)
+    @JvmStatic external fun nativeGlesSetRotation(rotDeg: Int)
     @JvmStatic external fun nativeGlesRender(
         handle: Long,
         vpX: Int,
@@ -222,4 +223,39 @@ object NativeCore {
         integerScaling: Boolean,
     )
     @JvmStatic external fun nativeGlesDestroy()
+
+    // v1.1.0 Upscaling, Performance, RAM Cheat Finder, RetroArch librashader, Vulkan
+    const val UPSCALE_NONE = 0
+    const val UPSCALE_XBRZ = 1
+    const val UPSCALE_SCALE_EPX = 2
+    const val UPSCALE_MMPX = 3
+    const val UPSCALE_LCD_HD = 4
+    const val UPSCALE_CRT_HD = 5
+
+    const val SEARCH_EQ = 0
+    const val SEARCH_NEQ = 1
+    const val SEARCH_GT = 2
+    const val SEARCH_LT = 3
+    const val SEARCH_CHANGED = 4
+    const val SEARCH_UNCHANGED = 5
+    const val SEARCH_INCREASED = 6
+    const val SEARCH_DECREASED = 7
+
+    @JvmStatic external fun nativeSetUpscale(handle: Long, scale: Int, mode: Int)
+    @JvmStatic external fun nativeSetPerformance(handle: Long, cpuOverclockPct: Int, frameSkip: Int)
+    @JvmStatic external fun nativeWriteMemory(handle: Long, region: Int, addr: Int, value: Int, sizeBytes: Int): Int
+    @JvmStatic external fun nativeMemSearchReset(handle: Long, region: Int, valueSize: Int): Int
+    @JvmStatic external fun nativeMemSearchFilter(handle: Long, cmpOp: Int, targetValue: Int): Int
+    @JvmStatic external fun nativeMemSearchGetResults(handle: Long, outAddrs: IntArray, outVals: IntArray): Int
+
+    @JvmStatic external fun nativeIsLibrashaderAvailable(): Boolean
+    @JvmStatic external fun nativeGetLibrashaderStatus(): String
+    @JvmStatic external fun nativeSetRetroArchShader(presetPath: String)
+
+    @JvmStatic external fun nativeIsVulkanSupported(): Boolean
+    @JvmStatic external fun nativeGetVulkanDeviceName(): String
+    @JvmStatic external fun nativeVkInit(surface: android.view.Surface, customDriverPath: String): Boolean
+    @JvmStatic external fun nativeVkResize(width: Int, height: Int)
+    @JvmStatic external fun nativeVkRender(handle: Long, vpX: Int, vpY: Int, vpW: Int, vpH: Int, linearFilter: Boolean, rotDeg: Int)
+    @JvmStatic external fun nativeVkDestroy()
 }

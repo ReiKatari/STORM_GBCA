@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -37,6 +36,7 @@ import androidx.compose.material.TextFieldDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -72,7 +73,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -84,6 +84,7 @@ import com.stormgbca.emulator.model.CheatItem
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.RomEntry
 import com.stormgbca.emulator.ui.common.WatermelonSwitch
+import com.stormgbca.emulator.ui.ra.GameAchievementsDialog
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.WatermelonMono
 import com.stormgbca.emulator.ui.theme.watermelon
@@ -117,6 +118,7 @@ fun PauseMenuOverlay(
     rom: RomEntry,
     system: ConsoleSystem,
     activeCoreName: String,
+    activeBackendLabel: String,
     fastForwardActive: Boolean,
     rewindAvailableFrames: Int,
     raSession: RaGameSession?,
@@ -129,6 +131,9 @@ fun PauseMenuOverlay(
     onToggleFastForward: () -> Unit,
     onOpenSkinPicker: () -> Unit,
     onOpenOverlayPicker: () -> Unit,
+    onOpenLayoutEditor: () -> Unit,
+    onOpenRamFinder: () -> Unit,
+    onOpenRaAccount: () -> Unit,
     onConfigApplied: () -> Unit,
     onCheatsUpdated: (List<CheatItem>) -> Unit,
     onApplySoftPatch: () -> Unit,
@@ -139,6 +144,13 @@ fun PauseMenuOverlay(
 ) {
     val colors = watermelon
     var subDialog by remember { mutableStateOf(PauseSubDialog.NONE) }
+    val cfg = GbcaPrefs.coreConfigState.value
+
+    val raSubtitle = if (raSession != null) {
+        "${raSession.unlockedCount}/${raSession.totalCount} (${raSession.earnedPoints} pts)"
+    } else {
+        "RetroAchievements"
+    }
 
     val tiles = listOf(
         PauseTile("Продолжить", "Вернуться в игру", Icons.Filled.PlayArrow, colors.green, onResume),
@@ -148,15 +160,17 @@ fun PauseMenuOverlay(
         PauseTile("Перемотка назад", "$rewindAvailableFrames кадров", Icons.Filled.History, Color(0xFF2DD4BF), onRewindStep),
         PauseTile("Ускорение", if (fastForwardActive) "Включено" else "Выключено", Icons.Filled.FastForward, if (fastForwardActive) colors.green else colors.text2, onToggleFastForward),
         PauseTile("Корпус (${system.label})", "Выбрать 3D скин", Icons.Filled.Devices, Color(0xFFF472B6), onOpenSkinPicker),
-        PauseTile("Оверлей (${system.label})", "Кнопки и раскладка", Icons.Filled.Gamepad, Color(0xFFFB923C), onOpenOverlayPicker),
-        PauseTile("Видео и палитра", "Цветокоррекция и DMG", Icons.Filled.Palette, Color(0xFFFACC15), { subDialog = PauseSubDialog.VIDEO }),
+        PauseTile("Оверлей и шейдеры", "RetroArch .slangp и кнопки", Icons.Filled.Gamepad, Color(0xFFFB923C), onOpenOverlayPicker),
+        PauseTile("Экран и раскладка", "Размер и позиция (${system.label})", Icons.Filled.AspectRatio, Color(0xFF00E5FF), onOpenLayoutEditor),
+        PauseTile("Графика и мощь", "${cfg.resolutionScale}x | $activeBackendLabel", Icons.Filled.Palette, Color(0xFFFACC15), { subDialog = PauseSubDialog.VIDEO }),
         PauseTile("Аудиомикшер", "Громкость и 6 каналов", Icons.Filled.GraphicEq, Color(0xFF34D399), { subDialog = PauseSubDialog.AUDIO_MIXER }),
         PauseTile("Чит-коды", "GameShark / AR / Genie", Icons.Filled.Tune, Color(0xFFE879F9), { subDialog = PauseSubDialog.CHEATS }),
+        PauseTile("Поиск в RAM", "Живой сканер памяти", Icons.Filled.Search, Color(0xFF22D3EE), onOpenRamFinder),
         PauseTile("Мягкий патч", "IPS / UPS / BPS", Icons.Filled.Build, Color(0xFF38BDF8), onApplySoftPatch),
         PauseTile("Скриншот", "Сохранить кадр в PNG", Icons.Filled.CameraAlt, Color(0xFF22D3EE), { onTakeScreenshot(); onResume() }),
         PauseTile("Датчики", "Солнце, гироскоп, вибрация", Icons.Filled.Sensors, Color(0xFFF59E0B), { subDialog = PauseSubDialog.SENSORS }),
         PauseTile("Ядро эмуляции", activeCoreName, Icons.Filled.Memory, Color(0xFF60A5FA), { subDialog = PauseSubDialog.CORE_ENGINE }),
-        PauseTile("Достижения", if (raSession != null) "${raSession.achievements.size} достижений" else "RetroAchievements", Icons.Filled.EmojiEvents, Color(0xFFD4A017), { subDialog = PauseSubDialog.ACHIEVEMENTS }),
+        PauseTile("Достижения", raSubtitle, Icons.Filled.EmojiEvents, Color(0xFFD4A017), { subDialog = PauseSubDialog.ACHIEVEMENTS }),
         PauseTile("Настройки", "Общие параметры", Icons.Filled.Settings, colors.text2, onOpenSettings),
         PauseTile("Перезапуск", "Сбросить консоль", Icons.Filled.RestartAlt, colors.red, onReset),
         PauseTile("Выход в библиотеку", "Сохранить SRAM и выйти", Icons.AutoMirrored.Filled.Logout, colors.red, onExit),
@@ -166,16 +180,15 @@ fun PauseMenuOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xCC04060D))
-            .systemBarsPadding()
-            .padding(16.dp),
+            .padding(14.dp),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = RoundedCornerShape(22.dp),
-            color = colors.surface.copy(alpha = 0.94f),
+            color = colors.surface.copy(alpha = 0.95f),
             elevation = 24.dp,
             modifier = Modifier
-                .widthIn(max = 620.dp)
+                .widthIn(max = 640.dp)
                 .fillMaxWidth()
                 .border(1.2.dp, colors.line, RoundedCornerShape(22.dp)),
         ) {
@@ -195,7 +208,7 @@ fun PauseMenuOverlay(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = "${rom.platformLabel}  |  $activeCoreName  |  ${rom.region}",
+                            text = "${rom.platformLabel}  |  $activeCoreName  |  $activeBackendLabel  |  ${cfg.resolutionScale}x",
                             color = colors.text2,
                             fontFamily = WatermelonMono,
                             fontSize = 11.sp,
@@ -217,10 +230,10 @@ fun PauseMenuOverlay(
                 Spacer(Modifier.height(12.dp))
 
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 136.dp),
+                    columns = GridCells.Adaptive(minSize = 132.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 480.dp),
+                        .heightIn(max = 500.dp),
                     contentPadding = PaddingValues(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -233,20 +246,20 @@ fun PauseMenuOverlay(
                                 .background(colors.surface2)
                                 .border(1.dp, colors.line, RoundedCornerShape(14.dp))
                                 .clickable(onClick = tile.onClick)
-                                .padding(12.dp),
+                                .padding(11.dp),
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(32.dp)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(tile.tint.copy(alpha = 0.16f)),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Icon(tile.icon, contentDescription = null, tint = tile.tint, modifier = Modifier.size(19.dp))
+                                Icon(tile.icon, contentDescription = null, tint = tile.tint, modifier = Modifier.size(18.dp))
                             }
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(7.dp))
                             Text(tile.title, color = colors.text, fontFamily = SpaceGrotesk, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(tile.subtitle, color = colors.text3, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(tile.subtitle, color = colors.text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -261,7 +274,15 @@ fun PauseMenuOverlay(
         PauseSubDialog.CHEATS -> CheatsDialog(rom = rom, onCheatsUpdated = onCheatsUpdated, onDismiss = { subDialog = PauseSubDialog.NONE })
         PauseSubDialog.SENSORS -> SensorsDialog(onConfigApplied = onConfigApplied, onDismiss = { subDialog = PauseSubDialog.NONE })
         PauseSubDialog.CORE_ENGINE -> CoreEngineDialog(system = system, onConfigApplied = onConfigApplied, onDismiss = { subDialog = PauseSubDialog.NONE })
-        PauseSubDialog.ACHIEVEMENTS -> AchievementsDialog(session = raSession, onDismiss = { subDialog = PauseSubDialog.NONE })
+        PauseSubDialog.ACHIEVEMENTS -> GameAchievementsDialog(
+            gameTitleFallback = rom.displayTitle,
+            session = raSession,
+            onOpenLogin = {
+                subDialog = PauseSubDialog.NONE
+                onOpenRaAccount()
+            },
+            onDismiss = { subDialog = PauseSubDialog.NONE },
+        )
         PauseSubDialog.NONE -> {}
     }
 }
@@ -374,6 +395,14 @@ private fun VideoSettingsDialog(
     val colors = watermelon
     val cfg = GbcaPrefs.coreConfigState.value
     val paletteCount = remember { NativeCore.nativeGetDmgPaletteCount().coerceAtLeast(1) }
+    val upscaleModes = listOf(
+        NativeCore.UPSCALE_NONE to "Нет (Nearest)",
+        NativeCore.UPSCALE_XBRZ to "xBRZ HD",
+        NativeCore.UPSCALE_SCALE_EPX to "Scale2x / EPX",
+        NativeCore.UPSCALE_MMPX to "MMPX Sharp",
+        NativeCore.UPSCALE_LCD_HD to "LCD Subpixel HD",
+        NativeCore.UPSCALE_CRT_HD to "CRT Scanlines HD",
+    )
     val ccModes = listOf(
         NativeCore.CC_DISABLED to "Отключено",
         NativeCore.CC_CORRECT_CURVES to "Точные кривые",
@@ -394,13 +423,101 @@ private fun VideoSettingsDialog(
             Column(
                 modifier = Modifier
                     .padding(16.dp)
-                    .heightIn(max = 490.dp)
+                    .heightIn(max = 520.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Видео и палитра", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("Графика, разрешение и разгон", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
+                }
+
+                // Internal Resolution Scale 1x..4x
+                Text("Увеличение разрешения (Internal Scale)", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf(1, 2, 3, 4).forEach { sc ->
+                        val sel = cfg.resolutionScale == sc
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(if (sel) colors.green else colors.surface2)
+                                .border(1.dp, if (sel) colors.green else colors.line, RoundedCornerShape(9.dp))
+                                .clickable {
+                                    GbcaPrefs.updateCoreConfig {
+                                        val nextMode = if (sc > 1 && it.upscaleMode == NativeCore.UPSCALE_NONE) NativeCore.UPSCALE_XBRZ else it.upscaleMode
+                                        it.copy(resolutionScale = sc, upscaleMode = nextMode)
+                                    }
+                                    onConfigApplied()
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("${sc}x", color = if (sel) Color(0xFF05060A) else colors.text, fontFamily = WatermelonMono, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                // Upscaler Mode
+                Text("Алгоритм апскейлинга", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp)
+                upscaleModes.forEach { (id, title) ->
+                    val sel = cfg.upscaleMode == id
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(if (sel) colors.greenDim else colors.surface2)
+                            .clickable {
+                                GbcaPrefs.updateCoreConfig {
+                                    val nextScale = if (id != NativeCore.UPSCALE_NONE && it.resolutionScale < 2) 2 else it.resolutionScale
+                                    it.copy(upscaleMode = id, resolutionScale = nextScale)
+                                }
+                                onConfigApplied()
+                            }
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                    ) {
+                        Text(title, color = if (sel) colors.green else colors.text, fontSize = 12.5.sp)
+                    }
+                }
+
+                // CPU Overclock & Frame Skip
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Разгон процессора (CPU Overclock)", color = colors.text2, fontSize = 12.sp)
+                    Text("${cfg.cpuOverclockPct}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
+                }
+                Slider(
+                    value = cfg.cpuOverclockPct.toFloat(),
+                    onValueChange = { v ->
+                        val snapped = ((v / 25f).toInt() * 25).coerceIn(50, 400)
+                        GbcaPrefs.updateCoreConfig { it.copy(cpuOverclockPct = snapped) }
+                        onConfigApplied()
+                    },
+                    valueRange = 50f..400f,
+                    colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
+                )
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Пропуск кадров (Frame Skip)", color = colors.text2, fontSize = 12.sp)
+                    Text(if (cfg.frameSkip == 0) "Выкл" else "${cfg.frameSkip}", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    (0..4).forEach { fs ->
+                        val sel = cfg.frameSkip == fs
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (sel) colors.green else colors.surface2)
+                                .clickable {
+                                    GbcaPrefs.updateCoreConfig { it.copy(frameSkip = fs) }
+                                    onConfigApplied()
+                                }
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("$fs", color = if (sel) Color(0xFF05060A) else colors.text, fontFamily = WatermelonMono, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
                 }
 
                 Text("Цветокоррекция", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp)
@@ -415,7 +532,7 @@ private fun VideoSettingsDialog(
                                 GbcaPrefs.updateCoreConfig { it.copy(colorCorrectionMode = id) }
                                 onConfigApplied()
                             }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
                     ) {
                         Text(title, color = if (sel) colors.green else colors.text, fontSize = 12.5.sp)
                     }
@@ -756,65 +873,6 @@ private fun CoreEngineDialog(
                             .padding(12.dp),
                     ) {
                         Text(title, color = if (!enabled) colors.text3 else if (sel) colors.green else colors.text, fontSize = 13.sp)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AchievementsDialog(
-    session: RaGameSession?,
-    onDismiss: () -> Unit,
-) {
-    val colors = watermelon
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = colors.surface,
-            modifier = Modifier.fillMaxWidth().border(1.dp, colors.line, RoundedCornerShape(18.dp)),
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("RetroAchievements", color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text2, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
-                }
-                if (session == null) {
-                    Text(
-                        text = "Войдите в аккаунт RetroAchievements в настройках, чтобы видеть достижения для этой игры.",
-                        color = colors.text2,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Start,
-                    )
-                } else {
-                    Text(session.gameTitle, color = colors.green, fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Column(
-                        modifier = Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        session.achievements.forEach { ach ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(colors.surface2)
-                                    .padding(10.dp),
-                            ) {
-                                Icon(
-                                    Icons.Filled.EmojiEvents,
-                                    contentDescription = null,
-                                    tint = if (ach.unlocked) Color(0xFFD4A017) else colors.text3,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("${ach.title} (${ach.points} pts)", color = colors.text, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
-                                    Text(ach.description, color = colors.text3, fontSize = 11.sp)
-                                }
-                            }
-                        }
                     }
                 }
             }

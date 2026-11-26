@@ -20,7 +20,7 @@ extern "C" {
   #define STORM_GBCA_API __attribute__((visibility("default")))
 #endif
 
-#define STORM_GBCA_VERSION_STRING "1.0.0"
+#define STORM_GBCA_VERSION_STRING "1.1.0"
 
 /* Key bitmask */
 enum {
@@ -247,10 +247,44 @@ STORM_GBCA_API void storm_gbca_set_rtc(StormGbcaContext* ctx, int use_host, int6
 STORM_GBCA_API void storm_gbca_cheats_clear(StormGbcaContext* ctx);
 STORM_GBCA_API int storm_gbca_cheat_add(StormGbcaContext* ctx, const char* name, const char* code, int enabled);
 
+/* Resolution upscale algorithms (1x..4x internal upscaling) */
+enum {
+    STORM_UPSCALE_NONE      = 0,
+    STORM_UPSCALE_XBRZ      = 1,
+    STORM_UPSCALE_SCALE_EPX = 2,
+    STORM_UPSCALE_MMPX      = 3,
+    STORM_UPSCALE_LCD_HD    = 4,
+    STORM_UPSCALE_CRT_HD    = 5,
+};
+
+/* RAM Cheat Finder comparison operators */
+enum {
+    STORM_SEARCH_EQ        = 0,
+    STORM_SEARCH_NEQ       = 1,
+    STORM_SEARCH_GT        = 2,
+    STORM_SEARCH_LT        = 3,
+    STORM_SEARCH_CHANGED   = 4,
+    STORM_SEARCH_UNCHANGED = 5,
+    STORM_SEARCH_INCREASED = 6,
+    STORM_SEARCH_DECREASED = 7,
+};
+
 /* Memory & RetroAchievements */
 STORM_GBCA_API size_t storm_gbca_read_memory(const StormGbcaContext* ctx, int region, uint32_t addr, uint8_t* dst, size_t len);
+STORM_GBCA_API int storm_gbca_write_memory(StormGbcaContext* ctx, int region, uint32_t addr, const uint8_t* src, size_t len);
 STORM_GBCA_API int storm_gbca_compute_ra_hash(const char* rom_path, int platform, char* out_hash_33);
 STORM_GBCA_API int storm_gbca_compute_ra_hash_buffer(const void* data, size_t size, int platform, char* out_hash_33);
+
+/* Resolution Upscaling & Performance (v1.1.0) */
+STORM_GBCA_API void storm_gbca_set_upscale(StormGbcaContext* ctx, int scale_1_to_4, int upscale_mode);
+STORM_GBCA_API int storm_gbca_get_upscaled_size(const StormGbcaContext* ctx, int* out_w, int* out_h);
+STORM_GBCA_API int storm_gbca_copy_upscaled_frame(StormGbcaContext* ctx, uint32_t* dst, int dst_stride_px, int pixel_format, int* out_w, int* out_h);
+STORM_GBCA_API void storm_gbca_set_performance(StormGbcaContext* ctx, int cpu_overclock_pct, int frame_skip);
+
+/* RAM Cheat Finder (v1.1.0) */
+STORM_GBCA_API int storm_gbca_mem_search_reset(StormGbcaContext* ctx, int region, int value_size_bytes);
+STORM_GBCA_API int storm_gbca_mem_search_filter(StormGbcaContext* ctx, int cmp_op, uint32_t target_value);
+STORM_GBCA_API int storm_gbca_mem_search_get_results(const StormGbcaContext* ctx, uint32_t* out_addrs, uint32_t* out_vals, int max_count);
 
 /* Palette Info */
 STORM_GBCA_API int storm_gbca_get_dmg_palette_count(void);

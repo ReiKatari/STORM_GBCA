@@ -293,6 +293,45 @@ int main() {
         }
     }
 
+    // v1.1.0 Tests: 3x xBRZ Upscaling (720x480) + RAM Cheat Finder + Overclock/FrameSkip
+    {
+        bool v110_ok = (storm_gbca_load_rom_buffer(ctx, gba_rom.data(), gba_rom.size(), "v110.gba") == 0);
+        if (v110_ok) {
+            storm_gbca_set_upscale(ctx, 3, STORM_UPSCALE_XBRZ);
+            storm_gbca_set_performance(ctx, 150, 0);
+            storm_gbca_run_frame(ctx);
+            int uw = 0, uh = 0;
+            v110_ok &= (storm_gbca_get_upscaled_size(ctx, &uw, &uh) == 0 && uw == 720 && uh == 480);
+            std::vector<uint32_t> up(static_cast<size_t>(uw) * static_cast<size_t>(uh));
+            int ow = 0, oh = 0;
+            v110_ok &= (storm_gbca_copy_upscaled_frame(ctx, up.data(), uw, STORM_PIXEL_FORMAT_BGRA8888, &ow, &oh) == 0 && ow == 720 && oh == 480);
+
+            // RAM Cheat Finder roundtrip: write 0x42 at IWRAM[0x120], reset, change to 0x77, filter EQ 0x77
+            uint8_t v1 = 0x42, v2 = 0x77;
+            v110_ok &= (storm_gbca_write_memory(ctx, STORM_MEM_IWRAM, 0x120, &v1, 1) == 0);
+            int c0 = storm_gbca_mem_search_reset(ctx, STORM_MEM_IWRAM, 1);
+            int c1 = storm_gbca_mem_search_filter(ctx, STORM_SEARCH_EQ, 0x42);
+            v110_ok &= (storm_gbca_write_memory(ctx, STORM_MEM_IWRAM, 0x120, &v2, 1) == 0);
+            int c2 = storm_gbca_mem_search_filter(ctx, STORM_SEARCH_INCREASED, 0);
+            int c3 = storm_gbca_mem_search_filter(ctx, STORM_SEARCH_EQ, 0x77);
+            uint32_t addrs[8] = {}, vals[8] = {};
+            int nres = storm_gbca_mem_search_get_results(ctx, addrs, vals, 8);
+            bool found_target = false;
+            for (int i = 0; i < nres; ++i) {
+                if (addrs[i] == 0x120 && vals[i] == 0x77) found_target = true;
+            }
+            v110_ok &= (c0 > 0 && c1 > 0 && c2 > 0 && c3 > 0 && found_target);
+            storm_gbca_set_upscale(ctx, 1, STORM_UPSCALE_NONE);
+            storm_gbca_unload_rom(ctx);
+        }
+        if (!v110_ok) {
+            std::printf("[FAIL] v1.1.0-Power   | Upscale 3x xBRZ / RAM Cheat Finder failed\n");
+            ok = false;
+        } else {
+            std::printf("[PASS] v1.1.0-Power   | 3x xBRZ (720x480) + RAM Cheat Finder (0x120=0x77) + Overclock OK\n");
+        }
+    }
+
     storm_gbca_destroy(ctx);
     return ok ? 0 : 1;
 }

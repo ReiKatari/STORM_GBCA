@@ -8,22 +8,24 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.stormgbca.emulator.data.BoxArtRepository
 import com.stormgbca.emulator.data.GbcaPrefs
+import com.stormgbca.emulator.data.RaGameSession
+import com.stormgbca.emulator.data.RetroAchievementsClient
 import com.stormgbca.emulator.data.RomRepository
+import com.stormgbca.emulator.data.ShaderRepository
 import com.stormgbca.emulator.model.RomEntry
 import com.stormgbca.emulator.model.RomFilter
 import com.stormgbca.emulator.model.RomSortMode
 import com.stormgbca.emulator.model.RomViewMode
 import com.stormgbca.emulator.ui.emulator.EmulatorActivity
+import com.stormgbca.emulator.ui.ra.GameAchievementsDialog
+import com.stormgbca.emulator.ui.ra.RetroAchievementsAccountDialog
 import com.stormgbca.emulator.ui.settings.SettingsActivity
-import com.stormgbca.emulator.ui.splash.Console3DBootScreen
 import com.stormgbca.emulator.ui.theme.AppThemeManager
 import com.stormgbca.emulator.ui.theme.StormWatermelonTheme
 import com.stormgbca.emulator.update.StormUpdateDialog
@@ -31,7 +33,10 @@ import com.stormgbca.emulator.update.StormUpdateMirrorClient
 import com.stormgbca.emulator.update.UpdateDownloadState
 import com.stormgbca.emulator.update.UpdateReleaseInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import ru.stormgames.gbca.NativeCore
@@ -46,11 +51,15 @@ class MainActivity : AppCompatActivity() {
     private val viewModeState = mutableStateOf(RomViewMode.GRID)
     private val searchQueryState = mutableStateOf("")
     private val isScanningState = mutableStateOf(false)
-    private val showSplashState = mutableStateOf(false)
     private val latestUpdateState = mutableStateOf<UpdateReleaseInfo?>(null)
     private val showUpdateDialogState = mutableStateOf(false)
     private val updateDownloadState = mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle)
+    private val showRaAccountDialogState = mutableStateOf(false)
+    private val raGameDialogRomState = mutableStateOf<RomEntry?>(null)
+    private val raGameSessionState = mutableStateOf<RaGameSession?>(null)
+    private val raGameLoadingState = mutableStateOf(false)
 
+    private var coverLoadJob: Job? = null
     private var pendingPatchRom: RomEntry? = null
     private var pendingCoverRom: RomEntry? = null
 
@@ -102,13 +111,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        supportActionBar?.hide()
         AppThemeManager.applyEdgeToEdgeTheme(this)
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            ShaderRepository.ensureExtracted(this@MainActivity)
+        }
 
         filterState.value = GbcaPrefs.getRomFilter()
         sortModeState.value = GbcaPrefs.getRomSortMode()
         viewModeState.value = GbcaPrefs.getRomViewMode()
         romsState.value = GbcaPrefs.getCachedRoms()
-        showSplashState.value = savedInstanceState == null && GbcaPrefs.coreConfigState.value.showBootSplash
 
         setContent {
             StormWatermelonTheme {
@@ -148,68 +161,91 @@ class MainActivity : AppCompatActivity() {
                     preloadCovers(romsState.value)
                 }
 
-                if (showSplashState.value) {
-                    Console3DBootScreen(
-                        onFinished = { showSplashState.value = false },
+                RomBrowserScreen(
+                    roms = filteredRoms,
+                    boxArtMap = boxArtMap,
+                    filter = filterState.value,
+                    sortMode = sortModeState.value,
+                    viewMode = viewModeState.value,
+                    searchQuery = searchQueryState.value,
+                    isScanning = isScanningState.value,
+                    hasUpdateAvailable = latestUpdateState.value != null,
+                    raConnected = GbcaPrefs.getRaUsername().isNotBlank() && GbcaPrefs.getRaToken().isNotBlank(),
+                    onSearchQueryChange = { searchQueryState.value = it },
+                    onFilterChange = { f ->
+                        filterState.value = f
+                        GbcaPrefs.setRomFilter(f)
+                    },
+                    onSortChange = { m ->
+                        sortModeState.value = m
+                        GbcaPrefs.setRomSortMode(m)
+                    },
+                    onToggleViewMode = {
+                        val next = if (viewModeState.value == RomViewMode.GRID) RomViewMode.LIST else RomViewMode.GRID
+                        viewModeState.value = next
+                        GbcaPrefs.setRomViewMode(next)
+                    },
+                    onAddFolder = { folderPicker.launch(null) },
+                    onOpenSingleFile = { singleFilePicker.launch(arrayOf("*/*")) },
+                    onRefresh = { rescanLibrary() },
+                    onOpenRetroAchievements = { showRaAccountDialogState.value = true },
+                    onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
+                    onOpenUpdateDialog = { showUpdateDialogState.value = true },
+                    onLaunchRom = { launchRom(it) },
+                    onToggleFavorite = { rom ->
+                        val updated = romsState.value.map {
+                            if (it.uriString == rom.uriString) it.copy(isFavorite = !it.isFavorite) else it
+                        }
+                        romsState.value = updated
+                        GbcaPrefs.saveCachedRoms(updated)
+                    },
+                    onSetCoreOverride = { rom, ov ->
+                        val updated = romsState.value.map {
+                            if (it.uriString == rom.uriString) it.copy(coreOverride = ov) else it
+                        }
+                        romsState.value = updated
+                        GbcaPrefs.saveCachedRoms(updated)
+                    },
+                    onPickSoftPatch = { rom ->
+                        pendingPatchRom = rom
+                        patchPicker.launch(arrayOf("*/*"))
+                    },
+                    onRefreshBoxArt = { rom ->
+                        lifecycleScope.launch {
+                            val path = BoxArtRepository.fetchOrGetBoxArt(this@MainActivity, rom, forceRefresh = true)
+                            if (path != null) {
+                                boxArtMap[rom.uriString] = path
+                                Toast.makeText(this@MainActivity, "Обложка обновлена", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(this@MainActivity, "Обложка не найдена в базе Libretro", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    onPickCustomCover = { rom ->
+                        pendingCoverRom = rom
+                        coverPicker.launch(arrayOf("image/*"))
+                    },
+                    onViewRomAchievements = { rom ->
+                        openRomAchievements(rom)
+                    },
+                )
+
+                if (showRaAccountDialogState.value) {
+                    RetroAchievementsAccountDialog(
+                        onDismiss = { showRaAccountDialogState.value = false },
                     )
-                } else {
-                    RomBrowserScreen(
-                        roms = filteredRoms,
-                        boxArtMap = boxArtMap,
-                        filter = filterState.value,
-                        sortMode = sortModeState.value,
-                        viewMode = viewModeState.value,
-                        searchQuery = searchQueryState.value,
-                        isScanning = isScanningState.value,
-                        hasUpdateAvailable = latestUpdateState.value != null,
-                        onSearchQueryChange = { searchQueryState.value = it },
-                        onFilterChange = { f ->
-                            filterState.value = f
-                            GbcaPrefs.setRomFilter(f)
+                }
+
+                raGameDialogRomState.value?.let { rom ->
+                    GameAchievementsDialog(
+                        gameTitleFallback = rom.displayTitle,
+                        session = raGameSessionState.value,
+                        isLoading = raGameLoadingState.value,
+                        onOpenLogin = {
+                            raGameDialogRomState.value = null
+                            showRaAccountDialogState.value = true
                         },
-                        onSortChange = { m ->
-                            sortModeState.value = m
-                            GbcaPrefs.setRomSortMode(m)
-                        },
-                        onToggleViewMode = {
-                            val next = if (viewModeState.value == RomViewMode.GRID) RomViewMode.LIST else RomViewMode.GRID
-                            viewModeState.value = next
-                            GbcaPrefs.setRomViewMode(next)
-                        },
-                        onAddFolder = { folderPicker.launch(null) },
-                        onOpenSingleFile = { singleFilePicker.launch(arrayOf("*/*")) },
-                        onRefresh = { rescanLibrary() },
-                        onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
-                        onOpenUpdateDialog = { showUpdateDialogState.value = true },
-                        onLaunchRom = { launchRom(it) },
-                        onToggleFavorite = { rom ->
-                            val updated = romsState.value.map {
-                                if (it.uriString == rom.uriString) it.copy(isFavorite = !it.isFavorite) else it
-                            }
-                            romsState.value = updated
-                            GbcaPrefs.saveCachedRoms(updated)
-                        },
-                        onSetCoreOverride = { rom, ov ->
-                            val updated = romsState.value.map {
-                                if (it.uriString == rom.uriString) it.copy(coreOverride = ov) else it
-                            }
-                            romsState.value = updated
-                            GbcaPrefs.saveCachedRoms(updated)
-                        },
-                        onPickSoftPatch = { rom ->
-                            pendingPatchRom = rom
-                            patchPicker.launch(arrayOf("*/*"))
-                        },
-                        onRefreshBoxArt = { rom ->
-                            lifecycleScope.launch {
-                                val path = BoxArtRepository.fetchOrGetBoxArt(this@MainActivity, rom, forceRefresh = true)
-                                if (path != null) boxArtMap[rom.uriString] = path
-                            }
-                        },
-                        onPickCustomCover = { rom ->
-                            pendingCoverRom = rom
-                            coverPicker.launch(arrayOf("image/*"))
-                        },
+                        onDismiss = { raGameDialogRomState.value = null },
                     )
                 }
 
@@ -246,7 +282,37 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        supportActionBar?.hide()
+        AppThemeManager.applyImmersiveFullscreen(this)
         romsState.value = GbcaPrefs.getCachedRoms()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            AppThemeManager.applyImmersiveFullscreen(this)
+        }
+    }
+
+    private fun openRomAchievements(rom: RomEntry) {
+        raGameDialogRomState.value = rom
+        raGameSessionState.value = null
+        if (GbcaPrefs.getRaUsername().isBlank() || GbcaPrefs.getRaToken().isBlank()) {
+            raGameLoadingState.value = false
+            return
+        }
+        raGameLoadingState.value = true
+        lifecycleScope.launch {
+            val hash = withContext(Dispatchers.IO) {
+                val uri = runCatching { Uri.parse(rom.uriString) }.getOrNull() ?: return@withContext rom.md5
+                val f = RomRepository.materializeUriToCache(this@MainActivity, uri, "ra_lookup")
+                val computed = f?.let { NativeCore.nativeComputeRaHash(it.absolutePath, rom.platform) }
+                f?.delete()
+                computed ?: rom.md5
+            }
+            raGameSessionState.value = RetroAchievementsClient.lookupGameSession(hash)
+            raGameLoadingState.value = false
+        }
     }
 
     private fun rescanLibrary() {
@@ -260,15 +326,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun preloadCovers(roms: List<RomEntry>) {
-        lifecycleScope.launch {
+        coverLoadJob?.cancel()
+        if (roms.isEmpty()) return
+        coverLoadJob = lifecycleScope.launch {
+            val autoFetch = GbcaPrefs.coreConfigState.value.autoFetchCovers
+            val semaphore = Semaphore(4)
+            // First populate all already-cached covers instantaneously
+            val pending = ArrayList<RomEntry>()
             for (rom in roms) {
-                BoxArtRepository.getCachedBoxArtPath(this@MainActivity, rom)?.let {
-                    boxArtMap[rom.uriString] = it
-                    continue
+                val cached = BoxArtRepository.getCachedBoxArtPath(this@MainActivity, rom)
+                if (cached != null) {
+                    boxArtMap[rom.uriString] = cached
+                } else if (autoFetch) {
+                    pending.add(rom)
                 }
-                val fetched = BoxArtRepository.fetchOrGetBoxArt(this@MainActivity, rom)
-                if (fetched != null) {
-                    boxArtMap[rom.uriString] = fetched
+            }
+            // Fetch missing covers in parallel (4 concurrent workers against cached Libretro index)
+            pending.forEach { rom ->
+                launch(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        val fetched = BoxArtRepository.fetchOrGetBoxArt(this@MainActivity, rom)
+                        if (fetched != null) {
+                            withContext(Dispatchers.Main) {
+                                boxArtMap[rom.uriString] = fetched
+                            }
+                        }
+                    }
                 }
             }
         }

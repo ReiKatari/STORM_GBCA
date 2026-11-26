@@ -126,7 +126,8 @@ private fun resolvePalette(id: GbcaSkinId): SkinColors = when (id) {
 }
 
 /**
- * Computes the exact game screen rectangle inside a container of size [containerW] x [containerH].
+ * Computes the exact game screen rectangle inside a container of size [containerW] x [containerH],
+ * honoring per-system custom screen geometry (Portrait & Landscape independently for GB, GBC, GBA).
  */
 fun computeGameViewportRect(
     containerW: Int,
@@ -136,15 +137,51 @@ fun computeGameViewportRect(
     aspectMode: Int,
     nativeW: Int,
     nativeH: Int,
+    customScreen: com.stormgbca.emulator.model.ScreenRectConfig? = null,
 ): Rect {
     if (containerW <= 0 || containerH <= 0) return Rect(0f, 0f, 1f, 1f)
-    val srcW = nativeW.coerceAtLeast(160).toFloat()
-    val srcH = nativeH.coerceAtLeast(144).toFloat()
+    val rotated = (customScreen?.rotationDeg == 90 || customScreen?.rotationDeg == 270)
+    val srcW = (if (rotated) nativeH else nativeW).coerceAtLeast(144).toFloat()
+    val srcH = (if (rotated) nativeW else nativeH).coerceAtLeast(144).toFloat()
     val srcAspect = srcW / srcH
 
+    // Custom per-system screen size & placement override!
+    if (customScreen != null && customScreen.useCustom) {
+        val boxW = (containerW * customScreen.widthFraction.coerceIn(0.25f, 1.0f))
+        val boxH = (containerH * customScreen.heightFraction.coerceIn(0.20f, 1.0f))
+        var targetW: Float
+        var targetH: Float
+        when (customScreen.aspectMode) {
+            2, 3 -> { // Stretch / Free Custom W x H
+                targetW = boxW
+                targetH = boxH
+            }
+            1 -> { // Integer scaling inside user's custom bounds
+                val intScale = minOf((boxW / srcW).toInt(), (boxH / srcH).toInt()).coerceAtLeast(1)
+                targetW = srcW * intScale
+                targetH = srcH * intScale
+            }
+            else -> { // Fit Original aspect inside user's custom bounds
+                if (boxW / boxH > srcAspect) {
+                    targetH = boxH
+                    targetW = targetH * srcAspect
+                } else {
+                    targetW = boxW
+                    targetH = targetW / srcAspect
+                }
+            }
+        }
+        val cx = containerW * customScreen.centerX.coerceIn(0.10f, 0.90f)
+        val cy = containerH * customScreen.centerY.coerceIn(0.10f, 0.90f)
+        val left = (cx - targetW / 2f).coerceIn(0f, (containerW - targetW).coerceAtLeast(0f))
+        val top = (cy - targetH / 2f).coerceIn(0f, (containerH - targetH).coerceAtLeast(0f))
+        return Rect(left, top, left + targetW, top + targetH)
+    }
+
+    val effAspect = customScreen?.aspectMode ?: aspectMode
     val isLandscape = containerW > containerH
     if (skinId == GbcaSkinId.NONE) {
-        if (aspectMode == 2) {
+        if (effAspect == 2) {
             return Rect(0f, 0f, containerW.toFloat(), containerH.toFloat())
         }
         val maxW = containerW.toFloat()
@@ -158,7 +195,7 @@ fun computeGameViewportRect(
             targetW = maxW
             targetH = targetW / srcAspect
         }
-        if (aspectMode == 1) {
+        if (effAspect == 1) {
             val intScale = minOf((targetW / srcW).toInt(), (targetH / srcH).toInt()).coerceAtLeast(1)
             targetW = srcW * intScale
             targetH = srcH * intScale
@@ -180,7 +217,7 @@ fun computeGameViewportRect(
         targetW = availW
         targetH = targetW / srcAspect
     }
-    if (aspectMode == 1) {
+    if (effAspect == 1) {
         val intScale = minOf((targetW / srcW).toInt(), (targetH / srcH).toInt()).coerceAtLeast(1)
         targetW = srcW * intScale
         targetH = srcH * intScale

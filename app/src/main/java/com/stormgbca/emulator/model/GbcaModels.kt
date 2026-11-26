@@ -58,15 +58,33 @@ data class CustomControlPos(
 )
 
 @Serializable
+data class ScreenRectConfig(
+    val useCustom: Boolean = false,
+    val centerX: Float = 0.50f,
+    val centerY: Float = 0.30f,
+    val widthFraction: Float = 0.92f,
+    val heightFraction: Float = 0.46f,
+    val aspectMode: Int = 0, // 0=Fit Original, 1=Integer, 2=Stretch, 3=Free Custom
+    val rotationDeg: Int = 0, // 0, 90, 180, 270
+)
+
+@Serializable
 data class SystemOverlayProfile(
     val layoutPreset: String = OverlayLayoutPreset.CLASSIC_HANDHELD.key,
     val buttonStyle: String = "storm_neon",
     val shaderOverlay: Int = NativeCore.FILTER_RGB_SUBPIXEL,
+    val retroArchShaderPath: String = "",
     val opacityPercent: Int = 78,
     val scalePercent: Int = 100,
     val hapticsEnabled: Boolean = true,
     val showShoulders: Boolean = false,
     val showQuickStrip: Boolean = true,
+    val portraitScreen: ScreenRectConfig = ScreenRectConfig(
+        useCustom = false, centerX = 0.50f, centerY = 0.28f, widthFraction = 0.94f, heightFraction = 0.46f, aspectMode = 0, rotationDeg = 0,
+    ),
+    val landscapeScreen: ScreenRectConfig = ScreenRectConfig(
+        useCustom = false, centerX = 0.50f, centerY = 0.50f, widthFraction = 0.64f, heightFraction = 0.88f, aspectMode = 0, rotationDeg = 0,
+    ),
     val dpadPos: CustomControlPos = CustomControlPos(0.16f, 0.72f, 1.0f),
     val abPos: CustomControlPos = CustomControlPos(0.84f, 0.72f, 1.0f),
     val startSelectPos: CustomControlPos = CustomControlPos(0.50f, 0.89f, 1.0f),
@@ -156,7 +174,14 @@ data class GbcaCoreConfig(
     val sensorGyroEnabled: Boolean = true,
     val rumbleEnabled: Boolean = true,
     val solarLux: Int = 5,
-    val showBootSplash: Boolean = true,
+    val showBootSplash: Boolean = false,
+    val autoFetchCovers: Boolean = true,
+    val graphicsBackend: Int = 0, // 0=OpenGL ES 3.2, 1=Vulkan 1.1
+    val customVulkanDriverPath: String = "",
+    val resolutionScale: Int = 1, // 1..4x internal upscaling
+    val upscaleMode: Int = NativeCore.UPSCALE_NONE, // 0=None, 1=xBRZ, 2=Scale2x, 3=MMPX, 4=LCD HD, 5=CRT HD
+    val cpuOverclockPct: Int = 100, // 50..400%
+    val frameSkip: Int = 0, // 0..4
 )
 
 enum class PhysicalAction(val labelRu: String, val labelEn: String, val defaultKeyCode: Int, val coreKeyMask: Int = 0) {
