@@ -191,10 +191,10 @@ object RomRepository {
     private fun detectRegionFallback(fileName: String): String {
         val u = fileName.uppercase()
         return when {
-            "(USA" in u || "(U)" in u || "[U]" in u -> "USA"
-            "(EUR" in u || "(E)" in u || "[E]" in u -> "Europe"
-            "(JPN" in u || "(JAPAN" in u || "(J)" in u || "[J]" in u -> "Japan"
-            "(RUS" in u || "(RUSSIA" in u -> "Russia"
+            "(USA" in u || "(U)" in u || "[U]" in u || "[US]" in u -> "USA"
+            "(EUR" in u || "(E)" in u || "[E]" in u || "[EU]" in u -> "Europe"
+            "(JPN" in u || "(JAPAN" in u || "(J)" in u || "[J]" in u || "[JP]" in u -> "Japan"
+            "(RUS" in u || "(RUSSIA" in u || "[RU]" in u || "[RUS]" in u -> "Russia"
             else -> "World"
         }
     }

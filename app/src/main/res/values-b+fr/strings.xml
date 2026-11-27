@@ -353,4 +353,18 @@
     <string name="skin_brightness_fmt">Luminosité coque (%s)</string>
     <string name="skin_none">Sans coque (Plein écran)</string>
     <string name="boot_initializing">Initialisation de STORM GBCA...</string>
+    <string name="overlay_separate_ab">Boutons A et B séparés</string>
+    <string name="overlay_ab_spacing">Espacement boutons A / B</string>
+    <string name="screen_preset_title">Mode d’affichage écran</string>
+    <string name="screen_preset_skin">Dans le skin 3D</string>
+    <string name="screen_preset_max_fit">Ajustement max</string>
+    <string name="screen_preset_fullscreen">Plein écran</string>
+    <string name="screen_preset_integer">Pixels entiers</string>
+    <string name="screen_preset_custom">Personnalisé</string>
+    <string name="screen_hide_skin_fs">Masquer le skin 3D en plein écran</string>
+    <string name="screen_snap_top">Haut</string>
+    <string name="screen_snap_middle">Milieu</string>
+    <string name="screen_snap_bottom">Bas</string>
+    <string name="rom_folders_section">Dossiers ROM</string>
+    <string name="rom_folders_count_fmt">%d dossier(s) ajouté(s)</string>
 </resources>

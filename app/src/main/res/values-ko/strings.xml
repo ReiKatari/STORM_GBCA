@@ -353,4 +353,18 @@
     <string name="skin_brightness_fmt">외형 밝기 (%s)</string>
     <string name="skin_none">스킨 없음 (전체 화면)</string>
     <string name="boot_initializing">STORM GBCA 초기화 중...</string>
+    <string name="overlay_separate_ab">A 및 B 버튼 분리 배치</string>
+    <string name="overlay_ab_spacing">A / B 버튼 간격</string>
+    <string name="screen_preset_title">화면 표시 모드</string>
+    <string name="screen_preset_skin">3D 스킨 내부</string>
+    <string name="screen_preset_max_fit">최대 비율 맞춤</string>
+    <string name="screen_preset_fullscreen">전체 화면</string>
+    <string name="screen_preset_integer">정수 픽셀</string>
+    <string name="screen_preset_custom">사용자 지정</string>
+    <string name="screen_hide_skin_fs">전체 화면 모드에서 3D 스킨 숨기기</string>
+    <string name="screen_snap_top">상단</string>
+    <string name="screen_snap_middle">중앙</string>
+    <string name="screen_snap_bottom">하단</string>
+    <string name="rom_folders_section">ROM 폴더</string>
+    <string name="rom_folders_count_fmt">%d개 폴더 추가됨</string>
 </resources>

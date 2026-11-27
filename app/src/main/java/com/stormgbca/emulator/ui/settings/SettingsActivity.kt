@@ -182,6 +182,22 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    private val romFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            GbcaPrefs.addRomFolder(uri.toString())
+            lifecycleScope.launch {
+                RomRepository.scanFolders(this@SettingsActivity)
+            }
+            Toast.makeText(this, getString(R.string.add_rom_folder), Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         supportActionBar?.hide()
@@ -211,6 +227,7 @@ class SettingsActivity : AppCompatActivity() {
                     },
                     onStartBindKey = { action -> awaitingActionState.value = action },
                     onExportBackup = { backupExportPicker.launch("storm_gbca_backup.json") },
+                    onAddRomFolder = { romFolderPicker.launch(null) },
                 )
             }
         }
@@ -252,6 +269,7 @@ private fun SettingsScreen(
     onOpenLayoutEditor: (ConsoleSystem) -> Unit,
     onStartBindKey: (PhysicalAction) -> Unit,
     onExportBackup: () -> Unit,
+    onAddRomFolder: () -> Unit,
 ) {
     val colors = watermelon
     val context = LocalContext.current
@@ -745,6 +763,17 @@ private fun SettingsScreen(
                 }
 
                 SettingsPage.LIBRARY -> {
+                    // ROM Folders Management (moved cleanly from header into Library Settings, matching STORM DS)
+                    WatermelonSectionLabel(stringResource(R.string.rom_folders_section))
+                    WatermelonCard {
+                        val folderCount = GbcaPrefs.getRomFolders().size
+                        SettingsNavRow(
+                            icon = Icons.Filled.Folder,
+                            title = stringResource(R.string.add_rom_folder),
+                            subtitle = stringResource(R.string.rom_folders_count_fmt, folderCount),
+                        ) { onAddRomFolder() }
+                    }
+
                     // Independent Cover Sources (ALL OFF BY DEFAULT - STORM DS Parity!)
                     WatermelonSectionLabel(stringResource(R.string.sec_covers))
                     WatermelonCard {

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,11 +31,12 @@ import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.OpenWith
-import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,16 +51,18 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import com.stormgbca.emulator.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.stormgbca.emulator.R
 import com.stormgbca.emulator.data.GbcaPrefs
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.CustomControlPos
 import com.stormgbca.emulator.model.OverlayLayoutPreset
 import com.stormgbca.emulator.model.ScreenRectConfig
+import com.stormgbca.emulator.ui.common.WatermelonSwitch
+import com.stormgbca.emulator.ui.emulator.skin.ConsoleSkinOverlayView
 import com.stormgbca.emulator.ui.emulator.skin.GbcaSkinId
 import com.stormgbca.emulator.ui.emulator.skin.computeGameViewportRect
 import com.stormgbca.emulator.ui.theme.AppThemeManager
@@ -105,7 +109,7 @@ private fun LayoutEditorScreen(
     val colors = watermelon
     var activeSystem by remember { mutableStateOf(initialSystem) }
     var profile by remember(activeSystem) { mutableStateOf(GbcaPrefs.getOverlayProfile(activeSystem)) }
-    var panelExpanded by remember { mutableStateOf(false) }
+    var panelExpanded by remember { mutableStateOf(true) }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -141,18 +145,32 @@ private fun LayoutEditorScreen(
             customScreen = currentScreenCfg,
         )
 
-        // Subtle alignment grid & center snap guides
+        val hideSkinNow = currentScreenCfg.hideSkinInFullscreen && (
+            currentScreenCfg.screenPreset == 1 ||
+                currentScreenCfg.screenPreset == 2 ||
+                (currentScreenCfg.useCustom && currentScreenCfg.widthFraction >= 0.96f && currentScreenCfg.heightFraction >= 0.88f)
+            )
+        if (!hideSkinNow && activeSkin != GbcaSkinId.NONE) {
+            ConsoleSkinOverlayView(
+                skinId = activeSkin,
+                screenRect = viewportRect,
+                dimmingPercent = GbcaPrefs.getSkinDimming(activeSystem),
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // Alignment center snap guides
         Canvas(modifier = Modifier.fillMaxSize()) {
             val dash = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
             drawLine(
-                color = colors.green.copy(alpha = 0.16f),
+                color = colors.green.copy(alpha = 0.20f),
                 start = Offset(size.width / 2f, 0f),
                 end = Offset(size.width / 2f, size.height),
                 strokeWidth = 1.5f,
                 pathEffect = dash,
             )
             drawLine(
-                color = colors.green.copy(alpha = 0.16f),
+                color = colors.green.copy(alpha = 0.20f),
                 start = Offset(0f, size.height / 2f),
                 end = Offset(size.width, size.height / 2f),
                 strokeWidth = 1.5f,
@@ -168,7 +186,7 @@ private fun LayoutEditorScreen(
                 .offset { IntOffset(viewportRect.left.roundToInt(), viewportRect.top.roundToInt()) }
                 .size(width = vpWidthDp, height = vpHeightDp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xCC0F172A))
+                .background(Color(0xBB0F172A))
                 .border(2.dp, colors.green, RoundedCornerShape(8.dp))
                 .pointerInput(w, h, activeSystem, isLandscape, currentScreenCfg) {
                     detectDragGestures { change, dragAmount ->
@@ -177,16 +195,16 @@ private fun LayoutEditorScreen(
                         val curCy = (viewportRect.top + viewportRect.height / 2f) / h
                         val curWf = viewportRect.width / w
                         val curHf = viewportRect.height / h
-                        var nx = (curCx + dragAmount.x / w).coerceIn(0.10f, 0.90f)
-                        val ny = (curCy + dragAmount.y / h).coerceIn(0.08f, 0.92f)
-                        // Gentle snap to horizontal center
-                        if (kotlin.math.abs(nx - 0.5f) < 0.015f) nx = 0.5f
+                        var nx = (curCx + dragAmount.x / w).coerceIn(0.05f, 0.95f)
+                        val ny = (curCy + dragAmount.y / h).coerceIn(0.05f, 0.95f)
+                        if (kotlin.math.abs(nx - 0.5f) < 0.018f) nx = 0.5f
                         updateScreenCfg {
                             it.copy(
                                 useCustom = true,
+                                screenPreset = 4,
                                 centerX = nx,
                                 centerY = ny,
-                                widthFraction = if (it.useCustom) it.widthFraction else curWf.coerceIn(0.25f, 1.0f),
+                                widthFraction = if (it.useCustom) it.widthFraction else curWf.coerceIn(0.20f, 1.0f),
                                 heightFraction = if (it.useCustom) it.heightFraction else curHf.coerceIn(0.20f, 1.0f),
                             )
                         }
@@ -201,7 +219,11 @@ private fun LayoutEditorScreen(
                 Icon(Icons.Filled.OpenWith, contentDescription = null, tint = colors.green, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = stringResource(R.string.layout_screen_title_fmt, activeSystem.label, stringResource(if (isLandscape) R.string.layout_landscape else R.string.layout_portrait)),
+                    text = stringResource(
+                        R.string.layout_screen_title_fmt,
+                        activeSystem.label,
+                        stringResource(if (isLandscape) R.string.layout_landscape else R.string.layout_portrait),
+                    ),
                     color = Color.White,
                     fontFamily = SpaceGrotesk,
                     fontWeight = FontWeight.Bold,
@@ -215,8 +237,8 @@ private fun LayoutEditorScreen(
                 )
                 Text(
                     text = stringResource(R.string.layout_drag_hint),
-                    color = colors.text3,
-                    fontSize = 9.sp,
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 9.5.sp,
                 )
             }
 
@@ -224,7 +246,7 @@ private fun LayoutEditorScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .size(34.dp)
+                    .size(36.dp)
                     .clip(RoundedCornerShape(topStart = 10.dp))
                     .background(colors.green)
                     .pointerInput(w, h, activeSystem, isLandscape, currentScreenCfg) {
@@ -232,11 +254,12 @@ private fun LayoutEditorScreen(
                             change.consume()
                             val curWf = if (currentScreenCfg.useCustom) currentScreenCfg.widthFraction else (viewportRect.width / w)
                             val curHf = if (currentScreenCfg.useCustom) currentScreenCfg.heightFraction else (viewportRect.height / h)
-                            val nwf = (curWf + (dragAmount.x * 1.6f) / w).coerceIn(0.25f, 1.0f)
+                            val nwf = (curWf + (dragAmount.x * 1.6f) / w).coerceIn(0.20f, 1.0f)
                             val nhf = (curHf + (dragAmount.y * 1.6f) / h).coerceIn(0.20f, 1.0f)
                             updateScreenCfg {
                                 it.copy(
                                     useCustom = true,
+                                    screenPreset = 4,
                                     widthFraction = nwf,
                                     heightFraction = nhf,
                                 )
@@ -249,33 +272,54 @@ private fun LayoutEditorScreen(
             }
         }
 
-        // Draggable Virtual Controls
+        // Draggable Virtual Controls (Grouped A/B OR Separate Independent A + B!)
         DraggableNode(
             label = stringResource(R.string.layout_dpad),
             pos = profile.dpadPos,
             containerW = w,
             containerH = h,
-            sizeDp = 106,
+            sizeDp = 100,
             accent = colors.green,
             onMove = { next -> profile = profile.copy(dpadPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
         )
 
-        DraggableNode(
-            label = "A / B",
-            pos = profile.abPos,
-            containerW = w,
-            containerH = h,
-            sizeDp = 106,
-            accent = colors.red,
-            onMove = { next -> profile = profile.copy(abPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
-        )
+        if (profile.separateABButtons) {
+            DraggableNode(
+                label = "A",
+                pos = profile.btnAPos,
+                containerW = w,
+                containerH = h,
+                sizeDp = 66,
+                accent = colors.green,
+                onMove = { next -> profile = profile.copy(btnAPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
+            )
+            DraggableNode(
+                label = "B",
+                pos = profile.btnBPos,
+                containerW = w,
+                containerH = h,
+                sizeDp = 66,
+                accent = colors.red,
+                onMove = { next -> profile = profile.copy(btnBPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
+            )
+        } else {
+            DraggableNode(
+                label = "A / B",
+                pos = profile.abPos,
+                containerW = w,
+                containerH = h,
+                sizeDp = 104,
+                accent = colors.red,
+                onMove = { next -> profile = profile.copy(abPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
+            )
+        }
 
         DraggableNode(
             label = "START / SELECT",
             pos = profile.startSelectPos,
             containerW = w,
             containerH = h,
-            sizeDp = 92,
+            sizeDp = 88,
             accent = colors.green,
             onMove = { next -> profile = profile.copy(startSelectPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
         )
@@ -286,7 +330,7 @@ private fun LayoutEditorScreen(
                 pos = profile.lPos,
                 containerW = w,
                 containerH = h,
-                sizeDp = 72,
+                sizeDp = 68,
                 accent = colors.green,
                 onMove = { next -> profile = profile.copy(lPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
             )
@@ -295,29 +339,28 @@ private fun LayoutEditorScreen(
                 pos = profile.rPos,
                 containerW = w,
                 containerH = h,
-                sizeDp = 72,
+                sizeDp = 68,
                 accent = colors.green,
                 onMove = { next -> profile = profile.copy(rPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
             )
         }
 
-        // Floating Top Bar with System Switcher [GB / GBC / GBA] + Save / Reset / Precision Panel toggle
+        // Floating Top Bar + Collapsible Precision Screen & A/B Panel
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 10.dp, start = 10.dp, end = 10.dp),
+                .padding(top = 8.dp, start = 8.dp, end = 8.dp),
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(RoundedCornerShape(14.dp))
-                    .background(colors.surface.copy(alpha = 0.94f))
+                    .background(colors.surface.copy(alpha = 0.95f))
                     .border(1.dp, colors.line, RoundedCornerShape(14.dp))
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
-                // System Tabs
                 ConsoleSystem.entries.forEach { sys ->
                     val sel = sys == activeSystem
                     Box(
@@ -328,12 +371,11 @@ private fun LayoutEditorScreen(
                                 GbcaPrefs.updateOverlayProfile(activeSystem) { profile }
                                 activeSystem = sys
                             }
-                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
                     ) {
                         Text(sys.label, color = if (sel) Color(0xFF05060A) else colors.text, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     }
                 }
-                Spacer(Modifier.width(4.dp))
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -360,9 +402,9 @@ private fun LayoutEditorScreen(
                             profile = def
                             GbcaPrefs.updateOverlayProfile(activeSystem) { def }
                         }
-                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
                 ) {
-                    Text(stringResource(R.string.reset), color = colors.text2, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.reset), color = colors.text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Box(
                     modifier = Modifier
@@ -372,48 +414,39 @@ private fun LayoutEditorScreen(
                             GbcaPrefs.updateOverlayProfile(activeSystem) { profile }
                             onDone()
                         }
-                        .padding(horizontal = 11.dp, vertical = 5.dp),
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
                 ) {
                     Text(stringResource(R.string.layout_done), color = Color(0xFF05060A), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
-            // Collapsible Precision Screen Geometry Panel (Width, Height, X, Y, Aspect, Rotation)
             if (panelExpanded) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(max = 360.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(colors.surface.copy(alpha = 0.96f))
                         .border(1.dp, colors.line, RoundedCornerShape(16.dp))
                         .verticalScroll(rememberScrollState())
                         .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    // Header + Quick Fullscreen 100% + Rotate
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            stringResource(R.string.layout_geometry_fmt, activeSystem.label, stringResource(if (isLandscape) R.string.layout_landscape else R.string.layout_portrait)),
+                            stringResource(
+                                R.string.layout_geometry_fmt,
+                                activeSystem.label,
+                                stringResource(if (isLandscape) R.string.layout_landscape else R.string.layout_portrait),
+                            ),
                             color = colors.text,
                             fontFamily = SpaceGrotesk,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            fontSize = 12.5.sp,
                             modifier = Modifier.weight(1f),
                         )
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(colors.surface2)
-                                .clickable { updateScreenCfg { it.copy(useCustom = true, centerX = 0.50f) } }
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.CenterFocusStrong, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(stringResource(R.string.layout_center), color = colors.text, fontSize = 10.sp)
-                            }
-                        }
-                        Spacer(Modifier.width(6.dp))
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
@@ -422,43 +455,144 @@ private fun LayoutEditorScreen(
                                 .padding(horizontal = 8.dp, vertical = 4.dp),
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.RotateRight, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
+                                Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("${currentScreenCfg.rotationDeg}°", color = colors.text, fontFamily = WatermelonMono, fontSize = 10.sp)
                             }
                         }
                     }
 
-                    // Aspect mode selector
+                    // 1-Tap Screen Mode Presets (Fullscreen 100%, Max Aspect Fit, Inside 3D Skin, Pixel-Perfect)
+                    val presets = listOf(
+                        2 to R.string.screen_preset_fullscreen,
+                        1 to R.string.screen_preset_max_fit,
+                        0 to R.string.screen_preset_skin,
+                        3 to R.string.screen_preset_integer,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        presets.forEach { (pid, labelRes) ->
+                            val sel = !currentScreenCfg.useCustom && currentScreenCfg.screenPreset == pid
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (sel) colors.green else colors.surface2)
+                                    .border(1.dp, if (sel) colors.green else colors.line, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        updateScreenCfg {
+                                            it.copy(
+                                                useCustom = false,
+                                                screenPreset = pid,
+                                                aspectMode = if (pid == 2) 2 else if (pid == 3) 1 else 0,
+                                                widthFraction = if (pid == 2 || pid == 1) 1.0f else it.widthFraction,
+                                                heightFraction = if (pid == 2 || pid == 1) 1.0f else it.heightFraction,
+                                                centerX = 0.50f,
+                                                centerY = if (pid == 2 || pid == 1) 0.50f else 0.28f,
+                                            )
+                                        }
+                                    }
+                                    .padding(vertical = 6.dp, horizontal = 3.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (pid == 2) {
+                                        Icon(Icons.Filled.Fullscreen, contentDescription = null, tint = if (sel) Color(0xFF05060A) else colors.green, modifier = Modifier.size(12.dp))
+                                        Spacer(Modifier.width(2.dp))
+                                    }
+                                    Text(stringResource(labelRes), color = if (sel) Color(0xFF05060A) else colors.text, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                            }
+                        }
+                    }
+
+                    // Aspect Mode Row (Original / Integer / Stretch / Free)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         listOf(0 to R.string.vid_aspect_orig, 1 to R.string.vid_aspect_int, 2 to R.string.vid_aspect_full, 3 to R.string.layout_aspect_free).forEach { (m, labelRes) ->
-                            val label = stringResource(labelRes)
                             val sel = currentScreenCfg.aspectMode == m
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(if (sel) colors.green else colors.surface2)
-                                    .clickable { updateScreenCfg { it.copy(useCustom = true, aspectMode = m) } }
-                                    .padding(vertical = 6.dp),
+                                    .clickable { updateScreenCfg { it.copy(useCustom = true, screenPreset = 4, aspectMode = m) } }
+                                    .padding(vertical = 5.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(label, color = if (sel) Color(0xFF05060A) else colors.text, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(stringResource(labelRes), color = if (sel) Color(0xFF05060A) else colors.text, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
 
-                    ScreenSliderRow(stringResource(R.string.layout_width), "${(currentScreenCfg.widthFraction * 100).roundToInt()}%", currentScreenCfg.widthFraction, 0.25f..1.0f) { v ->
-                        updateScreenCfg { it.copy(useCustom = true, widthFraction = v) }
+                    // Quick Position Snaps (Top / Middle / Bottom / Center X)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        listOf(
+                            0.24f to R.string.screen_snap_top,
+                            0.50f to R.string.screen_snap_middle,
+                            0.74f to R.string.screen_snap_bottom,
+                        ).forEach { (yVal, lblRes) ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(colors.surface2)
+                                    .clickable { updateScreenCfg { it.copy(useCustom = true, screenPreset = 4, centerY = yVal) } }
+                                    .padding(vertical = 5.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(stringResource(lblRes), color = colors.text, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1.1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.surface2)
+                                .clickable { updateScreenCfg { it.copy(useCustom = true, screenPreset = 4, centerX = 0.50f) } }
+                                .padding(vertical = 5.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.CenterFocusStrong, contentDescription = null, tint = colors.green, modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("X=50%", color = colors.text, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+
+                    // Precision Sliders
+                    ScreenSliderRow(stringResource(R.string.layout_width), "${(currentScreenCfg.widthFraction * 100).roundToInt()}%", currentScreenCfg.widthFraction, 0.20f..1.0f) { v ->
+                        updateScreenCfg { it.copy(useCustom = true, screenPreset = 4, widthFraction = v) }
                     }
                     ScreenSliderRow(stringResource(R.string.layout_height), "${(currentScreenCfg.heightFraction * 100).roundToInt()}%", currentScreenCfg.heightFraction, 0.20f..1.0f) { v ->
-                        updateScreenCfg { it.copy(useCustom = true, heightFraction = v) }
+                        updateScreenCfg { it.copy(useCustom = true, screenPreset = 4, heightFraction = v) }
                     }
-                    ScreenSliderRow(stringResource(R.string.layout_pos_x), "${(currentScreenCfg.centerX * 100).roundToInt()}%", currentScreenCfg.centerX, 0.10f..0.90f) { v ->
-                        updateScreenCfg { it.copy(useCustom = true, centerX = v) }
+                    ScreenSliderRow(stringResource(R.string.layout_pos_x), "${(currentScreenCfg.centerX * 100).roundToInt()}%", currentScreenCfg.centerX, 0.05f..0.95f) { v ->
+                        updateScreenCfg { it.copy(useCustom = true, screenPreset = 4, centerX = v) }
                     }
-                    ScreenSliderRow(stringResource(R.string.layout_pos_y), "${(currentScreenCfg.centerY * 100).roundToInt()}%", currentScreenCfg.centerY, 0.10f..0.90f) { v ->
-                        updateScreenCfg { it.copy(useCustom = true, centerY = v) }
+                    ScreenSliderRow(stringResource(R.string.layout_pos_y), "${(currentScreenCfg.centerY * 100).roundToInt()}%", currentScreenCfg.centerY, 0.05f..0.95f) { v ->
+                        updateScreenCfg { it.copy(useCustom = true, screenPreset = 4, centerY = v) }
+                    }
+
+                    // Separate A/B Toggle & Spacing right inside Layout Editor!
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.overlay_separate_ab), color = colors.text, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        WatermelonSwitch(
+                            checked = profile.separateABButtons,
+                            onCheckedChange = { c -> profile = profile.copy(separateABButtons = c) },
+                        )
+                    }
+                    if (!profile.separateABButtons) {
+                        ScreenSliderRow(stringResource(R.string.overlay_ab_spacing), "${profile.abSpacingPercent}%", profile.abSpacingPercent.toFloat(), 100f..180f) { v ->
+                            profile = profile.copy(abSpacingPercent = v.roundToInt().coerceIn(100, 180))
+                        }
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.screen_hide_skin_fs), color = colors.text, fontSize = 11.5.sp, modifier = Modifier.weight(1f))
+                        WatermelonSwitch(
+                            checked = currentScreenCfg.hideSkinInFullscreen,
+                            onCheckedChange = { c -> updateScreenCfg { it.copy(hideSkinInFullscreen = c) } },
+                        )
                     }
                 }
             }
@@ -510,18 +644,24 @@ private fun DraggableNode(
             .offset { IntOffset((xPx - sizePx / 2f).roundToInt(), (yPx - sizePx / 2f).roundToInt()) }
             .size(sizeDp.dp)
             .clip(CircleShape)
-            .background(accent.copy(alpha = 0.22f))
+            .background(accent.copy(alpha = 0.28f))
             .border(2.dp, accent, CircleShape)
             .pointerInput(containerW, containerH, pos) {
                 detectDragGestures { change, dragAmount ->
                     change.consume()
-                    val nx = ((pos.xFraction * containerW + dragAmount.x) / containerW).coerceIn(0.06f, 0.94f)
-                    val ny = ((pos.yFraction * containerH + dragAmount.y) / containerH).coerceIn(0.08f, 0.94f)
+                    val nx = ((pos.xFraction * containerW + dragAmount.x) / containerW).coerceIn(0.05f, 0.95f)
+                    val ny = ((pos.yFraction * containerH + dragAmount.y) / containerH).coerceIn(0.06f, 0.94f)
                     onMove(pos.copy(xFraction = nx, yFraction = ny))
                 }
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Color.White, fontFamily = WatermelonMono, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = label,
+            color = Color.White,
+            fontFamily = SpaceGrotesk,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+        )
     }
 }

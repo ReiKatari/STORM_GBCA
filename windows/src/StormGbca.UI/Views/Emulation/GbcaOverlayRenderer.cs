@@ -64,11 +64,17 @@ public static class GbcaOverlayRenderer
         boxes.Add(new(StormKeyMask.Left, new Rect(dpadCx - dpadR, cy - arm * 0.5, arm, arm)));
         boxes.Add(new(StormKeyMask.Right, new Rect(dpadCx + dpadR - arm, cy - arm * 0.5, arm, arm)));
 
-        // A & B on right (authentic non-overlapping diagonal GBA/GBC layout)
+        // A & B on right (guaranteed zero overlap + configurable spacing & separate A/B mode!)
         double btnR = Math.Clamp(deckH * 0.21, 16, 32);
-        double abBaseX = width - Math.Clamp(width * 0.13, btnR * 2.8 + 20, 155);
-        boxes.Add(new(StormKeyMask.B, new Rect(abBaseX - btnR * 2.15, cy - btnR * 0.20, btnR * 2, btnR * 2)));
-        boxes.Add(new(StormKeyMask.A, new Rect(abBaseX + btnR * 0.20, cy - btnR * 1.15, btnR * 2, btnR * 2)));
+        double spacingFactor = Math.Clamp(profile.AbSpacingPercent, 95, 200) / 100.0;
+        double distX = btnR * (profile.SeparateABButtons ? 2.65 : 2.35) * spacingFactor;
+        double abBaseX = width - Math.Clamp(width * 0.14, btnR * 3.0 + 24, 175);
+        double bCx = abBaseX - distX * 0.55;
+        double aCx = abBaseX + distX * 0.45;
+        double bCy = profile.SeparateABButtons ? cy + btnR * 0.30 : cy + btnR * 0.35;
+        double aCy = profile.SeparateABButtons ? cy - btnR * 0.55 : cy - btnR * 0.45;
+        boxes.Add(new(StormKeyMask.B, new Rect(bCx - btnR, bCy - btnR, btnR * 2, btnR * 2)));
+        boxes.Add(new(StormKeyMask.A, new Rect(aCx - btnR, aCy - btnR, btnR * 2, btnR * 2)));
 
         // Select & Start in center-bottom
         double pillW = Math.Clamp(52 * s, 40, 78);
@@ -148,7 +154,9 @@ public static class GbcaOverlayRenderer
                 Opacity = profile.Opacity,
                 Scale = 0.72f,
                 ShowControlsDeck = true,
-                ShowLR = profile.ShowLR
+                ShowLR = profile.ShowLR,
+                SeparateABButtons = profile.SeparateABButtons,
+                AbSpacingPercent = profile.AbSpacingPercent
             };
             var hitboxes = ComputeHitboxes(width, height, miniProfile);
             DrawButtonDeck(canvas, width, height, miniProfile, pal, hitboxes, (uint)(StormKeyMask.A | StormKeyMask.Right), 240, platform);

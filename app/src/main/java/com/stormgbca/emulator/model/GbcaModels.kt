@@ -60,6 +60,8 @@ data class CustomControlPos(
 @Serializable
 data class ScreenRectConfig(
     val useCustom: Boolean = false,
+    val screenPreset: Int = 0, // 0=Inside 3D Skin, 1=Max Aspect Fit, 2=Fullscreen Edge-to-Edge, 3=Integer Pixel-Perfect, 4=Free Custom
+    val hideSkinInFullscreen: Boolean = true,
     val centerX: Float = 0.50f,
     val centerY: Float = 0.30f,
     val widthFraction: Float = 0.92f,
@@ -79,14 +81,18 @@ data class SystemOverlayProfile(
     val hapticsEnabled: Boolean = true,
     val showShoulders: Boolean = false,
     val showQuickStrip: Boolean = true,
+    val separateABButtons: Boolean = false,
+    val abSpacingPercent: Int = 128, // 100..180% gap multiplier so A and B never overlap
     val portraitScreen: ScreenRectConfig = ScreenRectConfig(
-        useCustom = false, centerX = 0.50f, centerY = 0.28f, widthFraction = 0.94f, heightFraction = 0.46f, aspectMode = 0, rotationDeg = 0,
+        useCustom = false, screenPreset = 0, hideSkinInFullscreen = true, centerX = 0.50f, centerY = 0.28f, widthFraction = 0.94f, heightFraction = 0.46f, aspectMode = 0, rotationDeg = 0,
     ),
     val landscapeScreen: ScreenRectConfig = ScreenRectConfig(
-        useCustom = false, centerX = 0.50f, centerY = 0.50f, widthFraction = 0.64f, heightFraction = 0.88f, aspectMode = 0, rotationDeg = 0,
+        useCustom = false, screenPreset = 0, hideSkinInFullscreen = true, centerX = 0.50f, centerY = 0.50f, widthFraction = 0.64f, heightFraction = 0.88f, aspectMode = 0, rotationDeg = 0,
     ),
     val dpadPos: CustomControlPos = CustomControlPos(0.16f, 0.72f, 1.0f),
     val abPos: CustomControlPos = CustomControlPos(0.84f, 0.72f, 1.0f),
+    val btnAPos: CustomControlPos = CustomControlPos(0.89f, 0.67f, 1.0f),
+    val btnBPos: CustomControlPos = CustomControlPos(0.73f, 0.77f, 1.0f),
     val startSelectPos: CustomControlPos = CustomControlPos(0.50f, 0.89f, 1.0f),
     val lPos: CustomControlPos = CustomControlPos(0.10f, 0.14f, 1.0f),
     val rPos: CustomControlPos = CustomControlPos(0.90f, 0.14f, 1.0f),

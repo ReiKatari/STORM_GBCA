@@ -94,6 +94,7 @@ fun formatPlayTime(seconds: Long): String {
 fun RomGridCard(
     rom: RomEntry,
     boxArtPath: String?,
+    hasRaAchievements: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
@@ -241,7 +242,7 @@ fun RomGridCard(
                 .align(Alignment.TopEnd)
                 .padding(7.dp),
         ) {
-            if (cfg.showRaBadge) {
+            if (cfg.showRaBadge && hasRaAchievements) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
@@ -312,6 +313,7 @@ fun RomGridCard(
 fun RomListRow(
     rom: RomEntry,
     boxArtPath: String?,
+    hasRaAchievements: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
@@ -321,6 +323,15 @@ fun RomListRow(
     val cfg = GbcaPrefs.coreConfigState.value
     val title = rom.formattedTitle(cfg.romDisplayNameMode == 1)
     val (platBg, platFg) = platformBadgeColors(rom.platform)
+    val hwTags = remember(rom.hwFlags) {
+        buildList {
+            if (rom.hasRtc) add("RTC")
+            if (rom.hasSolar) add("SOLAR")
+            if (rom.hasRumble) add("RUMBLE")
+            if (rom.hasGyro || rom.hasTilt) add("GYRO")
+        }
+    }
+    val showAnyBadge = cfg.showPlatformBadge || cfg.showRegionBadge || (cfg.showHardwareBadges && hwTags.isNotEmpty()) || (cfg.showRaBadge && hasRaAchievements)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -361,9 +372,9 @@ fun RomListRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (cfg.showPlatformBadge || cfg.showRegionBadge || cfg.showRaBadge) {
+            if (showAnyBadge) {
                 Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (cfg.showPlatformBadge) {
                         Box(
                             modifier = Modifier
@@ -375,10 +386,43 @@ fun RomListRow(
                         }
                     }
                     if (cfg.showRegionBadge) {
-                        Text(shortRegionCode(rom.region), color = colors.text2, fontFamily = WatermelonMono, fontSize = 10.sp)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(colors.surface2)
+                                .border(0.7.dp, colors.line, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 5.dp, vertical = 1.5.dp),
+                        ) {
+                            Text(shortRegionCode(rom.region), color = colors.text, fontFamily = WatermelonMono, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
-                    if (cfg.showRaBadge) {
-                        Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFFACC15), modifier = Modifier.size(13.dp))
+                    if (cfg.showHardwareBadges && hwTags.isNotEmpty()) {
+                        hwTags.forEach { tag ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0x2600E5FF))
+                                    .border(0.7.dp, Color(0xFF00E5FF), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                            ) {
+                                Text(tag, color = Color(0xFF00E5FF), fontFamily = WatermelonMono, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    if (cfg.showRaBadge && hasRaAchievements) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF0F172A))
+                                .border(0.7.dp, Color(0xFFFACC15).copy(alpha = 0.75f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFFACC15), modifier = Modifier.size(10.dp))
+                                Spacer(Modifier.width(2.dp))
+                                Text("RA", color = Color(0xFFFACC15), fontFamily = WatermelonMono, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
                     }
                 }
             }

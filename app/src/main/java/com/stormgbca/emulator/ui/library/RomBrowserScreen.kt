@@ -65,10 +65,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -110,13 +113,13 @@ private fun sortLabel(m: RomSortMode): String = when (m) {
 fun RomBrowserScreen(
     roms: List<RomEntry>,
     boxArtMap: Map<String, String>,
+    confirmedRaHashes: Set<String> = emptySet(),
     filter: RomFilter,
     sortMode: RomSortMode,
     viewMode: RomViewMode,
     searchQuery: String,
     isScanning: Boolean,
     hasUpdateAvailable: Boolean,
-    raConnected: Boolean = false,
     onSearchQueryChange: (String) -> Unit,
     onFilterChange: (RomFilter) -> Unit,
     onSortChange: (RomSortMode) -> Unit,
@@ -124,7 +127,6 @@ fun RomBrowserScreen(
     onAddFolder: () -> Unit,
     onOpenSingleFile: () -> Unit,
     onRefresh: () -> Unit,
-    onOpenRetroAchievements: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenUpdateDialog: () -> Unit,
     onLaunchRom: (RomEntry) -> Unit,
@@ -146,18 +148,18 @@ fun RomBrowserScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.bg)
-            .padding(top = 8.dp),
+            .padding(top = 4.dp),
     ) {
-        // Watermelon Fullscreen Header
+        // Compact STORM DS / STORM 3DS Single-Line Header (No RA icon in header)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp)
-                .padding(horizontal = 14.dp),
+                .height(48.dp)
+                .padding(start = 14.dp, end = 6.dp),
         ) {
             if (searchOpen) {
-                Icon(Icons.Filled.Search, contentDescription = null, tint = colors.green, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.Search, contentDescription = null, tint = colors.green, modifier = Modifier.size(19.dp))
                 Spacer(Modifier.width(8.dp))
                 BasicTextField(
                     value = searchQuery,
@@ -173,52 +175,49 @@ fun RomBrowserScreen(
                     },
                     modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = { searchOpen = false; onSearchQueryChange("") }) {
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text)
+                IconButton(onClick = { searchOpen = false; onSearchQueryChange("") }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(19.dp))
                 }
             } else {
-                WatermelonMark(height = 26.dp)
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = "STORM GBCA",
-                    color = colors.text,
-                    fontFamily = SpaceGrotesk,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 0.8.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = { searchOpen = true }) {
-                    Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.hint_search_roms), tint = colors.text)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(end = 4.dp),
+                ) {
+                    WatermelonMark(height = 22.dp)
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(color = colors.text, fontWeight = FontWeight.Bold)) {
+                                append("STORM ")
+                            }
+                            withStyle(SpanStyle(color = colors.green, fontWeight = FontWeight.Bold)) {
+                                append("GBCA")
+                            }
+                        },
+                        fontFamily = SpaceGrotesk,
+                        fontSize = 18.sp,
+                        letterSpacing = (-0.3).sp,
+                        softWrap = false,
+                        maxLines = 1,
+                    )
                 }
-                IconButton(onClick = onOpenRetroAchievements) {
-                    Box {
-                        Icon(
-                            Icons.Filled.EmojiEvents,
-                            contentDescription = "RetroAchievements",
-                            tint = if (raConnected) Color(0xFFFACC15) else colors.text,
-                        )
-                        if (raConnected) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .align(Alignment.TopEnd)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF22C55E)),
-                            )
-                        }
-                    }
+
+                Spacer(Modifier.weight(1f))
+
+                IconButton(onClick = { searchOpen = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.hint_search_roms), tint = colors.text, modifier = Modifier.size(19.dp))
                 }
-                IconButton(onClick = onToggleViewMode) {
+                IconButton(onClick = onToggleViewMode, modifier = Modifier.size(36.dp)) {
                     Icon(
                         if (viewMode == RomViewMode.GRID) Icons.Filled.ViewList else Icons.Filled.GridView,
                         contentDescription = null,
                         tint = colors.text,
+                        modifier = Modifier.size(19.dp),
                     )
                 }
                 Box {
-                    IconButton(onClick = { sortMenuOpen = true }) {
-                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, tint = colors.text)
+                    IconButton(onClick = { sortMenuOpen = true }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, tint = colors.text, modifier = Modifier.size(19.dp))
                     }
                     DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
                         RomSortMode.entries.forEach { mode ->
@@ -233,12 +232,12 @@ fun RomBrowserScreen(
                     }
                 }
                 if (hasUpdateAvailable) {
-                    IconButton(onClick = onOpenUpdateDialog) {
-                        Icon(Icons.Filled.SystemUpdate, contentDescription = stringResource(R.string.update_dialog_title), tint = colors.green)
+                    IconButton(onClick = onOpenUpdateDialog, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Filled.SystemUpdate, contentDescription = stringResource(R.string.update_dialog_title), tint = colors.green, modifier = Modifier.size(19.dp))
                     }
                 }
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings), tint = colors.text)
+                IconButton(onClick = onOpenSettings, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings), tint = colors.text, modifier = Modifier.size(19.dp))
                 }
             }
         }
@@ -247,40 +246,82 @@ fun RomBrowserScreen(
             LinearProgressIndicator(
                 color = colors.green,
                 backgroundColor = colors.surface2,
-                modifier = Modifier.fillMaxWidth().height(3.dp),
+                modifier = Modifier.fillMaxWidth().height(2.5.dp),
             )
         }
 
-        // Clean Wrapped Filter Pills & Action Buttons (ZERO horizontal scrolling!)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+        // Clean Symmetrical 2-Row Top Menu Bar:
+        // Row 1: All | GB | GBC | GBA
+        // Row 2: Favorites | File | Refresh (Folder button removed to Settings & Empty state)
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 6.dp),
+                .padding(horizontal = 14.dp, vertical = 5.dp),
         ) {
-            RomFilter.entries.forEach { f ->
-                val selected = f == filter
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(if (selected) colors.green else colors.surface2)
-                        .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(18.dp))
-                        .clickable { onFilterChange(f) }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    Text(
-                        text = filterLabel(f),
-                        color = if (selected) Color(0xFF05060A) else colors.text,
-                        fontFamily = SpaceGrotesk,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                listOf(RomFilter.ALL, RomFilter.GB, RomFilter.GBC, RomFilter.GBA).forEach { f ->
+                    val selected = f == filter
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (selected) colors.green else colors.surface2)
+                            .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(16.dp))
+                            .clickable { onFilterChange(f) }
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = filterLabel(f),
+                            color = if (selected) Color(0xFF05060A) else colors.text,
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
-            HeaderActionPill(Icons.Filled.CreateNewFolder, stringResource(R.string.folder_btn), onAddFolder)
-            HeaderActionPill(Icons.Filled.FileOpen, stringResource(R.string.file_btn), onOpenSingleFile)
-            HeaderActionPill(Icons.Filled.Refresh, stringResource(R.string.refresh_library), onRefresh)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                val favSelected = filter == RomFilter.FAVORITES
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .weight(1.15f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (favSelected) colors.green else colors.surface2)
+                        .border(1.dp, if (favSelected) colors.green else colors.line, RoundedCornerShape(16.dp))
+                        .clickable { onFilterChange(if (favSelected) RomFilter.ALL else RomFilter.FAVORITES) }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                ) {
+                    Icon(
+                        imageVector = if (favSelected) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                        contentDescription = null,
+                        tint = if (favSelected) Color(0xFF05060A) else WatermelonColors.favoriteStar,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = filterLabel(RomFilter.FAVORITES),
+                        color = if (favSelected) Color(0xFF05060A) else colors.text,
+                        fontFamily = SpaceGrotesk,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                HeaderActionPill(Icons.Filled.FileOpen, stringResource(R.string.file_btn), onOpenSingleFile, Modifier.weight(0.92f))
+                HeaderActionPill(Icons.Filled.Refresh, stringResource(R.string.refresh_library), onRefresh, Modifier.weight(0.98f))
+            }
         }
 
         if (roms.isEmpty()) {
@@ -342,6 +383,7 @@ fun RomBrowserScreen(
                     RomGridCard(
                         rom = rom,
                         boxArtPath = boxArtMap[rom.uriString],
+                        hasRaAchievements = rom.md5.lowercase() in confirmedRaHashes,
                         onClick = { onLaunchRom(rom) },
                         onLongPress = { contextRom = rom },
                     )
@@ -357,6 +399,7 @@ fun RomBrowserScreen(
                     RomListRow(
                         rom = rom,
                         boxArtPath = boxArtMap[rom.uriString],
+                        hasRaAchievements = rom.md5.lowercase() in confirmedRaHashes,
                         onClick = { onLaunchRom(rom) },
                         onLongPress = { contextRom = rom },
                     )
@@ -435,16 +478,17 @@ fun RomBrowserScreen(
 }
 
 @Composable
-private fun HeaderActionPill(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun HeaderActionPill(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = watermelon
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(RoundedCornerShape(18.dp))
+        horizontalArrangement = Arrangement.Center,
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
             .background(colors.surface2)
-            .border(1.dp, colors.line, RoundedCornerShape(18.dp))
+            .border(1.dp, colors.line, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
         Icon(icon, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(4.dp))

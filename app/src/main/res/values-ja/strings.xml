@@ -353,4 +353,18 @@
     <string name="skin_brightness_fmt">本体の明るさ (%s)</string>
     <string name="skin_none">スキンなし (全画面)</string>
     <string name="boot_initializing">STORM GBCA を初期化中...</string>
+    <string name="overlay_separate_ab">A・Bボタンを独立配置</string>
+    <string name="overlay_ab_spacing">A・Bボタン間隔</string>
+    <string name="screen_preset_title">画面表示モード</string>
+    <string name="screen_preset_skin">3Dスキン内</string>
+    <string name="screen_preset_max_fit">最大アスペクト</string>
+    <string name="screen_preset_fullscreen">全画面表示</string>
+    <string name="screen_preset_integer">整数ピクセル</string>
+    <string name="screen_preset_custom">カスタム</string>
+    <string name="screen_hide_skin_fs">全画面モードで3Dスキンを非表示</string>
+    <string name="screen_snap_top">上寄せ</string>
+    <string name="screen_snap_middle">中央</string>
+    <string name="screen_snap_bottom">下寄せ</string>
+    <string name="rom_folders_section">ROMフォルダ</string>
+    <string name="rom_folders_count_fmt">%d個のフォルダを追加済み</string>
 </resources>

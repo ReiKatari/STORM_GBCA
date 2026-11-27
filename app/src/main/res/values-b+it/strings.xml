@@ -353,4 +353,18 @@
     <string name="skin_brightness_fmt">Luminosità scocca (%s)</string>
     <string name="skin_none">Senza scocca (Schermo intero)</string>
     <string name="boot_initializing">Inizializzazione STORM GBCA...</string>
+    <string name="overlay_separate_ab">Pulsanti A e B separati</string>
+    <string name="overlay_ab_spacing">Distanza pulsanti A / B</string>
+    <string name="screen_preset_title">Modalità schermo</string>
+    <string name="screen_preset_skin">Nella skin 3D</string>
+    <string name="screen_preset_max_fit">Adatta max</string>
+    <string name="screen_preset_fullscreen">Schermo intero</string>
+    <string name="screen_preset_integer">Pixel perfetti</string>
+    <string name="screen_preset_custom">Manuale</string>
+    <string name="screen_hide_skin_fs">Nascondi skin 3D a schermo intero</string>
+    <string name="screen_snap_top">Alto</string>
+    <string name="screen_snap_middle">Centro</string>
+    <string name="screen_snap_bottom">Basso</string>
+    <string name="rom_folders_section">Cartelle ROM</string>
+    <string name="rom_folders_count_fmt">%d cartella/e aggiunta/e</string>
 </resources>

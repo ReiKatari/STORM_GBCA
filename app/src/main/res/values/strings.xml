@@ -353,4 +353,18 @@
     <string name="skin_brightness_fmt">Shell Brightness (%s)</string>
     <string name="skin_none">No Skin (Fullscreen)</string>
     <string name="boot_initializing">Initializing STORM GBCA...</string>
+    <string name="overlay_separate_ab">Separate A and B buttons</string>
+    <string name="overlay_ab_spacing">A / B Button Spacing</string>
+    <string name="screen_preset_title">Screen Display Mode</string>
+    <string name="screen_preset_skin">3D Skin</string>
+    <string name="screen_preset_max_fit">Max Fit</string>
+    <string name="screen_preset_fullscreen">Fullscreen</string>
+    <string name="screen_preset_integer">Pixel-Perfect</string>
+    <string name="screen_preset_custom">Custom</string>
+    <string name="screen_hide_skin_fs">Hide 3D skin in fullscreen / max mode</string>
+    <string name="screen_snap_top">Top</string>
+    <string name="screen_snap_middle">Middle</string>
+    <string name="screen_snap_bottom">Bottom</string>
+    <string name="rom_folders_section">ROM Folders</string>
+    <string name="rom_folders_count_fmt">%d folder(s) added</string>
 </resources>

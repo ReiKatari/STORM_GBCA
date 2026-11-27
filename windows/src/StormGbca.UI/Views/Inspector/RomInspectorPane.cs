@@ -233,7 +233,7 @@ public class RomInspectorPane : Border
 
         if (rom == null)
         {
-            _titleText.Text = "STORM GBCA 1.2.0";
+            _titleText.Text = "STORM GBCA 1.3.0";
             _metaText.Text = "Выберите игру в списке";
             _coverImage.Source = null;
             return;

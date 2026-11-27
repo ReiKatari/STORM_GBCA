@@ -267,8 +267,15 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                         )
                     }
 
+                    val effectiveSkinId = remember(skinId, activeScreenCfg, screenRect, wPx, hPx) {
+                        val isFullscreenMode = activeScreenCfg.screenPreset == 1 ||
+                            activeScreenCfg.screenPreset == 2 ||
+                            (activeScreenCfg.useCustom && activeScreenCfg.widthFraction >= 0.96f && activeScreenCfg.heightFraction >= 0.88f)
+                        if (isFullscreenMode && activeScreenCfg.hideSkinInFullscreen) GbcaSkinId.NONE else skinId
+                    }
+
                     ConsoleSkinOverlayView(
-                        skinId = skinId,
+                        skinId = effectiveSkinId,
                         screenRect = screenRect,
                         dimmingPercent = skinDim,
                         modifier = Modifier.fillMaxSize(),

@@ -353,4 +353,18 @@
     <string name="skin_brightness_fmt">Gehäuse-Helligkeit (%s)</string>
     <string name="skin_none">Ohne Gehäuse (Vollbild)</string>
     <string name="boot_initializing">STORM GBCA wird initialisiert...</string>
+    <string name="overlay_separate_ab">A- und B-Taste trennen</string>
+    <string name="overlay_ab_spacing">Abstand zwischen A und B</string>
+    <string name="screen_preset_title">Bildschirmmodus</string>
+    <string name="screen_preset_skin">Im 3D-Skin</string>
+    <string name="screen_preset_max_fit">Max. Seitenverh.</string>
+    <string name="screen_preset_fullscreen">Vollbild (100%)</string>
+    <string name="screen_preset_integer">Pixelgenau</string>
+    <string name="screen_preset_custom">Benutzerdef.</string>
+    <string name="screen_hide_skin_fs">3D-Skin im Vollbild ausblenden</string>
+    <string name="screen_snap_top">Oben</string>
+    <string name="screen_snap_middle">Mitte</string>
+    <string name="screen_snap_bottom">Unten</string>
+    <string name="rom_folders_section">ROM-Ordner</string>
+    <string name="rom_folders_count_fmt">%d Ordner hinzugefügt</string>
 </resources>

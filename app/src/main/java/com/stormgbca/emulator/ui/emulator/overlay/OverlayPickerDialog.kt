@@ -219,6 +219,72 @@ fun OverlayPickerDialog(
                         }
                     }
 
+                    // 1-Tap Screen Display Mode Presets (Fullscreen / Max Fit / 3D Skin / Integer)
+                    Text(stringResource(R.string.screen_preset_title), color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    val curScr = profile.portraitScreen
+                    val screenPresets = listOf(
+                        0 to R.string.screen_preset_skin,
+                        1 to R.string.screen_preset_max_fit,
+                        2 to R.string.screen_preset_fullscreen,
+                        3 to R.string.screen_preset_integer,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        screenPresets.chunked(2).forEach { pair ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                pair.forEach { (presetId, labelRes) ->
+                                    val selected = !curScr.useCustom && curScr.screenPreset == presetId
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (selected) colors.green else colors.surface2)
+                                            .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                GbcaPrefs.updateOverlayProfile(activeTab) { p ->
+                                                    p.copy(
+                                                        portraitScreen = p.portraitScreen.copy(
+                                                            useCustom = false,
+                                                            screenPreset = presetId,
+                                                            aspectMode = if (presetId == 2) 2 else if (presetId == 3) 1 else 0,
+                                                        ),
+                                                        landscapeScreen = p.landscapeScreen.copy(
+                                                            useCustom = false,
+                                                            screenPreset = presetId,
+                                                            aspectMode = if (presetId == 2) 2 else if (presetId == 3) 1 else 0,
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                            .padding(vertical = 8.dp, horizontal = 6.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            stringResource(labelRes),
+                                            color = if (selected) Color(0xFF05060A) else colors.text,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.screen_hide_skin_fs), color = colors.text, fontSize = 12.5.sp, modifier = Modifier.weight(1f))
+                        WatermelonSwitch(
+                            checked = curScr.hideSkinInFullscreen,
+                            onCheckedChange = { c ->
+                                GbcaPrefs.updateOverlayProfile(activeTab) { p ->
+                                    p.copy(
+                                        portraitScreen = p.portraitScreen.copy(hideSkinInFullscreen = c),
+                                        landscapeScreen = p.landscapeScreen.copy(hideSkinInFullscreen = c),
+                                    )
+                                }
+                            },
+                        )
+                    }
+
                     // RetroArch .slangp Shader Selector (librashader)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.weight(1f)) {
@@ -384,6 +450,27 @@ fun OverlayPickerDialog(
                         valueRange = 70f..140f,
                         colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green, inactiveTrackColor = colors.surface3),
                     )
+
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.overlay_separate_ab), color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        WatermelonSwitch(
+                            checked = profile.separateABButtons,
+                            onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(separateABButtons = c) } },
+                        )
+                    }
+
+                    if (!profile.separateABButtons) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(stringResource(R.string.overlay_ab_spacing), color = colors.text, fontSize = 13.sp)
+                            Text("${profile.abSpacingPercent}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
+                        }
+                        Slider(
+                            value = profile.abSpacingPercent.toFloat(),
+                            onValueChange = { v -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(abSpacingPercent = v.toInt().coerceIn(100, 180)) } },
+                            valueRange = 100f..180f,
+                            colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green, inactiveTrackColor = colors.surface3),
+                        )
+                    }
 
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.overlay_haptics), color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))

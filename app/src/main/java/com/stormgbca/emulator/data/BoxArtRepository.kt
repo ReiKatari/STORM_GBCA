@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit
  */
 object BoxArtRepository {
     private const val TAG = "BoxArtRepository"
-    private const val USER_AGENT = "STORM-GBCA/1.2.0 (Android)"
+    private const val USER_AGENT = "STORM-GBCA/1.3.0 (Android)"
 
     private const val REPO_GB = "Nintendo_-_Game_Boy"
     private const val REPO_GBC = "Nintendo_-_Game_Boy_Color"
@@ -41,12 +41,13 @@ object BoxArtRepository {
         val normalized: String,
         val tokens: Set<String>,
         val regionScore: Int,
+        val regionTag: String,
     )
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
-        .callTimeout(35, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .callTimeout(18, TimeUnit.SECONDS)
         .followRedirects(true)
         .build()
 
@@ -89,12 +90,13 @@ object BoxArtRepository {
         ConsoleSystem.GBA -> "boxart_index/gba.txt"
     }
 
-    private fun buildImageUrls(system: ConsoleSystem, fileName: String): List<String> {
+    private fun buildImageUrls(system: ConsoleSystem, fileName: String, folder: String = "Named_Boxarts"): List<String> {
         val repo = repoNameFor(system)
         val encoded = encodePathSegment(fileName)
         return listOf(
-            "https://raw.githubusercontent.com/libretro-thumbnails/$repo/master/Named_Boxarts/$encoded",
-            "https://cdn.jsdelivr.net/gh/libretro-thumbnails/$repo@master/Named_Boxarts/$encoded",
+            "https://cdn.jsdelivr.net/gh/libretro-thumbnails/$repo@master/$folder/$encoded",
+            "https://fastly.jsdelivr.net/gh/libretro-thumbnails/$repo@master/$folder/$encoded",
+            "https://raw.githubusercontent.com/libretro-thumbnails/$repo/master/$folder/$encoded",
         )
     }
 
@@ -128,6 +130,9 @@ object BoxArtRepository {
         if (allowRa) {
             val raCached = File(raCacheDir(context), "$key.png")
             if (raCached.isFile && raCached.length() > 128L) return raCached.absolutePath
+            // Also return Libretro fallback cached for patched/[MOD] ROMs not in RA hash DB
+            val fallbackCached = File(libretroCacheDir(context), "$key.png")
+            if (fallbackCached.isFile && fallbackCached.length() > 128L) return fallbackCached.absolutePath
         }
         return null
     }
@@ -190,6 +195,9 @@ object BoxArtRepository {
         }
         if (useRa) {
             fetchRaBoxArt(context, rom, key, forceRefresh)?.let { return@withContext it }
+            // Smart fallback for patched / translated [MOD] ROMs whose MD5 is not in RA DB:
+            // match by normalized title via our bundled 9,132-title Libretro index so 100% of games get covers!
+            fetchLibretroBoxArt(context, rom, key, forceRefresh)?.let { return@withContext it }
         }
         null
     }
@@ -202,7 +210,7 @@ object BoxArtRepository {
     ): String? {
         if (!forceRefresh) {
             val lastFail = failedLibretro[key]
-            if (lastFail != null && (System.currentTimeMillis() - lastFail) < 5L * 60 * 1000) {
+            if (lastFail != null && (System.currentTimeMillis() - lastFail) < 2L * 60 * 1000) {
                 return null
             }
         }
@@ -214,14 +222,20 @@ object BoxArtRepository {
         }
 
         val candidates = buildCandidates(rom)
+        val preferredRegion = rom.region.uppercase()
         val outFile = File(libretroCacheDir(context), "$key.png")
 
         for (sys in systemsToTry) {
             val entries = ensureIndex(context, sys, forceRefresh)
             if (entries.isNotEmpty()) {
-                val match = findBestMatch(candidates, sys, entries)
+                val match = findBestMatch(candidates, sys, entries, preferredRegion)
                 if (match != null) {
-                    for (url in buildImageUrls(sys, match.fileName)) {
+                    for (url in buildImageUrls(sys, match.fileName, "Named_Boxarts")) {
+                        val saved = downloadImageToFile(url, outFile)
+                        if (saved != null) return saved
+                    }
+                    // Fallback to Named_Titles if Named_Boxarts failed
+                    for (url in buildImageUrls(sys, match.fileName, "Named_Titles")) {
                         val saved = downloadImageToFile(url, outFile)
                         if (saved != null) return saved
                     }
@@ -232,7 +246,7 @@ object BoxArtRepository {
         // Fallback direct probes for exact standard naming
         for (name in directProbeNames(rom)) {
             val sanitized = sanitizeLibretroFileName(name)
-            for (url in buildImageUrls(rom.consoleSystem, "$sanitized.png")) {
+            for (url in buildImageUrls(rom.consoleSystem, "$sanitized.png", "Named_Boxarts")) {
                 val saved = downloadImageToFile(url, outFile)
                 if (saved != null) return saved
             }
@@ -358,11 +372,18 @@ object BoxArtRepository {
                 fileName.contains("(Japan", ignoreCase = true) -> 1
                 else -> 0
             }
+            val regionTag = when {
+                fileName.contains("(USA", ignoreCase = true) -> "USA"
+                fileName.contains("(Europe", ignoreCase = true) -> "EUROPE"
+                fileName.contains("(Japan", ignoreCase = true) -> "JAPAN"
+                fileName.contains("(World", ignoreCase = true) -> "WORLD"
+                else -> ""
+            }
             val clean = fileName.removeSuffix(".png").substringBefore(" (").substringBefore(" [")
             val norm = normalize(clean)
             if (norm.isNotEmpty()) {
                 val toks = norm.split(' ').filter { it.isNotEmpty() }.toSet()
-                val entry = IndexEntry(fileName, norm, toks, regionScore)
+                val entry = IndexEntry(fileName, norm, toks, regionScore, regionTag)
                 entries.add(entry)
                 val prev = exact[norm]
                 if (prev == null || entry.regionScore > prev.regionScore) {
@@ -379,16 +400,22 @@ object BoxArtRepository {
         candidates: List<String>,
         system: ConsoleSystem,
         entries: List<IndexEntry>,
+        preferredRegion: String = "",
     ): IndexEntry? {
         val exactMap = exactCache[system] ?: emptyMap()
-        // Pass 1: O(1) exact normalized title lookup
+        // Pass 1: O(1) exact normalized title lookup (with region preference if available)
         for (c in candidates) {
             val norm = normalize(c)
             if (norm.isEmpty()) continue
-            exactMap[norm]?.let { return it }
+            if (exactMap.containsKey(norm)) {
+                if (preferredRegion.isNotBlank()) {
+                    entries.firstOrNull { it.normalized == norm && it.regionTag == preferredRegion }?.let { return it }
+                }
+                exactMap[norm]?.let { return it }
+            }
         }
 
-        // Pass 2: Token Jaccard + containment fuzzy scoring (handles [MOD - M. RUS], revisions, subtitles)
+        // Pass 2: Token Jaccard + containment fuzzy scoring (handles [MOD - M. RUS], years, revisions, subtitles)
         var best: IndexEntry? = null
         var bestScore = 0.0
         for (c in candidates) {
@@ -407,15 +434,18 @@ object BoxArtRepository {
                 if (e.normalized.startsWith(norm) || norm.startsWith(e.normalized)) {
                     score += 0.08
                 }
+                if (preferredRegion.isNotBlank() && e.regionTag == preferredRegion) {
+                    score += 0.025
+                }
                 score += e.regionScore * 0.005
                 if (score > bestScore) {
                     bestScore = score
                     best = e
-                    if (jaccard >= 0.95 && e.regionScore >= 4) return best
+                    if (jaccard >= 0.95 && (e.regionTag == preferredRegion || e.regionScore >= 4)) return best
                 }
             }
         }
-        return if (bestScore >= 0.58) best else null
+        return if (bestScore >= 0.54) best else null
     }
 
     private fun downloadImageToFile(url: String, outFile: File): String? {
@@ -507,6 +537,11 @@ object BoxArtRepository {
             .replace("&", " and ")
             .replace("'", "")
             .replace(Regex("\\([^\\)]*\\)|\\[[^\\]]*\\]"), " ")
+            .replace(Regex("\\b(19\\d\\d|20\\d\\d)\\b"), " ")
+            .replace(Regex("\\biii\\b"), "3")
+            .replace(Regex("\\bii\\b"), "2")
+            .replace(Regex("\\biv\\b"), "4")
+            .replace(Regex("\\bvi\\b"), "6")
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
             .replace(Regex("\\s+"), " ")

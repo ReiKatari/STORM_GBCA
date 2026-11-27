@@ -248,6 +248,16 @@ object GbcaPrefs {
         prefs.edit().putString("cached_roms_json", json.encodeToString(roms)).apply()
     }
 
+    // Persistent cache mapping MD5/RA hash -> RA GameID (0 = verified no RA set, >0 = verified RA set)
+    fun getCachedRaGameIds(): MutableMap<String, Int> {
+        val raw = prefs.getString("ra_hash_gameid_cache_v1", null) ?: return mutableMapOf()
+        return runCatching { json.decodeFromString<Map<String, Int>>(raw).toMutableMap() }.getOrDefault(mutableMapOf())
+    }
+
+    fun saveCachedRaGameIds(map: Map<String, Int>) {
+        prefs.edit().putString("ra_hash_gameid_cache_v1", json.encodeToString(map)).apply()
+    }
+
     fun getCheatsForRom(romKey: String): List<CheatItem> {
         val raw = prefs.getString("cheats_$romKey", null) ?: return emptyList()
         return runCatching { json.decodeFromString<List<CheatItem>>(raw) }.getOrDefault(emptyList())

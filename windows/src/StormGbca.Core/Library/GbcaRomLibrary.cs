@@ -38,10 +38,11 @@ public sealed partial class GbcaRomLibrary
 {
     private static readonly Regex s_parensTagRegex = new(@"\s*[\(\[][^\)\]]*[\)\]]", RegexOptions.Compiled);
     private static readonly Regex s_nonAlnumRegex = new(@"[^a-z0-9]+", RegexOptions.Compiled);
+    private static readonly Regex s_yearRegex = new(@"\b(19\d\d|20\d\d)\b", RegexOptions.Compiled);
 
     private readonly List<GbcaRomRecord> _roms = [];
     private readonly object _syncLock = new();
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(18) };
+    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(14) };
     private readonly Dictionary<string, List<string>> _indexCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _indexLock = new(1, 1);
 
@@ -58,7 +59,7 @@ public sealed partial class GbcaRomLibrary
 
     public GbcaRomLibrary()
     {
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.2.0 (Windows)");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.3.0 (Windows)");
         LoadCache();
     }
 
@@ -201,9 +202,15 @@ public sealed partial class GbcaRomLibrary
         };
 
         string upperName = rec.FileName.ToUpperInvariant();
-        if (upperName.Contains("[RUS]") || upperName.Contains("[M. RUS]") || upperName.Contains("(RU)"))
+        if (upperName.Contains("[RUS]") || upperName.Contains("[M. RUS]") || upperName.Contains("(RU)") || upperName.Contains("[RU]"))
         {
             rec.Region = "Russia";
+        }
+        else if (string.IsNullOrWhiteSpace(rec.Region) || rec.Region == "World")
+        {
+            if (upperName.Contains("[US]") || upperName.Contains("(USA")) rec.Region = "USA";
+            else if (upperName.Contains("[EU]") || upperName.Contains("(EUROPE")) rec.Region = "Europe";
+            else if (upperName.Contains("[JP]") || upperName.Contains("(JAPAN")) rec.Region = "Japan";
         }
 
         string cachedCover = GetExpectedCoverCachePath(rec);
@@ -410,10 +417,20 @@ public sealed partial class GbcaRomLibrary
         foreach (string sysKey in systemsToTry)
         {
             var indexEntries = await GetOrLoadIndexAsync(sysKey, ct).ConfigureAwait(false);
-            string? matchedPng = FindBestIndexMatch(indexEntries, rawName, baseClean, rom.Title);
+            string? matchedPng = FindBestIndexMatch(indexEntries, rawName, baseClean, rom.Title, rom.Region);
             if (!string.IsNullOrWhiteSpace(matchedPng))
             {
-                foreach (string url in BuildLibretroImageUrls(sysKey, matchedPng))
+                foreach (string url in BuildLibretroImageUrls(sysKey, matchedPng, "Named_Boxarts"))
+                {
+                    if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
+                    {
+                        rom.CoverLocalPath = localPath;
+                        SaveCache();
+                        CoverArtUpdated?.Invoke(rom);
+                        return localPath;
+                    }
+                }
+                foreach (string url in BuildLibretroImageUrls(sysKey, matchedPng, "Named_Titles"))
                 {
                     if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
                     {
@@ -465,14 +482,15 @@ public sealed partial class GbcaRomLibrary
         _ => "Nintendo_-_Game_Boy_Advance",
     };
 
-    private static string[] BuildLibretroImageUrls(string sysKey, string fileName)
+    private static string[] BuildLibretroImageUrls(string sysKey, string fileName, string folder = "Named_Boxarts")
     {
         string repo = RepoNameForKey(sysKey);
         string encoded = Uri.EscapeDataString(fileName);
         return
         [
-            $"https://raw.githubusercontent.com/libretro-thumbnails/{repo}/master/Named_Boxarts/{encoded}",
-            $"https://cdn.jsdelivr.net/gh/libretro-thumbnails/{repo}@master/Named_Boxarts/{encoded}",
+            $"https://cdn.jsdelivr.net/gh/libretro-thumbnails/{repo}@master/{folder}/{encoded}",
+            $"https://fastly.jsdelivr.net/gh/libretro-thumbnails/{repo}@master/{folder}/{encoded}",
+            $"https://raw.githubusercontent.com/libretro-thumbnails/{repo}/master/{folder}/{encoded}",
         ];
     }
 
@@ -576,7 +594,7 @@ public sealed partial class GbcaRomLibrary
         }
     }
 
-    private static string? FindBestIndexMatch(List<string> index, string rawName, string baseClean, string internalTitle)
+    private static string? FindBestIndexMatch(List<string> index, string rawName, string baseClean, string internalTitle, string preferredRegion = "")
     {
         if (index.Count == 0) return null;
 
@@ -603,7 +621,8 @@ public sealed partial class GbcaRomLibrary
                 string norm = NormalizeTitle(stemBase);
                 if (norm == targetNorm)
                 {
-                    double regBonus = stem.Contains("(USA, Europe", StringComparison.OrdinalIgnoreCase) ? 1.08
+                    double regBonus = (!string.IsNullOrWhiteSpace(preferredRegion) && stem.Contains($"({preferredRegion}", StringComparison.OrdinalIgnoreCase)) ? 1.12
+                        : stem.Contains("(USA, Europe", StringComparison.OrdinalIgnoreCase) ? 1.08
                         : stem.Contains("(USA", StringComparison.OrdinalIgnoreCase) ? 1.06
                         : stem.Contains("(World", StringComparison.OrdinalIgnoreCase) ? 1.04
                         : stem.Contains("(Europe", StringComparison.OrdinalIgnoreCase) ? 1.02 : 1.0;
@@ -654,7 +673,12 @@ public sealed partial class GbcaRomLibrary
                 sb.Append(c);
         }
         string s = s_parensTagRegex.Replace(sb.ToString(), " ").ToLowerInvariant();
+        s = s_yearRegex.Replace(s, " ");
         s = s.Replace("&", " and ").Replace("'", "").Replace("_", " ");
+        s = Regex.Replace(s, @"\biii\b", "3");
+        s = Regex.Replace(s, @"\bii\b", "2");
+        s = Regex.Replace(s, @"\biv\b", "4");
+        s = Regex.Replace(s, @"\bvi\b", "6");
         s = s_nonAlnumRegex.Replace(s, " ").Trim();
         return s;
     }

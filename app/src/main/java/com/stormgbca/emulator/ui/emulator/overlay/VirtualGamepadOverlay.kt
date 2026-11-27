@@ -125,8 +125,8 @@ fun VirtualGamepadOverlay(
 
         val rects = remember(w, h, isLandscape, preset, profile, baseScale) {
             val minDim = minOf(w, h)
-            val dpadR = (minDim * 0.165f * baseScale).coerceIn(95f, 195f)
-            val abR = (minDim * 0.088f * baseScale).coerceIn(54f, 110f)
+            val dpadR = (minDim * 0.160f * baseScale).coerceIn(88f, 185f)
+            val abR = (minDim * 0.082f * baseScale).coerceIn(48f, 98f)
             val pillW = (minDim * 0.12f * baseScale).coerceIn(76f, 140f)
             val pillH = pillW * 0.36f
             val shW = (minDim * 0.18f * baseScale).coerceIn(110f, 210f)
@@ -147,38 +147,58 @@ fun VirtualGamepadOverlay(
                     rC = Offset(w * profile.rPos.xFraction, h * profile.rPos.yFraction)
                 }
                 OverlayLayoutPreset.WIDE_GRIP -> {
-                    dpadC = Offset(w * 0.14f, h * (if (isLandscape) 0.64f else 0.74f))
-                    abBase = Offset(w * 0.86f, h * (if (isLandscape) 0.64f else 0.74f))
+                    dpadC = Offset(w * 0.15f, h * (if (isLandscape) 0.64f else 0.74f))
+                    abBase = Offset(w * 0.84f, h * (if (isLandscape) 0.64f else 0.74f))
                     ssCenter = Offset(w * 0.50f, h * 0.90f)
                     lC = Offset(w * 0.12f, h * (if (isLandscape) 0.16f else 0.55f))
                     rC = Offset(w * 0.88f, h * (if (isLandscape) 0.16f else 0.55f))
                 }
                 OverlayLayoutPreset.COMPACT_MINIMAL -> {
                     dpadC = Offset(w * 0.17f, h * 0.78f)
-                    abBase = Offset(w * 0.83f, h * 0.78f)
+                    abBase = Offset(w * 0.82f, h * 0.78f)
                     ssCenter = Offset(w * 0.50f, h * 0.92f)
                     lC = Offset(w * 0.14f, h * 0.56f)
                     rC = Offset(w * 0.86f, h * 0.56f)
                 }
                 OverlayLayoutPreset.FLOATING_GLASS -> {
                     dpadC = Offset(w * 0.18f, h * (if (isLandscape) 0.66f else 0.73f))
-                    abBase = Offset(w * 0.82f, h * (if (isLandscape) 0.66f else 0.73f))
+                    abBase = Offset(w * 0.81f, h * (if (isLandscape) 0.66f else 0.73f))
                     ssCenter = Offset(w * 0.50f, h * 0.88f)
                     lC = Offset(w * 0.13f, h * (if (isLandscape) 0.18f else 0.55f))
                     rC = Offset(w * 0.87f, h * (if (isLandscape) 0.18f else 0.55f))
                 }
                 OverlayLayoutPreset.CLASSIC_HANDHELD -> {
-                    dpadC = Offset(w * (if (isLandscape) 0.15f else 0.21f), h * (if (isLandscape) 0.66f else 0.74f))
-                    abBase = Offset(w * (if (isLandscape) 0.85f else 0.79f), h * (if (isLandscape) 0.66f else 0.74f))
+                    dpadC = Offset(w * (if (isLandscape) 0.15f else 0.20f), h * (if (isLandscape) 0.66f else 0.74f))
+                    abBase = Offset(w * (if (isLandscape) 0.84f else 0.78f), h * (if (isLandscape) 0.66f else 0.74f))
                     ssCenter = Offset(w * 0.50f, h * (if (isLandscape) 0.88f else 0.90f))
                     lC = Offset(w * 0.13f, h * (if (isLandscape) 0.15f else 0.55f))
                     rC = Offset(w * 0.87f, h * (if (isLandscape) 0.15f else 0.55f))
                 }
             }
 
-            val abOffset = abR * 1.15f
-            val btnB = Offset(abBase.x - abOffset * 0.75f, abBase.y + abOffset * 0.42f)
-            val btnA = Offset(abBase.x + abOffset * 0.75f, abBase.y - abOffset * 0.42f)
+            // Separate independent A & B positioning OR guaranteed non-overlapping diagonal cluster!
+            val btnA: Offset
+            val btnB: Offset
+            if (profile.separateABButtons) {
+                btnA = Offset(
+                    (w * profile.btnAPos.xFraction).coerceIn(abR + 8f, (w - abR - 8f).coerceAtLeast(abR + 8f)),
+                    (h * profile.btnAPos.yFraction).coerceIn(abR + 8f, (h - abR - 8f).coerceAtLeast(abR + 8f)),
+                )
+                btnB = Offset(
+                    (w * profile.btnBPos.xFraction).coerceIn(abR + 8f, (w - abR - 8f).coerceAtLeast(abR + 8f)),
+                    (h * profile.btnBPos.yFraction).coerceIn(abR + 8f, (h - abR - 8f).coerceAtLeast(abR + 8f)),
+                )
+            } else {
+                // Guaranteed zero-overlap geometry: center-to-center distance = 2.65 * abR * (spacing/125) >= 2.24 * abR
+                val spacingFactor = (profile.abSpacingPercent.coerceIn(100, 180) / 100f)
+                val halfDist = abR * 1.12f * spacingFactor
+                val dx = halfDist * 0.86f
+                val dy = halfDist * 0.51f
+                val maxCenterX = (w - abR - 10f - dx).coerceAtLeast(abR + dx + 10f)
+                val clampedBaseX = abBase.x.coerceIn(abR + dx + 10f, maxCenterX)
+                btnB = Offset(clampedBaseX - dx, (abBase.y + dy).coerceIn(abR + 8f, h - abR - 8f))
+                btnA = Offset(clampedBaseX + dx, (abBase.y - dy).coerceIn(abR + 8f, h - abR - 8f))
+            }
             val selectC = Offset(ssCenter.x - pillW * 0.68f, ssCenter.y)
             val startC = Offset(ssCenter.x + pillW * 0.68f, ssCenter.y)
 
@@ -214,13 +234,19 @@ fun VirtualGamepadOverlay(
                 return mask
             }
 
-            fun insideCircle(c: Offset, r: Float): Boolean {
+            fun distSqTo(c: Offset): Float {
                 val cx = pt.x - c.x
                 val cy = pt.y - c.y
-                return cx * cx + cy * cy <= (r * 1.22f) * (r * 1.22f)
+                return cx * cx + cy * cy
             }
-            if (insideCircle(rects.btnACenter, rects.btnRadius)) return NativeCore.KEY_A
-            if (insideCircle(rects.btnBCenter, rects.btnRadius)) return NativeCore.KEY_B
+            val hitR2 = (rects.btnRadius * 1.16f) * (rects.btnRadius * 1.16f)
+            val dA = distSqTo(rects.btnACenter)
+            val dB = distSqTo(rects.btnBCenter)
+            if (dA <= hitR2 && dB <= hitR2) {
+                return if (dA <= dB) NativeCore.KEY_A else NativeCore.KEY_B
+            }
+            if (dA <= hitR2) return NativeCore.KEY_A
+            if (dB <= hitR2) return NativeCore.KEY_B
 
             fun insideRect(c: Offset, rw: Float, rh: Float): Boolean {
                 return kotlin.math.abs(pt.x - c.x) <= rw * 0.62f && kotlin.math.abs(pt.y - c.y) <= rh * 0.85f

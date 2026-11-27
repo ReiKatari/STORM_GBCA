@@ -8,12 +8,12 @@ namespace StormGbca.Core.Localization;
 public sealed record GbcaLanguageInfo(string Code, string NativeName, string EnglishName);
 
 /// <summary>
-/// Complete 11-language localization dictionary for STORM GBCA 1.2.0.
+/// Complete 11-language localization dictionary for STORM GBCA 1.3.0.
 /// Enforces 100% key parity across all 11 languages, full words, and zero em-dashes.
 /// </summary>
 public static class GbcaLoc
 {
-    public const string AppVersion = "1.2.0";
+    public const string AppVersion = "1.3.0";
 
     public static event Action<string>? LanguageChanged;
 

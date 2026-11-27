@@ -47,6 +47,7 @@ class MainActivity : AppCompatActivity() {
 
     private val romsState = mutableStateOf<List<RomEntry>>(emptyList())
     private val boxArtMap = mutableStateMapOf<String, String>()
+    private val confirmedRaHashesState = mutableStateOf<Set<String>>(emptySet())
     private val filterState = mutableStateOf(RomFilter.ALL)
     private val sortModeState = mutableStateOf(RomSortMode.TITLE)
     private val viewModeState = mutableStateOf(RomViewMode.GRID)
@@ -164,16 +165,23 @@ class MainActivity : AppCompatActivity() {
                     preloadCovers(romsState.value, coreCfg.showLibretroCovers, coreCfg.showRaCovers)
                 }
 
+                // Verify real RetroAchievements game support per ROM when RA badge is enabled
+                LaunchedEffect(romsState.value, coreCfg.showRaBadge) {
+                    if (coreCfg.showRaBadge && romsState.value.isNotEmpty()) {
+                        verifyRaBadges(romsState.value)
+                    }
+                }
+
                 RomBrowserScreen(
                     roms = filteredRoms,
                     boxArtMap = boxArtMap,
+                    confirmedRaHashes = confirmedRaHashesState.value,
                     filter = filterState.value,
                     sortMode = sortModeState.value,
                     viewMode = viewModeState.value,
                     searchQuery = searchQueryState.value,
                     isScanning = isScanningState.value,
                     hasUpdateAvailable = latestUpdateState.value != null,
-                    raConnected = GbcaPrefs.getRaUsername().isNotBlank() && GbcaPrefs.getRaToken().isNotBlank(),
                     onSearchQueryChange = { searchQueryState.value = it },
                     onFilterChange = { f ->
                         filterState.value = f
@@ -191,7 +199,6 @@ class MainActivity : AppCompatActivity() {
                     onAddFolder = { folderPicker.launch(null) },
                     onOpenSingleFile = { singleFilePicker.launch(arrayOf("*/*")) },
                     onRefresh = { rescanLibrary() },
-                    onOpenRetroAchievements = { showRaAccountDialogState.value = true },
                     onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
                     onOpenUpdateDialog = { showUpdateDialogState.value = true },
                     onLaunchRom = { launchRom(it) },
@@ -331,6 +338,37 @@ class MainActivity : AppCompatActivity() {
             val scanned = RomRepository.scanFolders(this@MainActivity)
             romsState.value = scanned
             isScanningState.value = false
+        }
+    }
+
+    private var raBadgeJob: Job? = null
+
+    private fun verifyRaBadges(roms: List<RomEntry>) {
+        raBadgeJob?.cancel()
+        raBadgeJob = lifecycleScope.launch {
+            val cached = withContext(Dispatchers.IO) { GbcaPrefs.getCachedRaGameIds() }
+            val confirmed = HashSet<String>()
+            for ((hash, id) in cached) {
+                if (id > 0) confirmed.add(hash)
+            }
+            confirmedRaHashesState.value = confirmed.toSet()
+
+            val toCheck = roms.map { it.md5.trim().lowercase() }.filter { it.length == 32 && !cached.containsKey(it) }.distinct()
+            if (toCheck.isEmpty()) return@launch
+
+            val sem = Semaphore(4)
+            toCheck.forEach { hash ->
+                launch(Dispatchers.IO) {
+                    sem.withPermit {
+                        val ok = RetroAchievementsClient.verifyRomHasAchievements(hash)
+                        if (ok) {
+                            withContext(Dispatchers.Main) {
+                                confirmedRaHashesState.value = confirmedRaHashesState.value + hash
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

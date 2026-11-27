@@ -353,4 +353,18 @@
     <string name="skin_brightness_fmt">Яркость корпуса (%s)</string>
     <string name="skin_none">Без корпуса (Полный экран)</string>
     <string name="boot_initializing">Инициализация STORM GBCA...</string>
+    <string name="overlay_separate_ab">Раздельные кнопки A и B</string>
+    <string name="overlay_ab_spacing">Расстояние между A и B</string>
+    <string name="screen_preset_title">Режим отображения экрана</string>
+    <string name="screen_preset_skin">Внутри 3D-скина</string>
+    <string name="screen_preset_max_fit">Макс. пропорции</string>
+    <string name="screen_preset_fullscreen">На весь экран</string>
+    <string name="screen_preset_integer">Целые пиксели</string>
+    <string name="screen_preset_custom">Вручную</string>
+    <string name="screen_hide_skin_fs">Скрывать 3D-скин в полноэкранном режиме</string>
+    <string name="screen_snap_top">Сверху</string>
+    <string name="screen_snap_middle">По центру</string>
+    <string name="screen_snap_bottom">Снизу</string>
+    <string name="rom_folders_section">Папки с играми (ROM)</string>
+    <string name="rom_folders_count_fmt">Добавлено папок: %d</string>
 </resources>

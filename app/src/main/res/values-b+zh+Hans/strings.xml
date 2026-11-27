@@ -353,4 +353,18 @@
     <string name="skin_brightness_fmt">机身亮度 (%s)</string>
     <string name="skin_none">无外壳（全屏）</string>
     <string name="boot_initializing">正在初始化 STORM GBCA...</string>
+    <string name="overlay_separate_ab">独立放置 A 和 B 按键</string>
+    <string name="overlay_ab_spacing">A / B 按键间距</string>
+    <string name="screen_preset_title">屏幕显示模式</string>
+    <string name="screen_preset_skin">3D 机身内</string>
+    <string name="screen_preset_max_fit">最大等比</string>
+    <string name="screen_preset_fullscreen">全屏填充</string>
+    <string name="screen_preset_integer">整数像素</string>
+    <string name="screen_preset_custom">自定义</string>
+    <string name="screen_hide_skin_fs">全屏/最大模式下隐藏 3D 机身</string>
+    <string name="screen_snap_top">顶部</string>
+    <string name="screen_snap_middle">居中</string>
+    <string name="screen_snap_bottom">底部</string>
+    <string name="rom_folders_section">ROM 文件夹</string>
+    <string name="rom_folders_count_fmt">已添加 %d 个文件夹</string>
 </resources>

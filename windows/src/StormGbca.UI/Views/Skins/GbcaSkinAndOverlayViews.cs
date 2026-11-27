@@ -241,6 +241,22 @@ public class GbcaSkinAndOverlayViews : Grid
         };
         controlsCol.Children.Add(lrCheck);
 
+        var sepAbCheck = new AuroraNeonCheckBox { Label = "Раздельные кнопки A и B (без наложения)", IsChecked = prof.SeparateABButtons };
+        sepAbCheck.IsCheckedChanged += (_, v) =>
+        {
+            prof.SeparateABButtons = v;
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+            UpdateOverlayPreview(plat, prof);
+        };
+        controlsCol.Children.Add(sepAbCheck);
+
+        controlsCol.Children.Add(CreateSlider("Расстояние между кнопками A и B (%):", 95, 200, prof.AbSpacingPercent, "%", v =>
+        {
+            prof.AbSpacingPercent = (int)Math.Round(v);
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+            UpdateOverlayPreview(plat, prof);
+        }));
+
         ovGrid.Children.Add(controlsCol);
 
         _overlayLivePreview = new Image { Width = 280, Height = 165, Stretch = Stretch.Uniform };
@@ -284,10 +300,50 @@ public class GbcaSkinAndOverlayViews : Grid
             Foreground = StormThemeBrushes.Accent
         });
 
+        var presetRow = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 4) };
+        (int Id, string Label)[] screenPresets =
+        [
+            (0, "Внутри 3D-корпуса"),
+            (1, "Максимум (пропорции)"),
+            (2, "Во весь экран (100%)"),
+            (3, "Пиксель-в-пиксель")
+        ];
+        foreach (var pr in screenPresets)
+        {
+            bool activePreset = !scr.UseCustom && scr.ScreenPreset == pr.Id;
+            var pBtn = new AuroraVolumetricButton { Height = 30, Margin = new Thickness(0, 0, 8, 6), Padding = new Thickness(12, 0) };
+            pBtn.Content = new TextBlock
+            {
+                Text = pr.Label,
+                FontSize = 11,
+                FontWeight = activePreset ? FontWeight.Bold : FontWeight.SemiBold,
+                Foreground = activePreset ? StormThemeBrushes.Accent : Brushes.White,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            pBtn.Click += (_, _) =>
+            {
+                scr.UseCustom = false;
+                scr.ScreenPreset = pr.Id;
+                StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+                RefreshBody();
+            };
+            presetRow.Children.Add(pBtn);
+        }
+        screenStack.Children.Add(presetRow);
+
+        var hideSkinFs = new AuroraNeonCheckBox { Label = "Автоматически скрывать 3D-корпус в полноэкранном режиме", IsChecked = scr.HideSkinInFullscreen };
+        hideSkinFs.IsCheckedChanged += (_, v) =>
+        {
+            scr.HideSkinInFullscreen = v;
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+        };
+        screenStack.Children.Add(hideSkinFs);
+
         var customCheck = new AuroraNeonCheckBox { Label = "Включить пользовательский размер и позицию экрана", IsChecked = scr.UseCustom };
         customCheck.IsCheckedChanged += (_, v) =>
         {
             scr.UseCustom = v;
+            if (v) scr.ScreenPreset = 4;
             StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
         };
         screenStack.Children.Add(customCheck);

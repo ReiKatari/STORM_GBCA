@@ -94,10 +94,21 @@ data class RaGameSession(
 
 object RetroAchievementsClient {
     private const val CONNECT_URL = "https://retroachievements.org/dorequest.php"
-    private const val UA = "STORM-GBCA/1.2.0"
+    private const val UA = "STORM-GBCA/1.3.0"
 
     private val gameIdCache = ConcurrentHashMap<String, Int>()
     private val boxArtCache = ConcurrentHashMap<String, String>()
+
+    suspend fun verifyRomHasAchievements(raHash: String): Boolean = withContext(Dispatchers.IO) {
+        val clean = raHash.trim().lowercase()
+        if (clean.length != 32) return@withContext false
+        val persisted = GbcaPrefs.getCachedRaGameIds()
+        persisted[clean]?.let { return@withContext it > 0 }
+        val id = resolveGameId(clean)
+        persisted[clean] = id
+        GbcaPrefs.saveCachedRaGameIds(persisted)
+        id > 0
+    }
 
     private val client by lazy {
         OkHttpClient.Builder()

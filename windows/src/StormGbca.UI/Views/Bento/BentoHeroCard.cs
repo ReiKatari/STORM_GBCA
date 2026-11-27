@@ -191,7 +191,7 @@ public class BentoHeroCard : AuroraGlassCard
             _badgesRow.Children.Add(BentoRomCard.CreateTagBadge("GB", StormGbcaUiState.GetPlatformBadgeColor(StormPlatform.Gb), true));
             _badgesRow.Children.Add(BentoRomCard.CreateTagBadge("GBC", StormGbcaUiState.GetPlatformBadgeColor(StormPlatform.Gbc), true));
             _badgesRow.Children.Add(BentoRomCard.CreateTagBadge("GBA", StormGbcaUiState.GetPlatformBadgeColor(StormPlatform.Gba), true));
-            _titleText.Text = "STORM GBCA 1.2.0 - Готов к запуску";
+            _titleText.Text = "STORM GBCA 1.3.0 - Готов к запуску";
             _metaText.Text = "mGBA + SameBoy | 59.73 FPS | 48 кГц Hermite";
             _descText.Text = "Перетащите любой .gb, .gbc, .gba, .sgb, .zip или .7z файл в окно, или выберите папку с играми.";
             _coverImage.Source = null;

@@ -12,13 +12,17 @@ public enum GbConsoleSkin
 {
     None = 0,
     DmgClassicGray = 1,
-    DmgPlayItLoudRed = 2,
-    DmgPlayItLoudBlue = 3,
+    DmgPlayItLoudBlack = 2,
+    DmgPlayItLoudRed = 3,
     DmgPlayItLoudYellow = 4,
-    DmgPlayItLoudBlack = 5,
-    PocketSilver = 6,
-    GameBoyLightTeal = 7,
-    StormNeonGb = 8,
+    DmgPlayItLoudGreen = 5,
+    DmgClearSkeleton = 6,
+    PocketSilver = 7,
+    PocketIceBlue = 8,
+    PocketExtremeGreen = 9,
+    GameBoyLightGold = 10,
+    SuperGameBoyFrame = 11,
+    StormAuroraGb = 12,
 }
 
 public enum GbcConsoleSkin
@@ -26,12 +30,16 @@ public enum GbcConsoleSkin
     None = 0,
     AtomicPurple = 1,
     Berry = 2,
-    Dandelion = 3,
+    Teal = 3,
     Kiwi = 4,
-    Teal = 5,
+    Dandelion = 5,
     Grape = 6,
-    MidnightGold = 7,
-    StormNeonGbc = 8,
+    MidnightBlue = 7,
+    ClearIce = 8,
+    ClearGreen = 9,
+    PokemonPikachu = 10,
+    PokemonGoldSilver = 11,
+    StormAuroraGbc = 12,
 }
 
 public enum GbaConsoleSkin
@@ -42,11 +50,17 @@ public enum GbaConsoleSkin
     GbaArcticWhite = 3,
     GbaSpiceOrange = 4,
     GbaFuchsia = 5,
-    GbaSpCobalt = 6,
-    GbaSpOnyx = 7,
-    GbaSpFlameRed = 8,
-    GbmFamicom = 9,
-    StormNeonGba = 10,
+    GbaMidnightBlue = 6,
+    GbaSpCobalt = 7,
+    GbaSpOnyx = 8,
+    GbaSpPlatinum = 9,
+    GbaSpFlameRed = 10,
+    GbaSpPearlBlue = 11,
+    GbaSpNesClassic = 12,
+    GbaSpZeldaGold = 13,
+    GbmFamicom = 14,
+    GbmSilver = 15,
+    StormAuroraGba = 16,
 }
 
 public enum OverlayBezelStyle
@@ -86,6 +100,9 @@ public enum GbcaScaleMode
 public sealed class ScreenRectSettings
 {
     public bool UseCustom { get; set; } = false;
+    // 0 = Inside 3D Skin, 1 = Max Aspect Fit, 2 = Fullscreen 100% Stretch, 3 = Integer Pixel-Perfect, 4 = Free Custom
+    public int ScreenPreset { get; set; } = 0;
+    public bool HideSkinInFullscreen { get; set; } = true;
     public float CenterX { get; set; } = 0.50f;
     public float CenterY { get; set; } = 0.46f;
     public float WidthFraction { get; set; } = 0.84f;
@@ -103,6 +120,8 @@ public sealed class SystemOverlayProfile
     public float Scale { get; set; } = 1.0f;
     public bool ShowControlsDeck { get; set; } = true;
     public bool ShowLR { get; set; } = false;
+    public bool SeparateABButtons { get; set; } = false;
+    public int AbSpacingPercent { get; set; } = 128; // 95..200%
     public ScreenRectSettings ScreenRect { get; set; } = new();
 }
 

@@ -259,8 +259,10 @@ public class SingleScreenSessionView : Grid
             : BitmapInterpolationMode.MediumQuality;
         RenderOptions.SetBitmapInterpolationMode(_lcdImage, interp);
 
-        string skinKey = $"{w}x{h}|{plat}|{palette.DisplayName}|{settings.SkinNightDimming}|{vp.X},{vp.Y},{vp.Width},{vp.Height}";
-        if (force || skinKey != _lastSkinKey || _lastSkinPlatform != plat)
+        bool hideSkin = GbcaConsoleSkinRenderer.ShouldHideSkinForScreen(plat, settings);
+        _chassisImage.IsVisible = !hideSkin;
+        string skinKey = $"{w}x{h}|{plat}|{palette.DisplayName}|{settings.SkinNightDimming}|{hideSkin}|{vp.X},{vp.Y},{vp.Width},{vp.Height}";
+        if (!hideSkin && (force || skinKey != _lastSkinKey || _lastSkinPlatform != plat))
         {
             _lastSkinKey = skinKey;
             _lastSkinPlatform = plat;
@@ -268,7 +270,7 @@ public class SingleScreenSessionView : Grid
         }
 
         var prof = settings.GetOverlayProfileForPlatform(plat);
-        string ovKey = $"{w}x{h}|{plat}|{prof.OverlayLayout}|{prof.ButtonStyle}|{prof.Opacity:0.00}|{prof.Scale:0.00}|{prof.ShowControlsDeck}|{prof.ShowLR}|{vp.X},{vp.Y}";
+        string ovKey = $"{w}x{h}|{plat}|{prof.OverlayLayout}|{prof.ButtonStyle}|{prof.Opacity:0.00}|{prof.Scale:0.00}|{prof.ShowControlsDeck}|{prof.ShowLR}|{prof.SeparateABButtons}|{prof.AbSpacingPercent}|{vp.X},{vp.Y}";
         if (force || ovKey != _lastOverlayKey)
         {
             _lastOverlayKey = ovKey;
