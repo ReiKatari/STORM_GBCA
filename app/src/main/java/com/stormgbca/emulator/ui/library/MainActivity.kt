@@ -35,12 +35,14 @@ import com.stormgbca.emulator.update.UpdateDownloadState
 import com.stormgbca.emulator.update.UpdateReleaseInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import ru.stormgames.gbca.NativeCore
+import java.util.concurrent.ConcurrentHashMap
 
 class MainActivity : AppCompatActivity() {
     private val json = Json { encodeDefaults = true }
@@ -346,70 +348,92 @@ class MainActivity : AppCompatActivity() {
     private fun verifyRaBadges(roms: List<RomEntry>) {
         raBadgeJob?.cancel()
         raBadgeJob = lifecycleScope.launch {
-            val cached = withContext(Dispatchers.IO) { GbcaPrefs.getCachedRaGameIds() }
-            val confirmed = HashSet<String>()
-            for ((hash, id) in cached) {
-                if (id > 0) confirmed.add(hash)
+            val (initialConfirmed, toCheck) = withContext(Dispatchers.IO) {
+                val cached = GbcaPrefs.getCachedRaGameIds()
+                val confirmed = HashSet<String>()
+                for ((hash, id) in cached) {
+                    if (id > 0) confirmed.add(hash)
+                }
+                val missing = roms.map { it.md5.trim().lowercase() }
+                    .filter { it.length == 32 && !cached.containsKey(it) }
+                    .distinct()
+                confirmed.toSet() to missing
             }
-            confirmedRaHashesState.value = confirmed.toSet()
-
-            val toCheck = roms.map { it.md5.trim().lowercase() }.filter { it.length == 32 && !cached.containsKey(it) }.distinct()
+            confirmedRaHashesState.value = initialConfirmed
             if (toCheck.isEmpty()) return@launch
 
             val sem = Semaphore(4)
-            toCheck.forEach { hash ->
-                launch(Dispatchers.IO) {
-                    sem.withPermit {
-                        val ok = RetroAchievementsClient.verifyRomHasAchievements(hash)
-                        if (ok) {
-                            withContext(Dispatchers.Main) {
-                                confirmedRaHashesState.value = confirmedRaHashesState.value + hash
+            val newlyConfirmed = ConcurrentHashMap.newKeySet<String>()
+            coroutineScope {
+                toCheck.forEach { hash ->
+                    launch(Dispatchers.IO) {
+                        sem.withPermit {
+                            if (RetroAchievementsClient.verifyRomHasAchievements(hash)) {
+                                newlyConfirmed.add(hash)
                             }
                         }
                     }
                 }
+            }
+            if (newlyConfirmed.isNotEmpty()) {
+                confirmedRaHashesState.value = initialConfirmed + newlyConfirmed
             }
         }
     }
 
     private fun preloadCovers(roms: List<RomEntry>, useLibretro: Boolean, useRa: Boolean) {
         coverLoadJob?.cancel()
-        boxArtMap.clear()
-        if (roms.isEmpty()) return
+        if (roms.isEmpty()) {
+            boxArtMap.clear()
+            return
+        }
 
         coverLoadJob = lifecycleScope.launch {
-            val semaphore = Semaphore(4)
-            val pending = ArrayList<RomEntry>()
-            for (rom in roms) {
-                val cached = BoxArtRepository.getCachedBoxArtPath(
-                    this@MainActivity,
-                    rom,
-                    allowLibretro = useLibretro,
-                    allowRa = useRa,
-                )
-                if (cached != null) {
-                    boxArtMap[rom.uriString] = cached
-                } else if (useLibretro || useRa) {
-                    pending.add(rom)
+            val (cachedMap, pending) = withContext(Dispatchers.IO) {
+                val found = HashMap<String, String>(roms.size)
+                val toFetch = ArrayList<RomEntry>()
+                for (rom in roms) {
+                    val cached = BoxArtRepository.getCachedBoxArtPath(
+                        this@MainActivity,
+                        rom,
+                        allowLibretro = useLibretro,
+                        allowRa = useRa,
+                    )
+                    if (cached != null) {
+                        found[rom.uriString] = cached
+                    } else if (useLibretro || useRa) {
+                        toFetch.add(rom)
+                    }
                 }
+                found to toFetch
+            }
+            boxArtMap.clear()
+            if (cachedMap.isNotEmpty()) {
+                boxArtMap.putAll(cachedMap)
             }
             if (pending.isEmpty()) return@launch
-            pending.forEach { rom ->
-                launch(Dispatchers.IO) {
-                    semaphore.withPermit {
-                        val fetched = BoxArtRepository.fetchOrGetBoxArt(
-                            this@MainActivity,
-                            rom,
-                            useLibretro = useLibretro,
-                            useRa = useRa,
-                        )
-                        if (fetched != null) {
-                            withContext(Dispatchers.Main) {
-                                boxArtMap[rom.uriString] = fetched
+
+            val semaphore = Semaphore(4)
+            val fetchedBatch = ConcurrentHashMap<String, String>()
+            coroutineScope {
+                pending.forEach { rom ->
+                    launch(Dispatchers.IO) {
+                        semaphore.withPermit {
+                            val fetched = BoxArtRepository.fetchOrGetBoxArt(
+                                this@MainActivity,
+                                rom,
+                                useLibretro = useLibretro,
+                                useRa = useRa,
+                            )
+                            if (fetched != null) {
+                                fetchedBatch[rom.uriString] = fetched
                             }
                         }
                     }
                 }
+            }
+            if (fetchedBatch.isNotEmpty()) {
+                boxArtMap.putAll(fetchedBatch)
             }
         }
     }

@@ -635,7 +635,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
 
     // -----------------------------------------------------------------------
-    // v1.2.0 Multiplayer / Link Cable / Wireless RFU / IR / Dolphin JoyBus / GB Printer
+    // Multiplayer / Link Cable / Wireless RFU / IR / Dolphin JoyBus / GB Printer
     // -----------------------------------------------------------------------
     public Task<bool> StartLinkAsync(StormLinkMode mode, string hostIp, int port, int clockPort, string roomName)
         => Task.Run(() => StartLink(mode, hostIp, port, clockPort, roomName));

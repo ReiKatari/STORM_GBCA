@@ -1,89 +1,78 @@
-# STORM GBCA 1.4.0
+# STORM GBCA 1.5.0
 
 ## Русский
-- **Многоязычное окно обновлений и чистые версии:** окно обновления на Android и Windows автоматически отображает список изменений на языке приложения/системы, форматирует Markdown-заголовки и пункты, показывает источник зеркала, размер и дату, а префикс `v` полностью удалён из версий.
-- **Раздельные кнопки быстрых действий (как в STORM DS):** панель быстрых действий разделена на 5 независимых кнопок (`Меню`, `Перемотка`, `Ускорение`, `Быстрое сохранение`, `Быстрая загрузка`) с раздельной настройкой видимости и координат для портрета/альбома и отдельно для GB, GBC и GBA.
-- **Чистый игровой экран и эргономичная раскладка:** убрана надпись в правом верхнем углу экрана, `SELECT` и `START` вынесены за пределы экрана, крестовина сдвинута левее, а кнопки `B` и `A` - правее.
-- **Красивое отображение клавиш геймпада:** полноэкранная настройка с 3D-колпачками кнопок, карточкой статистики, кнопками **Авто-настройка** и **Очистить все**, 3D-чипами назначенных клавиш и быстрой очисткой каждой строки.
-- **Техническая информация об игре:** аккуратный перенос длинных названий без обрезания и явное отображение расширения файла (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`) на Android и Windows.
-- **Шейдеры RetroArch и профили консолей:** пункт `Отключен (Встроенный шейдер)` переименован в `Отключен (Встроенный)`; каждая платформа (GB, GBC, GBA) хранит собственный 3D-скин, тему, раскладку и шейдер.
+- **Оптимизация плавности, скорости и снижение нагрева на Android:** оптимизирован GLSL-шейдер (сокращение GPU `pow()` и выборок текстур в ~10 раз, `mediump`), добавлены переиспользование GLES3-текстур (`glTexSubImage2D`) и постоянный маппинг Vulkan, 256-элементная LUT цветокоррекции вместо CPU `std::pow`, пропуск лишней сериализации Rewind на пропускаемых кадрах, `float` DSP, условная регистрация акселерометра/гироскопа только для игр с Tilt/Gyro, точный пейсинг кадров `LockSupport.parkNanos`, адаптация под нагрев (`PowerManager` Thermal API), кэширование 3D-скинов в `ImageBitmap`, оптимизация `VirtualGamepadOverlay`, асинхронные превью и `RGB_565` обложки.
+- **Чистые версии без `v` и улучшенная «Техническая информация»:** удалены все префиксы `v` из номеров версий; в «Технической информации» выводится чистое название игры строго до года (`Final Fantasy Tactics Advance` вместо хвоста `(2003) [JP] ...`) и явное расширение файла.
+- **Обновлённая раскладка управления на Android:** все кнопки по умолчанию (кроме `SELECT` и `START`) опущены ниже в естественную зону больших пальцев.
+- **Единое многоязычное окно обновлений:** автоматический выбор языка списка изменений из всех 11 поддерживаемых языков приложения, структурированный Markdown и мета-чипы (зеркало, размер, дата).
+- **Крупное обновление Windows-версии и установщика:** эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`); исправлены векторные кнопки окна (сворачивание, разворачивание, закрытие), светлая тема `STORM DAY`, поле поиска (`Ctrl+K`), двойной клик запуска игр, полная поддержка `.zip` ROM на Windows, аудио-буфер `8192` + `timeBeginPeriod(1)` (`59.73 FPS`), менеджер папок ROM и адаптивная вёрстка без наложений.
 
 ## English
-- **Multilingual update dialog & clean version numbers:** Android and Windows update dialogs automatically filter release notes to the active app/system language, render structured Markdown with mirror/size/date metadata chips, and remove the `v` prefix everywhere.
-- **Individual quick action buttons (STORM DS style):** split into 5 independent buttons (`Menu`, `Rewind`, `Fast Forward`, `Quick Save`, `Quick Load`) with per-button visibility and drag placement saved per orientation and per console (GB, GBC, GBA).
-- **Clean gameplay viewport & ergonomic defaults:** removed the top-right telemetry badge, moved `SELECT` and `START` outside the game screen, shifted the D-Pad left and `B`/`A` right.
-- **Redesigned physical gamepad mapping:** 3D button keycaps, summary card, **Auto-Map** and **Clear All** buttons, assigned key chips with gamepad/keyboard icons, and single-tap row clearing.
-- **Game technical info dialog:** clean multi-line wrapping for long titles without clipping and explicit file extension display (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`) on Android and Windows.
-- **RetroArch shaders & per-system profiles:** renamed `Disabled (Built-in shader)` to `Disabled (Built-in)`; GB, GBC, and GBA each retain independent 3D skins, themes, layouts, and shaders.
+- **Android smoothness, speed & thermal optimization:** optimized GLSL shader (~10x fewer GPU `pow()` calls and texture lookups, `mediump`), GLES3 texture reuse (`glTexSubImage2D`) and persistent Vulkan mapping, 256-entry color correction LUT replacing CPU `std::pow`, skipped redundant Rewind serialization on skipped frames, `float` DSP, conditional accelerometer/gyroscope registration only for Tilt/Gyro games, precise `LockSupport.parkNanos` pacing, thermal adaptation (`PowerManager` Thermal API), `ImageBitmap` 3D skin caching, `VirtualGamepadOverlay` optimization, async thumbnails, and `RGB_565` covers.
+- **Zero `v` version prefixes & improved Technical Info:** removed all `v` prefixes from versions everywhere; Technical Info now displays the clean game title strictly before the year (`Final Fantasy Tactics Advance` instead of trailing `(2003) [JP] ...`) alongside explicit file extension details.
+- **Updated Android control layout:** all default buttons (except `SELECT` and `START`) are positioned lower in the natural thumb comfort zone.
+- **Unified multilingual update dialog:** automatically selects release notes matching any of the 11 supported app languages, renders structured Markdown, and displays metadata chips (mirror, size, date).
+- **Major Windows & installer update:** reference `STORM INSTALLER` (`840x580`, 11 languages, 9 themes, 13 accents, Standard/Portable, Drag-and-Drop, `STORM TEAM` signing); fixed vector window caption buttons (minimize, maximize, close), `STORM DAY` light theme, search box (`Ctrl+K`), double-click game launch, full `.zip` ROM support on Windows, `8192` audio buffer + `timeBeginPeriod(1)` (`59.73 FPS`), ROM folder manager, and responsive overlap-free layout.
 
 ## Deutsch
-- **Mehrsprachiges Update-Fenster & saubere Versionen:** Android- und Windows-Update-Dialoge zeigen Änderungsprotokolle automatisch in der App-/Systemsprache mit strukturiertem Markdown, Spiegel-/Größen-/Datums-Chips und ohne `v`-Präfix.
-- **Einzelne Schnellzugriffs-Tasten (STORM-DS-Stil):** 5 unabhängige Tasten (`Menü`, `Zurückspulen`, `Vorspulen`, `Schnellspeichern`, `Schnellladen`) mit individueller Positionierung pro Ausrichtung und System (GB, GBC, GBA).
-- **Freier Spielbildschirm & ergonomisches Layout:** Telemetrie-Text oben rechts entfernt, `SELECT` und `START` außerhalb des Bildschirms platziert, Steuerkreuz nach links und `B`/`A` nach rechts verschoben.
-- **Verbesserte Gamepad-Belegung:** 3D-Tastenkappen, Übersichtskarte, **Auto-Belegung**, **Alle löschen** und übersichtliche Tasten-Chips.
-- **Technische Spielinfos:** sauberer Zeilenumbruch langer Titel und Anzeige der Dateiendung (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`).
-- **RetroArch-Shader & Systemprofile:** umbenannt in `Deaktiviert (Integriert)`; eigene 3D-Skins, Themes, Layouts und Shader für GB, GBC und GBA.
+- **Android-Optimierung für Flüssigkeit, Tempo und geringere Wärmeentwicklung:** optimierter GLSL-Shader (~10x weniger GPU-`pow()`-Aufrufe und Textur-Lookups, `mediump`), Wiederverwendung von GLES3-Texturen (`glTexSubImage2D`) und permanentes Vulkan-Mapping, 256-Werte-LUT für Farbkorrektur statt CPU-`std::pow`, übersprungene Rewind-Serialisierung bei ausgelassenen Frames, `float`-DSP, bedingte Sensor-Registrierung nur bei Tilt/Gyro-Spielen, präzises `LockSupport.parkNanos`-Pacing, Thermal-Anpassung (`PowerManager` Thermal API), `ImageBitmap`-Caching für 3D-Skins, `VirtualGamepadOverlay`-Optimierung, asynchrone Vorschaubilder und `RGB_565`-Cover.
+- **Saubere Versionen ohne `v` & verbesserte Technische Infos:** alle `v`-Präfixe entfernt; die Technische Info zeigt nun den reinen Spieltitel strikt vor dem Erscheinungsjahr (`Final Fantasy Tactics Advance` statt `(2003) [JP] ...`) samt Dateiendung.
+- **Aktualisiertes Android-Steuerungslayout:** alle Standardtasten (außer `SELECT` und `START`) wurden ergonomisch tiefer in die Daumenzone verschoben.
+- **Einheitliches mehrsprachiges Update-Fenster:** automatische Sprachwahl aus allen 11 App-Sprachen, strukturiertes Markdown und Metadaten-Chips (Spiegel, Größe, Datum).
+- **Großes Windows- und Installer-Update:** Referenz-`STORM INSTALLER` (`840x580`, 11 Sprachen, 9 Themes, 13 Akzente, Standard/Portable, Drag-and-Drop, `STORM TEAM`-Signatur); reparierte Vektor-Fenstertasten (Minimieren, Maximieren, Schließen), helles Theme `STORM DAY`, Suchfeld (`Ctrl+K`), Spielstart per Doppelklick, volle `.zip`-ROM-Unterstützung unter Windows, `8192`-Audiopuffer + `timeBeginPeriod(1)` (`59.73 FPS`), ROM-Ordnermanager und responsives Layout ohne Überlappungen.
 
 ## Français
-- **Fenêtre de mise à jour multilingue et versions propres :** les boîtes de dialogue Android et Windows affichent automatiquement les notes dans la langue de l'application/du système avec rendu Markdown, puces miroir/taille/date et sans préfixe `v`.
-- **Boutons d'action rapide séparés (style STORM DS) :** 5 boutons indépendants (`Menu`, `Rembobiner`, `Avance rapide`, `Sauvegarde rapide`, `Chargement rapide`) positionnables séparément par orientation et par console (GB, GBC, GBA).
-- **Écran de jeu épuré et disposition ergonomique :** suppression de l'étiquette technique en haut à droite, déplacement de `SELECT`/`START` hors de l'écran, croix décalée à gauche et `B`/`A` à droite.
-- **Configuration manette repensée :** touches 3D, carte récapitulative, **Auto-mappage**, **Tout effacer** et puces de touches assignées.
-- **Informations techniques du jeu :** retour à la ligne propre des titres longs et affichage de l'extension du fichier (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`).
-- **Shaders RetroArch et profils dédiés :** renommé en `Désactivé (Intégré)` ; profils 3D, thèmes, dispositions et shaders indépendants pour GB, GBC et GBA.
+- **Optimisation de la fluidité, de la vitesse et de la chauffe sur Android :** shader GLSL optimisé (~10x moins d'appels GPU `pow()` et de lectures de textures, `mediump`), réutilisation des textures GLES3 (`glTexSubImage2D`) et mapping Vulkan persistant, LUT de correction colorimétrique à 256 entrées remplaçant `std::pow` sur CPU, suppression de la sérialisation Rewind sur les images ignorées, DSP `float`, activation conditionnelle de l'accéléromètre/gyroscope uniquement pour les jeux Tilt/Gyro, cadence précise `LockSupport.parkNanos`, adaptation thermique (`PowerManager` Thermal API), mise en cache `ImageBitmap` des skins 3D, optimisation de `VirtualGamepadOverlay`, vignettes asynchrones et jaquettes `RGB_565`.
+- **Versions propres sans `v` et Informations techniques améliorées :** suppression de tous les préfixes `v` partout ; les Informations techniques affichent désormais le titre exact du jeu avant l'année (`Final Fantasy Tactics Advance` sans `(2003) [JP] ...`) ainsi que l'extension du fichier.
+- **Disposition des contrôles Android repensée :** tous les boutons par défaut (sauf `SELECT` et `START`) ont été abaissés dans la zone naturelle des pouces.
+- **Fenêtre de mise à jour multilingue unifiée :** sélection automatique parmi les 11 langues de l'application, rendu Markdown structuré et puces de métadonnées (miroir, taille, date).
+- **Mise à jour majeure de Windows et de l'installateur :** `STORM INSTALLER` de référence (`840x580`, 11 langues, 9 thèmes, 13 accents, Standard/Portable, glisser-déposer, signature `STORM TEAM`) ; correction des boutons vectoriels de fenêtre (réduire, agrandir, fermer), thème clair `STORM DAY`, barre de recherche (`Ctrl+K`), lancement par double-clic, prise en charge complète des ROM `.zip` sous Windows, tampon audio `8192` + `timeBeginPeriod(1)` (`59.73 FPS`), gestionnaire de dossiers ROM et mise en page adaptative sans chevauchement.
 
 ## Español
-- **Ventana de actualización multilingüe y versiones limpias:** los diálogos de Android y Windows muestran automáticamente las notas en el idioma de la app/sistema con Markdown estructurado, etiquetas de espejo/tamaño/fecha y sin prefijo `v`.
-- **Botones de acción rápida independientes (estilo STORM DS):** 5 botones configurables (`Menú`, `Rebobinar`, `Avance rápido`, `Guardado rápido`, `Carga rápida`) con posición guardada por orientación y consola (GB, GBC, GBA).
-- **Pantalla limpia y diseño ergonómico:** etiqueta técnica superior derecha eliminada, `SELECT` y `START` fuera de la pantalla, cruceta más a la izquierda y `B`/`A` más a la derecha.
-- **Asignación de mando mejorada:** teclas 3D, resumen de botones asignados, **Auto-asignar** y **Limpiar todo**.
-- **Información técnica del juego:** ajuste de líneas para títulos largos y visualización explícita de la extensión del archivo (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`).
-- **Shaders RetroArch y perfiles por sistema:** renombrado a `Desactivado (Integrado)`; skins 3D, temas, diseños y shaders independientes para GB, GBC y GBA.
+- **Optimización de fluidez, velocidad y menor calentamiento en Android:** shader GLSL optimizado (~10x menos llamadas GPU `pow()` y lecturas de textura, `mediump`), reutilización de texturas GLES3 (`glTexSubImage2D`) y mapeo persistente en Vulkan, LUT de corrección de color de 256 entradas en lugar de `std::pow` en CPU, omisión de serialización Rewind en fotogramas saltados, DSP `float`, registro condicional de acelerómetro/giroscopio solo para juegos Tilt/Gyro, sincronización precisa `LockSupport.parkNanos`, adaptación térmica (`PowerManager` Thermal API), caché `ImageBitmap` de skins 3D, optimización de `VirtualGamepadOverlay`, miniaturas asíncronas y carátulas `RGB_565`.
+- **Versiones limpias sin `v` e Información técnica mejorada:** eliminados todos los prefijos `v` en todas partes; Información técnica muestra el título limpio del juego antes del año (`Final Fantasy Tactics Advance` en lugar de `(2003) [JP] ...`) junto con la extensión del archivo.
+- **Diseño de controles Android actualizado:** todos los botones predeterminados (excepto `SELECT` y `START`) se han bajado a la zona natural de los pulgares.
+- **Ventana de actualización multilingüe unificada:** selección automática entre los 11 idiomas de la aplicación, Markdown estructurado y chips de metadatos (espejo, tamaño, fecha).
+- **Gran actualización de Windows y del instalador:** `STORM INSTALLER` de referencia (`840x580`, 11 idiomas, 9 temas, 13 acentos, Standard/Portable, arrastrar y soltar, firma `STORM TEAM`); botones vectoriales de ventana corregidos (minimizar, maximizar, cerrar), tema claro `STORM DAY`, cuadro de búsqueda (`Ctrl+K`), inicio con doble clic, soporte completo de ROM `.zip` en Windows, búfer de audio `8192` + `timeBeginPeriod(1)` (`59.73 FPS`), gestor de carpetas ROM y diseño adaptable sin solapamientos.
 
 ## Italiano
-- **Finestra di aggiornamento multilingua e versioni pulite:** i dialoghi Android e Windows filtrano automaticamente le note nella lingua dell'app/sistema con Markdown strutturato, chip mirror/dimensione/data e senza prefisso `v`.
-- **Pulsanti rapidi separati (stile STORM DS):** 5 pulsanti indipendenti (`Menu`, `Riavvolgi`, `Avanzamento rapido`, `Salvataggio rapido`, `Caricamento rapido`) posizionabili per orientamento e console (GB, GBC, GBA).
-- **Schermo di gioco pulito e layout ergonomico:** rimossa l'etichetta tecnica in alto a destra, `SELECT` e `START` spostati fuori dallo schermo, D-Pad a sinistra e `B`/`A` a destra.
-- **Mappatura gamepad rinnovata:** tasti 3D, scheda riepilogativa, **Auto-mappa** e **Cancella tutto**.
-- **Informazioni tecniche sul gioco:** ritorno a capo pulito per titoli lunghi e visualizzazione dell'estensione file (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`).
-- **Shader RetroArch e profili dedicati:** rinominato in `Disattivato (Integrato)`; skin 3D, temi, layout e shader separati per GB, GBC e GBA.
+- **Ottimizzazione di fluidità, velocità e riduzione del calore su Android:** shader GLSL ottimizzato (~10x meno chiamate GPU `pow()` e letture texture, `mediump`), riutilizzo texture GLES3 (`glTexSubImage2D`) e mappatura Vulkan persistente, LUT colore a 256 valori al posto di `std::pow` su CPU, rimozione della serializzazione Rewind sui frame saltati, DSP `float`, registrazione condizionale di accelerometro/giroscopio solo per giochi Tilt/Gyro, pacing preciso `LockSupport.parkNanos`, adattamento termico (`PowerManager` Thermal API), cache `ImageBitmap` per skin 3D, ottimizzazione `VirtualGamepadOverlay`, anteprime asincrone e copertine `RGB_565`.
+- **Versioni pulite senza `v` e Informazioni tecniche migliorate:** rimossi tutti i prefissi `v` ovunque; le Informazioni tecniche mostrano ora il titolo pulito del gioco prima dell'anno (`Final Fantasy Tactics Advance` anziché `(2003) [JP] ...`) e l'estensione del file.
+- **Layout controlli Android aggiornato:** tutti i pulsanti predefiniti (tranne `SELECT` e `START`) sono stati abbassati nella zona naturale dei pollici.
+- **Finestra di aggiornamento multilingua unificata:** selezione automatica tra tutte le 11 lingue dell'app, Markdown strutturato e chip informativi (mirror, dimensione, data).
+- **Importante aggiornamento Windows e installer:** `STORM INSTALLER` di riferimento (`840x580`, 11 lingue, 9 temi, 13 accenti, Standard/Portable, Drag-and-Drop, firma `STORM TEAM`); corretti i pulsanti vettoriali della finestra (riduci a icona, ingrandisci, chiudi), tema chiaro `STORM DAY`, barra di ricerca (`Ctrl+K`), avvio con doppio clic, supporto completo ROM `.zip` su Windows, buffer audio `8192` + `timeBeginPeriod(1)` (`59.73 FPS`), gestore cartelle ROM e layout adattivo senza sovrapposizioni.
 
 ## Português
-- **Janela de atualização multilíngue e versões limpas:** os diálogos do Android e Windows exibem automaticamente as notas no idioma do app/sistema com Markdown estruturado, chips de espelho/tamanho/data e sem o prefixo `v`.
-- **Botões rápidos individuais (estilo STORM DS):** 5 botões independentes (`Menu`, `Retroceder`, `Avanço rápido`, `Salvamento rápido`, `Carregamento rápido`) com posição salva por orientação e console (GB, GBC, GBA).
-- **Tela limpa e layout ergonômico:** removido o texto técnico no canto superior direito, `SELECT` e `START` fora da tela, direcional mais à esquerda e `B`/`A` mais à direita.
-- **Mapeamento de controle aprimorado:** teclas 3D, cartão de resumo, **Auto-mapear** e **Limpar tudo**.
-- **Informações técnicas do jogo:** quebra de linha limpa para títulos longos e exibição da extensão do arquivo (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`).
-- **Shaders RetroArch e perfis por sistema:** renomeado para `Desativado (Integrado)`; skins 3D, temas, layouts e shaders independentes para GB, GBC e GBA.
+- **Otimização de fluidez, velocidade e redução de calor no Android:** shader GLSL otimizado (~10x menos chamadas GPU `pow()` e leituras de textura, `mediump`), reutilização de texturas GLES3 (`glTexSubImage2D`) e mapeamento persistente Vulkan, LUT de correção de cor com 256 entradas no lugar de `std::pow` na CPU, omissão de serialização Rewind em quadros pulados, DSP `float`, registro condicional de acelerômetro/giroscópio apenas para jogos Tilt/Gyro, controle preciso `LockSupport.parkNanos`, adaptação térmica (`PowerManager` Thermal API), cache `ImageBitmap` de skins 3D, otimização do `VirtualGamepadOverlay`, miniaturas assíncronas e capas `RGB_565`.
+- **Versões limpas sem `v` e Informações técnicas aprimoradas:** removidos todos os prefixos `v` em todo o projeto; as Informações técnicas exibem o título limpo do jogo antes do ano (`Final Fantasy Tactics Advance` em vez de `(2003) [JP] ...`) e a extensão do arquivo.
+- **Layout de controles Android atualizado:** todos os botões padrão (exceto `SELECT` e `START`) foram movidos mais para baixo na zona natural dos polegares.
+- **Janela de atualização multilíngue unificada:** seleção automática do idioma entre todos os 11 idiomas do app, Markdown estruturado e chips de metadados (espelho, tamanho, data).
+- **Grande atualização do Windows e do instalador:** `STORM INSTALLER` padrão ouro (`840x580`, 11 idiomas, 9 temas, 13 destaques, Standard/Portable, arrastar e soltar, assinatura `STORM TEAM`); corrigidos os botões vetoriais da janela (minimizar, maximizar, fechar), tema claro `STORM DAY`, campo de busca (`Ctrl+K`), inicialização com duplo clique, suporte total a ROMs `.zip` no Windows, buffer de áudio `8192` + `timeBeginPeriod(1)` (`59.73 FPS`), gerenciador de pastas de ROM e layout responsivo sem sobreposições.
 
 ## 日本語
-- **多言語アップデート画面とバージョン表記統一:** Android・Windows の更新ダイアログがアプリ/システム言語に応じて変更履歴を自動抽出し、Markdown 表示・ミラー/サイズ/日付チップに対応し、`v` 接頭辞を完全に削除しました。
-- **独立クイックアクションボタン (STORM DS スタイル):** 5 つの独立ボタン (`メニュー`、`巻き戻し`、`早送り`、`クイックセーブ`、`クイックロード`) を縦横・機種 (GB / GBC / GBA) ごとに配置可能。
-- **クリアなゲーム画面と快適な初期配置:** 右上の技術表示を削除し、`SELECT`/`START` を画面外へ配置、十字キーを左寄り、`B`/`A` を右寄りに調整しました。
-- **物理ゲームパッド設定の刷新:** 3D キーキャップ、割り当て数サマリー、**自動設定**・**すべてクリア**ボタン、割り当てキーチップを追加。
-- **ゲーム技術情報の改善:** 長いタイトルの自動折り返しとファイル拡張子 (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`) の明示表示に対応。
-- **RetroArch シェーダーと機種別プロファイル:** `無効 (内蔵)` へ名称変更し、GB / GBC / GBA ごとに 3D スキン・テーマ・レイアウト・シェーダーを独立保存。
+- **Android の滑らかさ・速度・発熱抑制の最適化:** GLSL シェーダー最適化 (GPU の `pow()` 呼び出しとテクスチャ参照を約 10 分の 1 に削減、`mediump` 化)、GLES3 テクスチャ再利用 (`glTexSubImage2D`) と Vulkan 永続マッピング、CPU `std::pow` を置き換える 256 段階色補正 LUT、スキップフレームでの不要な Rewind シリアライズ停止、`float` DSP、Tilt/Gyro 対応ゲーム限定の加速度/ジャイロ登録、高精度 `LockSupport.parkNanos` ペーシング、`PowerManager` Thermal API による発熱適応、3D スキンの `ImageBitmap` キャッシュ、`VirtualGamepadOverlay` 最適化、非同期サムネイルおよび `RGB_565` カバー対応を実施しました。
+- **接頭辞 `v` の完全削除と「技術情報」の改善:** 全画面・設定・ビルドから `v` 表記を削除し、技術情報では年号の直前までのクリーンなゲームタイトル (`(2003) [JP] ...` を除いた `Final Fantasy Tactics Advance`) と拡張子を明示表示します。
+- **Android 操作レイアウトの刷新:** `SELECT` と `START` を除く既定ボタン全体を親指の自然な操作位置へ下げました。
+- **統合多言語アップデートウィンドウ:** アプリ対応 11 言語すべてから変更履歴を自動選択し、構造化 Markdown とメタ情報チップ (ミラー・容量・日付) を表示します。
+- **Windows 版およびインストーラーの大型アップデート:** 基準仕様 `STORM INSTALLER` (`840x580`、11 言語、9 テーマ、13 アクセント、Standard/Portable、ドラッグ＆ドロップ、`STORM TEAM` 署名)、ウィンドウのベクターボタン修正 (最小化・最大化・閉じる)、ライトテーマ `STORM DAY`、検索ボックス (`Ctrl+K`)、ダブルクリック起動、Windows での `.zip` ROM 完全対応、`8192` オーディオバッファ + `timeBeginPeriod(1)` (`59.73 FPS`)、ROM フォルダ管理、重なりのないレスポンシブレイアウトを実装しました。
 
 ## 简体中文
-- **多语言更新窗口与纯净版本号:** Android 与 Windows 更新对话框自动按应用/系统语言显示更新日志，支持结构化 Markdown、镜像/大小/日期标签，并全面移除版本号前的 `v` 前缀。
-- **独立快捷按钮 (STORM DS 风格):** 拆分为 5 个独立按钮 (`菜单`、`倒带`、`快进`、`快速存档`、`快速读档`)，按横竖屏与主机 (GB / GBC / GBA) 独立保存位置。
-- **纯净游戏画面与人体工学默认布局:** 移除右上角技术信息文字，将 `SELECT`/`START` 移至画面外，十字键略向左移、`B`/`A` 略向右移。
-- **实体手柄按键设置升级:** 全新 3D 键帽样式、已映射统计卡片、**自动映射**与**全部清除**按钮及按键标签。
-- **游戏技术信息优化:** 长标题自动换行不裁剪，并明确显示文件扩展名 (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`)。
-- **RetroArch 着色器与分机种配置:** 更名为 `已禁用 (内置)`；GB、GBC 与 GBA 各自独立保存 3D 皮肤、主题、布局与着色器。
+- **Android 流畅度、速度与发热优化:** 优化 GLSL 着色器 (GPU `pow()` 调用与纹理采样减少约 10 倍，采用 `mediump`)、GLES3 纹理复用 (`glTexSubImage2D`) 与 Vulkan 持久内存映射、256 项色彩校正 LUT 替代 CPU `std::pow`、跳帧时跳过冗余 Rewind 序列化、`float` DSP、仅对 Tilt/Gyro 游戏按需注册加速度计/陀螺仪、高精度 `LockSupport.parkNanos` 帧率控制、`PowerManager` Thermal API 温控自适应、3D 皮肤 `ImageBitmap` 缓存、`VirtualGamepadOverlay` 优化、异步缩略图及 `RGB_565` 封面加载。
+- **去除版本号 `v` 前缀与“技术信息”优化:** 全面移除版本号前的 `v` 前缀；技术信息窗口现在仅显示年份前的纯净游戏名称 (例如显示 `Final Fantasy Tactics Advance`，而非 `(2003) [JP] ...` 后缀) 并明确展示文件扩展名。
+- **更新 Android 默认按键布局:** 除 `SELECT` 与 `START` 外，所有默认按键整体下移至拇指自然舒适区。
+- **统一多语言更新窗口:** 自动匹配全部 11 种应用语言的更新日志，支持结构化 Markdown 与元数据标签 (镜像源、大小、日期)。
+- **Windows 版与安装程序重大更新:** 标准 `STORM INSTALLER` (`840x580`、11 种语言、9 套主题、13 种强调色、标准/便携模式、拖放支持、`STORM TEAM` 签名)；修复窗口矢量按钮 (最小化、最大化、关闭)，新增 `STORM DAY` 浅色主题、搜索框 (`Ctrl+K`)、双击启动游戏、Windows 完整 `.zip` ROM 支持、`8192` 音频缓冲 + `timeBeginPeriod(1)` (`59.73 FPS`)、ROM 文件夹管理器及无重叠自适应布局。
 
 ## 한국어
-- **다국어 업데이트 창 및 깔끔한 버전 표기:** Android 및 Windows 업데이트 창이 앱/시스템 언어에 맞춰 변경 내역을 자동 표시하며, 구조화된 Markdown, 미러/용량/날짜 배지를 제공하고 `v` 접두사를 제거했습니다.
-- **개별 빠른 실행 버튼 (STORM DS 스타일):** 5개의 독립 버튼 (`메뉴`, `되감기`, `빨리 감기`, `빠른 저장`, `빠른 불러오기`)을 화면 방향과 기종(GB, GBC, GBA)별로 자유롭게 배치할 수 있습니다.
-- **깔끔한 게임 화면과 인체공학적 기본 배치:** 우측 상단 상태 표시를 제거하고 `SELECT`/`START`를 화면 밖으로 배치했으며, 십자키는 왼쪽으로 `B`/`A`는 오른쪽으로 이동했습니다.
-- **물리 게임패드 키 설정 개선:** 3D 키캡, 할당 요약 카드, **자동 설정**, **모두 지우기** 및 할당 키 칩 UI를 적용했습니다.
-- **게임 기술 정보 개선:** 긴 제목의 줄바꿈 처리 및 파일 확장자(`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`) 표시를 추가했습니다.
-- **RetroArch 셰이더 및 기종별 프로필:** `비활성화 (내장)`으로 명칭을 통일했으며, GB, GBC, GBA마다 독립된 3D 스킨, 테마, 레이아웃, 셰이더를 저장합니다.
+- **Android 부드러움, 속도 및 발열 최적화:** GLSL 셰이더 최적화(GPU `pow()` 호출 및 텍스처 샘플링 약 10배 감소, `mediump`), GLES3 텍스처 재사용(`glTexSubImage2D`) 및 Vulkan 영구 매핑, CPU `std::pow`를 대체하는 256단계 색보정 LUT, 건너뛴 프레임의 불필요한 Rewind 직렬화 생략, `float` DSP, Tilt/Gyro 지원 게임에만 가속도계/자이로 조건부 등록, 정밀한 `LockSupport.parkNanos` 페이싱, `PowerManager` Thermal API 기반 발열 대응, 3D 스킨 `ImageBitmap` 캐싱, `VirtualGamepadOverlay` 최적화, 비동기 미리보기 및 `RGB_565` 커버를 적용했습니다.
+- **`v` 접두사 제거 및 '기술 정보' 개선:** 모든 버전 표기에서 `v` 접두사를 제거했으며, 기술 정보 창에 연도 앞부분의 깔끔한 게임 제목(`(2003) [JP] ...` 꼬리표 없는 `Final Fantasy Tactics Advance`)과 파일 확장자를 표시합니다.
+- **Android 기본 조작 레이아웃 개선:** `SELECT`와 `START`를 제외한 모든 기본 버튼을 엄지손가락이 자연스럽게 닿는 아래쪽 영역으로 내렸습니다.
+- **통합 다국어 업데이트 창:** 지원되는 11개 앱 언어에 맞춰 변경 내역을 자동 선택하고 구조화된 Markdown과 메타데이터 배지(미러, 용량, 날짜)를 표시합니다.
+- **Windows 버전 및 설치 프로그램 대규모 업데이트:** 표준 `STORM INSTALLER`(`840x580`, 11개 언어, 9개 테마, 13개 강조 색상, Standard/Portable, 드래그 앤 드롭, `STORM TEAM` 서명) 적용; 창 벡터 버튼(최소화, 최대화, 닫기) 수정, `STORM DAY` 라이트 테마, 검색창(`Ctrl+K`), 더블 클릭 게임 실행, Windows `.zip` ROM 완전 지원, `8192` 오디오 버퍼 + `timeBeginPeriod(1)`(`59.73 FPS`), ROM 폴더 관리자 및 겹침 없는 반응형 레이아웃을 구현했습니다.
 
 ## हिन्दी
-- **बहुभाषी अपडेट विंडो और साफ़ वर्ज़न:** Android और Windows अपडेट डायलॉग ऐप/सिस्टम की भाषा के अनुसार बदलावों की सूची दिखाते हैं, मिरर/आकार/तारीख बैज दिखाते हैं और `v` उपसर्ग हटा दिया गया है।
-- **अलग-अलग त्वरित बटन (STORM DS शैली):** 5 स्वतंत्र बटन (`मेनू`, `रिवाइंड`, `फास्ट फॉरवर्ड`, `क्विक सेव`, `क्विक लोड`) जिन्हें GB, GBC और GBA के लिए अलग-अलग सेट किया जा सकता है।
-- **साफ़ गेम स्क्रीन और आरामदायक लेआउट:** ऊपर दाईं ओर का तकनीकी टेक्स्ट हटाया गया, `SELECT`/`START` स्क्रीन के बाहर रखे गए, D-Pad बाईं ओर और `B`/`A` दाईं ओर समायोजित किए गए।
-- **गेमपैड कुंजी सेटिंग्स सुधार:** 3D बटन कैप, सारांश कार्ड, **ऑटो-मैप** और **सभी साफ़ करें** विकल्प जोड़े गए।
-- **गेम तकनीकी जानकारी:** लंबे नामों के लिए साफ़ मल्टी-लाइन रैपिंग और फ़ाइल एक्सटेंशन (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`) का स्पष्ट प्रदर्शन।
-- **RetroArch शेडर और सिस्टम प्रोफ़ाइल:** GB, GBC और GBA प्रत्येक के लिए अलग 3D स्किन, थीम, लेआउट और शेडर प्रोफ़ाइल।
+- **Android पर स्मूथनेस, स्पीड और हीट कम करने का ऑप्टिमाइज़ेशन:** GLSL शेडर को ऑप्टिमाइज़ किया गया (GPU `pow()` और टेक्सचर सैंपलिंग ~10 गुना कम, `mediump`), GLES3 टेक्सचर री-यूज़ (`glTexSubImage2D`) और परसिस्टेंट Vulkan मैपिंग, CPU `std::pow` की जगह 256-एंट्री कलर करेक्शन LUT, स्किप किए गए फ्रेम्स पर अनावश्यक Rewind सीरियलाइज़ेशन बंद, `float` DSP, केवल Tilt/Gyro गेम्स के लिए एक्सेलेरोमीटर/जाइरोस्कोप का कंडीशनल रजिस्ट्रेशन, सटीक `LockSupport.parkNanos` पेसिंग, `PowerManager` Thermal API थर्मल एडैप्टेशन, `ImageBitmap` 3D स्किन कैशिंग, `VirtualGamepadOverlay` ऑप्टिमाइज़ेशन, एसिंक प्रीव्यू और `RGB_565` कवर जोड़े गए।
+- **बिना `v` वाले साफ़ वर्ज़न और बेहतर 'तकनीकी जानकारी':** सभी जगह से वर्ज़न के आगे `v` उपसर्ग हटा दिया गया है; 'तकनीकी जानकारी' में अब साल से ठीक पहले तक का साफ़ गेम नाम (`(2003) [JP] ...` के बिना `Final Fantasy Tactics Advance`) और फ़ाइल एक्सटेंशन साफ़ दिखता है।
+- **Android कंट्रोल लेआउट अपडेट:** `SELECT` और `START` को छोड़कर बाकी सभी डिफ़ॉल्ट बटन अंगूठों के स्वाभाविक आरामदायक क्षेत्र में नीचे लाए गए हैं।
+- **एकीकृत बहुभाषी अपडेट विंडो:** ऐप की सभी 11 समर्थित भाषाओं में से बदलावों की सूची अपने आप चुनती है, संरचित Markdown दिखाती है और मेटा चिप्स (मिरर, आकार, तारीख) प्रदर्शित करती है।
+- **Windows वर्ज़न और इंस्टॉलर का बड़ा अपडेट:** मानक `STORM INSTALLER` (`840x580`, 11 भाषाएँ, 9 थीम, 13 एक्सेंट, Standard/Portable, ड्रैग-एंड-ड्रॉप, `STORM TEAM` हस्ताक्षर); विंडो वेक्टर बटन (मिनिमाइज़, मैक्सिमाइज़, क्लोज़) ठीक किए गए, `STORM DAY` लाइट थीम, सर्च बॉक्स (`Ctrl+K`), डबल-क्लिक गेम लॉन्च, Windows पर पूरा `.zip` ROM सपोर्ट, `8192` ऑडियो बफ़र + `timeBeginPeriod(1)` (`59.73 FPS`), ROM फ़ोल्डर मैनेजर और बिना ओवरलैप वाला रिस्पॉन्सिव लेआउट।

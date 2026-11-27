@@ -6,12 +6,12 @@
 
 <p align="center">
   <strong>Флагманский кроссплатформенный эмулятор Nintendo Game Boy, Game Boy Color и Game Boy Advance для Android и Windows x64 (mGBA + SameBoy + Vulkan 1.1 + RetroArch librashader + 40 аутентичных 3D-скинов + Link Cable / Wireless RFU / Dolphin JoyBus / GB Printer + интерфейс STORM DS Watermelon / AuroraFluid)</strong><br />
-  Версия <code>1.4.0</code> | Платформы: <code>Android (arm64-v8a, armeabi-v7a, x86_64)</code> и <code>Windows x64</code> | Лицензия: <code>MPL-2.0</code>
+  Версия <code>1.5.0</code> | Платформы: <code>Android (arm64-v8a, armeabi-v7a, x86_64)</code> и <code>Windows x64</code>
 </p>
 
 <p align="center">
   <a href="https://github.com/ReiKatari/STORM_GBCA">GitHub Repository</a> -
-  <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.4.0">Релиз STORM GBCA 1.4.0</a> -
+  <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.5.0">Релиз STORM GBCA 1.5.0</a> -
   <a href="https://stormgamesworld.ru/programs?repo=STORM_GBCA">Страница на STORM GAMES WORLD</a>
 </p>
 
@@ -25,24 +25,22 @@
 
 ---
 
-## Что нового в версии 1.4.0
+## Что нового в версии 1.5.0
 
-- **Раздельные кнопки быстрых действий с полной настройкой размещения (как в STORM DS)**:
-  - Единая верхняя плашка разделена на **5 независимых кнопок** (`Меню`, `Перемотка`, `Ускорение`, `Быстрое сохранение`, `Быстрая загрузка`), каждая со своей позицией (раздельно для портрета и альбома), индивидуальным включением/отключением и свободным перетаскиванием в редакторе раскладки.
-  - По умолчанию все кнопки быстрых действий расположены удобно на боковых полях (в альбоме) и под экраном (в портрете) - **0% наложения на игровой экран**.
-- **Идеальная раскладка кнопок по умолчанию и чистый экран во время игры**:
-  - Убрана верхняя правая надпись со строкой ядра, API и масштаба (`mGBA | GBA | Vulkan 1.1 | 4x`).
-  - Кнопки `SELECT` и `START` разделены и перенесены по умолчанию за пределы игрового экрана (в нижние боковые поля в альбоме и под основные кнопки в портрете).
-  - Крестовина сдвинута чуть левее, а кнопки `B` и `A` - чуть правее для максимального комфорта и полного отсутствия наезда на рамку экрана.
-- **Красивый экран настройки физического геймпада и клавиш в стиле STORM DS**:
-  - Объемные 3D-колпачки кнопок (`A`, `B`, `L`, `R`, стрелки крестовины, `ST`, `SE`, иконки горячих клавиш), сводная карточка с счетчиком назначенных кнопок, быстрыми 3D-кнопками **Авто-настройка** и **Очистить все**, 3D-бейджи клавиш с иконками геймпада/клавиатуры, пунктирные чипы для неназначенных кнопок и отдельная кнопка сброса на каждой строке.
-- **Техническая информация об игре (долгий тап)**:
-  - Исправлено наложение и обрезание длинных названий игр - добавлен аккуратный перенос по строкам в карточках и прокрутка.
-  - Добавлено явное отображение **расширения файла** (`.GBA`, `.GBC`, `.GB`, `.ZIP`, `.7Z`) и полного имени файла на Android и Windows.
-- **Независимый профиль для каждой системы (GB, GBC, GBA)**:
-  - Собственный вид, **отдельная тема интерфейса**, 3D-скин по умолчанию (`DMG-01`, `Atomic Purple`, `AGB-001 Indigo` из 40 моделей), стиль кнопок, раздельные портретные и альбомные координаты кнопок и экранов, шейдер RetroArch и триггеры L/R для каждой консоли.
-- **Шейдеры RetroArch**: пункт `Отключен (Встроенный шейдер)` переименован в лаконичное **`Отключен (Встроенный)`** на Android и Windows.
-- **100% локализация**: 10 полных локалей на Android (**401 строка x 10 языков = 4 010 записей**, 0 предупреждений `aapt2`) и 11 полных локалей на Windows.
+- **Оптимизация плавности, скорости и снижение нагрева на Android**:
+  - Оптимизация GLSL-шейдера (сокращение GPU `pow()` и выборок текстур примерно в 10 раз, `mediump`), переиспользование GLES3-текстур (`glTexSubImage2D`) и постоянный маппинг Vulkan.
+  - 256-элементная LUT цветокоррекции вместо CPU `std::pow`, отключение лишней сериализации Rewind на пропускаемых кадрах, `float` DSP, условная регистрация акселерометра/гироскопа только для игр с Tilt/Gyro.
+  - Точный пейсинг кадров `LockSupport.parkNanos`, адаптация под нагрев (`PowerManager` Thermal API), кэширование 3D-скинов в `ImageBitmap`, оптимизация `VirtualGamepadOverlay`, асинхронные превью и `RGB_565` обложки.
+- **Чистые версии без `v` и улучшенная «Техническая информация»**:
+  - Удалены все префиксы `v` из версий во всех экранах, заголовках, манифестах и сборках.
+  - В окне «Техническая информация» выводится чистое название игры строго до года (`Final Fantasy Tactics Advance` вместо хвоста `(2003) [JP] ...`) и явное расширение файла.
+- **Обновлённая раскладка управления на Android**:
+  - Все кнопки по умолчанию (кроме `SELECT` и `START`) опущены ниже в естественную зону больших пальцев.
+- **Единое многоязычное окно обновлений**:
+  - Автоматический выбор языка списка изменений из всех 11 поддерживаемых языков приложения, структурированный Markdown и мета-чипы (зеркало, размер, дата).
+- **Крупное обновление Windows-версии и установщика**:
+  - Эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`).
+  - Исправлены векторные кнопки заголовка окна (сворачивание, разворачивание, закрытие), светлая тема `STORM DAY`, поле поиска (`Ctrl+K`), двойной клик запуска игр, полная поддержка `.zip` ROM на Windows, аудио-буфер `8192` + `timeBeginPeriod(1)` (`59.73 FPS`), менеджер папок ROM и адаптивная вёрстка без наложений.
 
 ---
 
@@ -50,14 +48,14 @@
 
 ### 1. Объединенное нативное ядро: лучшее из лучших эмуляторов GB / GBC / GBA
 - **Основное ядро - mGBA (`master`, 2026)**: полная совместимость с **GBA, GBC, GB и Super Game Boy**, встроенный HLE BIOS GBA, поддержка архивов `.zip` и `.7z` (включая полную поддержку кириллических/Unicode путей на Windows), автоопределение типов сохранений (`SRAM`, `Flash 64K/128K`, `EEPROM`), `RTC`, `Solar Sensor`, `Gyro`, `Tilt`, `Rumble`, **Dolphin JoyBus (`GBASIODolphin`)** и **Game Boy Printer (`GBPrinter`)**.
-- **Дополнительное высокоточное ядро - SameBoy (`v1.0.5`)**: независимый выбор ядра отдельно для **GB** и **GBC**, циклическая точность SM83, 7 режимов аппаратной цветокоррекции LCD, 3 режима фильтра верхних частот (`Off` / `Accurate` / `Remove DC`) и переносимость сохранений.
+- **Дополнительное высокоточное ядро - SameBoy (`1.0.5`)**: независимый выбор ядра отдельно для **GB** и **GBC**, циклическая точность SM83, 7 режимов аппаратной цветокоррекции LCD, 3 режима фильтра верхних частот (`Off` / `Accurate` / `Remove DC`) и переносимость сохранений.
 - **Vulkan 1.1 + OpenGL ES 3.2 + RetroArch `librashader`**: полноценное аппаратное ускорение и многопроходные шейдеры `.slangp` в дополнение к встроенному постпроцессору `storm_gbca_lcd.glsl` (по мотивам **SkyEmu**).
-- **Улучшения звука и цвета из NanoBoyAdvance (`phoenix`, BSD-2-Clause)**: качественная кубическая/Эрмитова (Hermite) интерполяция звука 48 кГц для GBA DirectSound/MP2K и калиброванные цветовые матрицы экранов AGB-001 / AGS-101.
-- **Низкая задержка и плавность из ares (`v148`)**: динамический контроль частоты (**Dynamic Rate Control, DRC**) для идеального звука без щелчков при синхронизации `59.7275 Гц -> 60 Гц` и упреждение кадров (**Run-Ahead `0..2` кадра**).
+- **Улучшения звука и цвета из NanoBoyAdvance (`phoenix`)**: качественная кубическая/Эрмитова (Hermite) интерполяция звука 48 кГц для GBA DirectSound/MP2K и калиброванные цветовые матрицы экранов AGB-001 / AGS-101.
+- **Низкая задержка и плавность из ares (`148`)**: динамический контроль частоты (**Dynamic Rate Control, DRC**) для идеального звука без щелчков при синхронизации `59.7275 Гц -> 60 Гц` и упреждение кадров (**Run-Ahead `0..2` кадра**).
 - **Палитры, микшер, читы и датчики из Gambatte, MesenCE, VBA-M и GBE+**:
   - **28 кураторских палитр DMG/GBC/SGB** + настраиваемая 4-цветная палитра.
   - **6-канальный аудиомикшер** (`PSG 1 Pulse`, `PSG 2 Pulse`, `PSG 3 Wave`, `PSG 4 Noise`, `GBA DMA A`, `GBA DMA B`, общая громкость).
-  - **Универсальный движок чит-кодов + живой RAM Cheat Finder**: GameShark v1/v3, Action Replay v3, CodeBreaker / GameShark SP, Game Genie (GB/GBC), Raw-коды и интерактивный поиск значений в памяти.
+  - **Универсальный движок чит-кодов + живой RAM Cheat Finder**: GameShark 1/3, Action Replay 3, CodeBreaker / GameShark SP, Game Genie (GB/GBC), Raw-коды и интерактивный поиск значений в памяти.
   - **Мягкое патчирование на лету (Soft-Patching)**: встроенная поддержка форматов **IPS, IPS32, UPS и BPS**.
   - **Аппаратные датчики и аксессуары**: датчик солнечного света Boktai (`0..10 LUX`), гироскоп и акселерометр, тактильная отдача `Rumble`, часы реального времени (`RTC`), **Game Boy Printer** и рамки **Super Game Boy (`256x224`)**.
 
@@ -67,13 +65,13 @@
 
 ---
 
-## Релиз 1.4.0
+## Релиз 1.5.0
 
 | Файл релиза | Назначение | Ключевые возможности |
 | --- | --- | --- |
-| `STORM_GBCA_1.4.0.apk` | Подписанная универсальная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`) | 5 раздельных настраиваемых кнопок быстрых действий (как в STORM DS), чистый экран без системной строки в углу, неперекрывающиеся `SELECT`/`START`, сдвинутые крестовина и `B`/`A`, 3D-экран настройки геймпада STORM DS, перенос строк и расширение в тех. информации, независимые темы/скины/кнопки для GB/GBC/GBA, 40 3D-скинов, `mGBA` + `SameBoy` + `Vulkan 1.1` + `librashader` + 100% локализация (10 языков, 401 строка) |
-| `STORM_GBCA_1.4.0_Windows.zip` | Портативная сборка для Windows 10/11 (x64) | Автономный `STORM GBCA.exe` + нативное ядро `storm_gbca_core.dll` (1.4.0), встроенный индекс 9 132 обложек с 3 быстрыми CDN, 40 фотореалистичных 3D-скинов на SkiaSharp, 1-клик полноэкранные пресеты, разнесенные кнопки оверлея без наезда на экран, отображение расширения ROM, 10 пресетов `.slangp`, апскейлинг `1x..4x`, полный мультиплеер и 11 языков |
-| `STORM_GBCA_1.4.0_Setup.exe` | Установщик для Windows 10/11 (x64) | Единый графический установщик STORM AuroraFluid с распаковкой в `%LOCALAPPDATA%\Programs\STORM GBCA`, созданием ярлыков на рабочем столе и в меню Пуск, регистрацией в «Установке и удалении программ» Windows и скриптом чистого удаления |
+| `STORM_GBCA_1.5.0.apk` | Подписанная универсальная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`) | Оптимизированный GLSL-шейдер (в ~10 раз меньше GPU `pow()`), переиспользование текстур GLES3 и постоянный маппинг Vulkan, 256-элементная LUT цветокоррекции, `float` DSP, условные датчики Tilt/Gyro, `LockSupport.parkNanos` + Thermal API, кэш 3D-скинов `ImageBitmap`, асинхронные превью и `RGB_565` обложки, опущенная раскладка кнопок в зону больших пальцев, чистое название игры до года, 11-язычное окно обновлений |
+| `STORM_GBCA_1.5.0_Windows.zip` | Портативная сборка для Windows 10/11 (x64) | Автономный `STORM GBCA.exe` + нативное ядро `storm_gbca_core.dll` (1.5.0), исправленные векторные кнопки окна, светлая тема `STORM DAY`, поиск `Ctrl+K`, двойной клик запуска игр, полная поддержка `.zip` ROM на Windows, аудио-буфер `8192` + `timeBeginPeriod(1)` (`59.73 FPS`), менеджер папок ROM, адаптивная вёрстка, чистое название до года и 11-язычное окно обновлений |
+| `STORM_GBCA_1.5.0_Setup.exe` | Установщик для Windows 10/11 (x64) | Эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`), распаковка в `%LOCALAPPDATA%\Programs\STORM GBCA`, создание ярлыков, регистрация в Windows и чистое удаление |
 
 ---
 
@@ -88,6 +86,7 @@
 
 ### Горячие клавиши (Windows)
 - **Управление**: Стрелки / `WASD` (D-Pad), `Z` / `J` (B), `X` / `K` (A), `A` / `Q` (L), `S` / `E` (R), `Enter` (Start), `Backspace` (Select) + полная поддержка геймпадов **XInput** с виброотдачей.
+- **`Ctrl+K`** - Быстрый поиск и запуск игры
 - **`Esc`** - Открыть / закрыть меню паузы
 - **`F5` / `F8`** - Быстрое сохранение / Быстрая загрузка
 - **`Space`** - Ускорение эмуляции (Fast-Forward)
@@ -126,9 +125,9 @@ dotnet publish windows/src/StormGbca.Desktop/StormGbca.Desktop.csproj -c Release
 ./gradlew :app:assembleRelease --max-workers=3 -Dorg.gradle.priority=low
 ```
 Готовые артефакты релиза сохраняются в папку `releases/`:
-- `releases/STORM_GBCA_1.4.0.apk`
-- `releases/STORM_GBCA_1.4.0_Windows.zip`
-- `releases/STORM_GBCA_1.4.0_Setup.exe`
+- `releases/STORM_GBCA_1.5.0.apk`
+- `releases/STORM_GBCA_1.5.0_Windows.zip`
+- `releases/STORM_GBCA_1.5.0_Setup.exe`
 
 ---
 
@@ -136,21 +135,15 @@ dotnet publish windows/src/StormGbca.Desktop/StormGbca.Desktop.csproj -c Release
 
 Проект **STORM GBCA** создан благодаря выдающейся работе авторов и сообществ следующих открытых проектов:
 
-- **[mGBA](https://github.com/mgba-emu/mgba)** (**endrift** и участники проекта) - основное высокоскоростное и точное ядро эмуляции Nintendo Game Boy, Game Boy Color, Super Game Boy и Game Boy Advance, поддержка Dolphin JoyBus и Game Boy Printer (MPL-2.0).
-- **[SameBoy](https://github.com/LIJI32/SameBoy)** (**Lior Halphon / LIJI32**) - дополнительное высокоточное ядро для GB/GBC/SGB, эталонные 7 режимов цветокоррекции LCD и 3-режимный фильтр верхних частот аудио (MIT).
-- **[librashader](https://github.com/SnowflakePowered/librashader)** (**Ronny Chan / SnowflakePowered**) - высокопроизводительный кросс-API движок шейдеров RetroArch `.slangp` для OpenGL ES 3 и Vulkan (MPL-2.0).
-- **[SkyEmu](https://github.com/skylersaleh/SkyEmu)** (**Skyler Saleh**) - архитектура единого LCD/субпиксельного шейдера с гостингом и концепция 64-байтного XOR дельта-сжатия буфера перемотки назад (MIT).
-- **[NanoBoyAdvance (`phoenix`)](https://codeberg.org/nba-emu/NanoBoyAdvance)** (**fleroviux**) - референс высококачественной интерполяции GBA-аудио (MP2K / DirectSound) и цветовых матриц LCD AGB-001 / AGS-101 (BSD-2-Clause).
-- **[ares](https://github.com/ares-emulator/ares)** (**Near** и команда ares) - идеи динамического контроля частоты аудио (Dynamic Rate Control) и упреждения кадров Run-Ahead (ISC).
+- **[mGBA](https://github.com/mgba-emu/mgba)** (**endrift** и участники проекта) - основное высокоскоростное и точное ядро эмуляции Nintendo Game Boy, Game Boy Color, Super Game Boy и Game Boy Advance, поддержка Dolphin JoyBus и Game Boy Printer.
+- **[SameBoy](https://github.com/LIJI32/SameBoy)** (**Lior Halphon / LIJI32**) - дополнительное высокоточное ядро для GB/GBC/SGB, эталонные 7 режимов цветокоррекции LCD и 3-режимный фильтр верхних частот аудио.
+- **[librashader](https://github.com/SnowflakePowered/librashader)** (**Ronny Chan / SnowflakePowered**) - высокопроизводительный кросс-API движок шейдеров RetroArch `.slangp` для OpenGL ES 3 и Vulkan.
+- **[SkyEmu](https://github.com/skylersaleh/SkyEmu)** (**Skyler Saleh**) - архитектура единого LCD/субпиксельного шейдера с гостингом и концепция 64-байтного XOR дельта-сжатия буфера перемотки назад.
+- **[NanoBoyAdvance (`phoenix`)](https://codeberg.org/nba-emu/NanoBoyAdvance)** (**fleroviux**) - референс высококачественной интерполяции GBA-аудио (MP2K / DirectSound) и цветовых матриц LCD AGB-001 / AGS-101.
+- **[ares](https://github.com/ares-emulator/ares)** (**Near** и команда ares) - идеи динамического контроля частоты аудио (Dynamic Rate Control) и упреждения кадров Run-Ahead.
 - **[Gambatte-libretro](https://github.com/libretro/gambatte-libretro)** (**sinamas** и команда libretro) - вдохновение и коллекция классических цветовых палитр DMG / GBC / SGB / TWB64.
 - **[VisualBoyAdvance-M](https://github.com/visualboyadvance-m/visualboyadvance-m)**, **[MesenCE](https://github.com/nesdev-org/MesenCE)** (**Sour**) и **[GBE+](https://github.com/shonumi/gbe-plus)** (**Shonumi**) - вдохновение для универсального парсера чит-кодов, поканального 6-канального аудиомикшера, RAM Cheat Finder и работы с периферией и датчиками.
-- **[RetroAchievements / rcheevos](https://github.com/RetroAchievements/rcheevos)** (**Jamiras** и сообщество RetroAchievements) - официальная C-библиотека хеширования ROM и достижений (MIT).
-- **[Google Oboe](https://github.com/google/oboe)** - библиотека низколатентного вывода аудио AAudio / OpenSL ES для Android (Apache-2.0).
+- **[RetroAchievements / rcheevos](https://github.com/RetroAchievements/rcheevos)** (**Jamiras** и сообщество RetroAchievements) - официальная C-библиотека хеширования ROM и достижений.
+- **[Google Oboe](https://github.com/google/oboe)** - библиотека низколатентного вывода аудио AAudio / OpenSL ES для Android.
 - **[WatermelonDS](https://github.com/SapphireRhodonite/WatermelonDS)** (**SapphireRhodonite**), **[STORM 3DS](https://github.com/ReiKatari/STORM_3DS)** и **[STORM DS](https://github.com/ReiKatari/STORM_DS)** (**STORM TEAM**) - фирменная визуальная дизайн-система STORM Watermelon / AuroraFluid, 3D-экран настройки клавиш, структура настроек и меню паузы, раздельные кнопки быстрых действий, процедурные 3D-скины и двойное зеркало обновлений.
 - **[Avalonia UI](https://avaloniaui.net/)**, **[SkiaSharp](https://github.com/mono/SkiaSharp)**, **Jetpack Compose**, **Coil** и **[Libretro Thumbnails](https://github.com/libretro-thumbnails)** - UI-фреймворки, процедурный 2D/3D-рендеринг и официальная база обложек игр.
-
----
-
-## Лицензия
-
-Исходный код **STORM GBCA** распространяется под лицензией **Mozilla Public License 2.0 (MPL-2.0)** ([LICENSE](LICENSE)) с полным соблюдением лицензий всех интегрированных библиотек с открытым исходным кодом (mGBA MPL-2.0, librashader MPL-2.0, SameBoy MIT, SkyEmu MIT, NanoBoyAdvance phoenix BSD-2-Clause, ares ISC, rcheevos MIT, Google Oboe Apache-2.0).

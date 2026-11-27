@@ -7,10 +7,44 @@ namespace storm {
 
 namespace {
 
-inline uint8_t clamp_u8(double v) {
-    if (v <= 0.0) return 0;
-    if (v >= 255.0) return 255;
-    return static_cast<uint8_t>(v + 0.5);
+inline uint8_t clamp_u8(float v) {
+    if (v <= 0.0f) return 0;
+    if (v >= 255.0f) return 255;
+    return static_cast<uint8_t>(v + 0.5f);
+}
+
+struct ColorLutTables {
+    float pow_16[256];
+    float pow_22[256];
+    float pow_32[256];
+    float inv_16[4097];
+    float inv_22[4097];
+
+    ColorLutTables() {
+        for (int i = 0; i < 256; ++i) {
+            const double x = static_cast<double>(i) / 255.0;
+            pow_16[i] = static_cast<float>(std::pow(x, 1.6));
+            pow_22[i] = static_cast<float>(std::pow(x, 2.2));
+            pow_32[i] = static_cast<float>(std::pow(x, 3.2));
+        }
+        for (int i = 0; i <= 4096; ++i) {
+            const double x = std::clamp(static_cast<double>(i) / 4095.0, 0.0, 1.0);
+            inv_16[i] = static_cast<float>(std::pow(x, 1.0 / 1.6) * 255.0);
+            inv_22[i] = static_cast<float>(std::pow(x, 1.0 / 2.2) * 255.0);
+        }
+    }
+};
+
+const ColorLutTables& get_color_luts() {
+    static const ColorLutTables kLuts;
+    return kLuts;
+}
+
+inline float lookup_inv_lut(const float* inv_lut, float x) {
+    const float clamped = std::clamp(x, 0.0f, 1.0f) * 4095.0f;
+    const int idx = static_cast<int>(clamped);
+    const float frac = clamped - static_cast<float>(idx);
+    return inv_lut[idx] + (inv_lut[idx + 1] - inv_lut[idx]) * frac;
 }
 
 inline uint32_t pack_px(uint8_t r, uint8_t g, uint8_t b, int pixel_format) {
@@ -36,26 +70,23 @@ void apply_color_correction(uint8_t& r, uint8_t& g, uint8_t& b, int mode, bool i
         return;
     }
 
+    const ColorLutTables& luts = get_color_luts();
+
     if (mode == STORM_COLOR_CORRECTION_GBA_AGB_AGS || (is_gba && mode != STORM_COLOR_CORRECTION_CORRECT_CURVES)) {
-        // Ported from NanoBoyAdvance Filters.hlsl FColorCorrect
-        const double gamma = 2.2;
-        const double screen_darken = is_gba ? 1.0 : 0.0;
-        const double luminance = (mode == STORM_COLOR_CORRECTION_LOW_CONTRAST) ? 0.85 : 0.94;
-        const double lr = std::pow(r / 255.0, gamma + screen_darken) * luminance;
-        const double lg = std::pow(g / 255.0, gamma + screen_darken) * luminance;
-        const double lb = std::pow(b / 255.0, gamma + screen_darken) * luminance;
+        // Ported from NanoBoyAdvance Filters.hlsl FColorCorrect using precomputed LUTs
+        const float* in_lut = is_gba ? luts.pow_32 : luts.pow_22;
+        const float luminance = (mode == STORM_COLOR_CORRECTION_LOW_CONTRAST) ? 0.85f : 0.94f;
+        const float lr = in_lut[r] * luminance;
+        const float lg = in_lut[g] * luminance;
+        const float lb = in_lut[b] * luminance;
 
-        double cr = 0.82 * lr + 0.125 * lg + 0.195 * lb;
-        double cg = 0.24 * lr + 0.665 * lg + 0.075 * lb;
-        double cb = -0.06 * lr + 0.21 * lg + 0.73 * lb;
+        const float cr = 0.82f * lr + 0.125f * lg + 0.195f * lb;
+        const float cg = 0.24f * lr + 0.665f * lg + 0.075f * lb;
+        const float cb = -0.06f * lr + 0.21f * lg + 0.73f * lb;
 
-        cr = std::clamp(cr, 0.0, 1.0);
-        cg = std::clamp(cg, 0.0, 1.0);
-        cb = std::clamp(cb, 0.0, 1.0);
-
-        r = clamp_u8(std::pow(cr, 1.0 / gamma) * 255.0);
-        g = clamp_u8(std::pow(cg, 1.0 / gamma) * 255.0);
-        b = clamp_u8(std::pow(cb, 1.0 / gamma) * 255.0);
+        r = clamp_u8(lookup_inv_lut(luts.inv_22, cr));
+        g = clamp_u8(lookup_inv_lut(luts.inv_22, cg));
+        b = clamp_u8(lookup_inv_lut(luts.inv_22, cb));
         return;
     }
 
@@ -69,44 +100,46 @@ void apply_color_correction(uint8_t& r, uint8_t& g, uint8_t& b, int mode, bool i
         112,120,129,138,147,157,166,176,185,195,205,215,225,235,245,255
     };
     const uint8_t* curve = is_gba ? curve_agb : curve_cgb;
-    double cr = curve[r >> 3];
-    double cg = curve[g >> 3];
-    double cb = curve[b >> 3];
+    const uint8_t cr = curve[r >> 3];
+    const uint8_t cg = curve[g >> 3];
+    const uint8_t cb = curve[b >> 3];
 
     if (mode == STORM_COLOR_CORRECTION_CORRECT_CURVES) {
-        r = clamp_u8(cr);
-        g = clamp_u8(cg);
-        b = clamp_u8(cb);
+        r = cr;
+        g = cg;
+        b = cb;
         return;
     }
 
-    double gamma = (mode < STORM_COLOR_CORRECTION_REDUCE_CONTRAST) ? 1.6 : 2.2;
-    double new_g = std::pow((std::pow(cg / 255.0, gamma) * 3.0 + std::pow(cb / 255.0, gamma)) * 0.25, 1.0 / gamma) * 255.0;
-    double new_r = cr;
-    double new_b = cb;
+    const bool use_16 = (mode < STORM_COLOR_CORRECTION_REDUCE_CONTRAST);
+    const float* pow_lut = use_16 ? luts.pow_16 : luts.pow_22;
+    const float* inv_lut = use_16 ? luts.inv_16 : luts.inv_22;
+    float new_g = lookup_inv_lut(inv_lut, (pow_lut[cg] * 3.0f + pow_lut[cb]) * 0.25f);
+    float new_r = static_cast<float>(cr);
+    float new_b = static_cast<float>(cb);
 
     if (mode == STORM_COLOR_CORRECTION_REDUCE_CONTRAST) {
-        double nr = new_r * (15.0 / 16.0) + (new_g + new_b) / 32.0;
-        double ng = new_g * (15.0 / 16.0) + (new_r + new_b) / 32.0;
-        double nb = new_b * (15.0 / 16.0) + (new_r + new_g) / 32.0;
-        new_r = nr * (220.0 - 40.0) / 255.0 + 40.0;
-        new_g = ng * (224.0 - 36.0) / 255.0 + 36.0;
-        new_b = nb * (216.0 - 32.0) / 255.0 + 32.0;
+        const float nr = new_r * (15.0f / 16.0f) + (new_g + new_b) / 32.0f;
+        const float ng = new_g * (15.0f / 16.0f) + (new_r + new_b) / 32.0f;
+        const float nb = new_b * (15.0f / 16.0f) + (new_r + new_g) / 32.0f;
+        new_r = nr * (220.0f - 40.0f) / 255.0f + 40.0f;
+        new_g = ng * (224.0f - 36.0f) / 255.0f + 36.0f;
+        new_b = nb * (216.0f - 32.0f) / 255.0f + 32.0f;
     } else if (mode == STORM_COLOR_CORRECTION_LOW_CONTRAST) {
-        double nr = new_r * (13.0 / 16.0) + (new_g + new_b) * (3.0 / 32.0);
-        double ng = new_g * (13.0 / 16.0) + (new_r + new_b) * (3.0 / 32.0);
-        double nb = new_b * (13.0 / 16.0) + (new_r + new_g) * (3.0 / 32.0);
-        new_r = nr * (205.0 - 48.0) / 255.0 + 48.0;
-        new_g = ng * (208.0 - 44.0) / 255.0 + 44.0;
-        new_b = nb * (200.0 - 40.0) / 255.0 + 40.0;
+        const float nr = new_r * (13.0f / 16.0f) + (new_g + new_b) * (3.0f / 32.0f);
+        const float ng = new_g * (13.0f / 16.0f) + (new_r + new_b) * (3.0f / 32.0f);
+        const float nb = new_b * (13.0f / 16.0f) + (new_r + new_g) * (3.0f / 32.0f);
+        new_r = nr * (205.0f - 48.0f) / 255.0f + 48.0f;
+        new_g = ng * (208.0f - 44.0f) / 255.0f + 44.0f;
+        new_b = nb * (200.0f - 40.0f) / 255.0f + 40.0f;
     } else if (mode == STORM_COLOR_CORRECTION_MODERN_BOOST) {
-        new_r = std::min(255.0, new_r * 1.08);
-        new_g = std::min(255.0, new_g * 1.08);
-        new_b = std::min(255.0, new_b * 1.08);
+        new_r = std::min(255.0f, new_r * 1.08f);
+        new_g = std::min(255.0f, new_g * 1.08f);
+        new_b = std::min(255.0f, new_b * 1.08f);
     } else if (mode == STORM_COLOR_CORRECTION_MODERN_ACCURATE) {
-        new_r = new_r * 0.92 + new_g * 0.08;
-        new_g = new_g * 0.88 + new_b * 0.12;
-        new_b = new_b * 0.90 + new_g * 0.10;
+        new_r = new_r * 0.92f + new_g * 0.08f;
+        new_g = new_g * 0.88f + new_b * 0.12f;
+        new_b = new_b * 0.90f + new_g * 0.10f;
     }
 
     r = clamp_u8(new_r);

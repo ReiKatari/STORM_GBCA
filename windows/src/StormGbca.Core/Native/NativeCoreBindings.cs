@@ -535,7 +535,7 @@ public static unsafe class NativeCoreBindings
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern byte* storm_gbca_get_dmg_palette_name(int index);
 
-    // v1.1.0 Upscaling, Performance, Memory Write & RAM Cheat Finder
+    // Upscaling, Performance, Memory Write & RAM Cheat Finder
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern int storm_gbca_write_memory(nint ctx, int region, uint addr, byte* src, nuint len);
 
@@ -560,7 +560,7 @@ public static unsafe class NativeCoreBindings
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern int storm_gbca_mem_search_get_results(nint ctx, uint* out_addrs, uint* out_vals, int max_results);
 
-    // v1.2.0 Device Optimization & Full Multiplayer / Link Cable / Wireless / JoyBus / GB Printer
+    // Device Optimization & Full Multiplayer / Link Cable / Wireless / JoyBus / GB Printer
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern void storm_gbca_set_optimization_profile(nint ctx, int profile);
 

@@ -173,10 +173,22 @@ public:
 
         int prev = cur_tex_ ^ 1;
         glBindTexture(GL_TEXTURE_2D, tex_[cur_tex_]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-        if (!has_prev_) {
-            glBindTexture(GL_TEXTURE_2D, tex_[prev]);
+        if (tex_w_[cur_tex_] != w || tex_h_[cur_tex_] != h) {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+            tex_w_[cur_tex_] = w;
+            tex_h_[cur_tex_] = h;
+        } else {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+        }
+        if (!has_prev_ || tex_w_[prev] != w || tex_h_[prev] != h) {
+            glBindTexture(GL_TEXTURE_2D, tex_[prev]);
+            if (tex_w_[prev] != w || tex_h_[prev] != h) {
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+                tex_w_[prev] = w;
+                tex_h_[prev] = h;
+            } else {
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+            }
             has_prev_ = true;
         }
 
@@ -230,6 +242,8 @@ public:
         has_prev_ = false;
         last_w_ = 0;
         last_h_ = 0;
+        tex_w_[0] = tex_w_[1] = 0;
+        tex_h_[0] = tex_h_[1] = 0;
     }
 
 private:
@@ -241,6 +255,8 @@ private:
     bool has_prev_ = false;
     int last_w_ = 0;
     int last_h_ = 0;
+    int tex_w_[2] = {0, 0};
+    int tex_h_[2] = {0, 0};
     int surface_w_ = 1;
     int surface_h_ = 1;
     int rotation_deg_ = 0;

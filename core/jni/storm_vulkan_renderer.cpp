@@ -359,12 +359,10 @@ public:
 
         if (!ensure_source_image_locked(static_cast<uint32_t>(w), static_cast<uint32_t>(h))) return;
 
-        // Upload RGBA frame into host-visible staging buffer
+        // Upload RGBA frame into persistently mapped host-visible staging buffer
         size_t bytes = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
-        void* mapped = nullptr;
-        if (vk_.mapMemory(device_, staging_mem_, 0, bytes, 0, &mapped) == VK_SUCCESS && mapped) {
-            std::memcpy(mapped, rgba, bytes);
-            vk_.unmapMemory(device_, staging_mem_);
+        if (mapped_ptr_) {
+            std::memcpy(mapped_ptr_, rgba, bytes);
         }
 
         vk_.resetFences(device_, 1, &in_flight_fence_);
@@ -593,6 +591,11 @@ private:
                                   find_mem_type(breq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) };
         if (vk_.allocateMemory(device_, &bai, nullptr, &staging_mem_) != VK_SUCCESS) return false;
         vk_.bindBufferMemory(device_, staging_buf_, staging_mem_, 0);
+        if (vk_.mapMemory(device_, staging_mem_, 0, bytes, 0, &mapped_ptr_) != VK_SUCCESS || !mapped_ptr_) {
+            mapped_ptr_ = nullptr;
+            destroy_source_locked();
+            return false;
+        }
 
         VkImageCreateInfo ici{};
         ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -650,6 +653,10 @@ private:
     }
 
     void destroy_source_locked() {
+        if (mapped_ptr_ && staging_mem_ && vk_.unmapMemory) {
+            vk_.unmapMemory(device_, staging_mem_);
+            mapped_ptr_ = nullptr;
+        }
         if (src_img_) { vk_.destroyImage(device_, src_img_, nullptr); src_img_ = VK_NULL_HANDLE; }
         if (src_mem_) { vk_.freeMemory(device_, src_mem_, nullptr); src_mem_ = VK_NULL_HANDLE; }
         if (staging_buf_) { vk_.destroyBuffer(device_, staging_buf_, nullptr); staging_buf_ = VK_NULL_HANDLE; }
@@ -702,6 +709,7 @@ private:
 
     VkBuffer staging_buf_ = VK_NULL_HANDLE;
     VkDeviceMemory staging_mem_ = VK_NULL_HANDLE;
+    void* mapped_ptr_ = nullptr;
     VkImage src_img_ = VK_NULL_HANDLE;
     VkDeviceMemory src_mem_ = VK_NULL_HANDLE;
     uint32_t src_w_ = 0, src_h_ = 0;

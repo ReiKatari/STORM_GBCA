@@ -131,6 +131,8 @@ fun RomGridCard(
         }
     }
 
+    val bgGradient = remember(title) { fallbackGradient(title) }
+
     Box(
         modifier = modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
@@ -138,7 +140,7 @@ fun RomGridCard(
             .aspectRatio(1f)
             .shadow(if (cardStyle == "flat_minimal") 0.dp else 10.dp, shape)
             .clip(shape)
-            .background(fallbackGradient(title))
+            .background(bgGradient)
             .combinedClickable(
                 interactionSource = interaction,
                 indication = null,
@@ -147,11 +149,16 @@ fun RomGridCard(
             ),
     ) {
         if (!boxArtPath.isNullOrBlank()) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
+            val imageRequest = remember(boxArtPath) {
+                ImageRequest.Builder(context)
                     .data(File(boxArtPath))
-                    .crossfade(true)
-                    .build(),
+                    .size(240, 240)
+                    .allowRgb565(true)
+                    .crossfade(false)
+                    .build()
+            }
+            AsyncImage(
+                model = imageRequest,
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -347,12 +354,20 @@ fun RomListRow(
             modifier = Modifier
                 .size(54.dp)
                 .clip(RoundedCornerShape(9.dp))
-                .background(fallbackGradient(title)),
+                .background(remember(title) { fallbackGradient(title) }),
             contentAlignment = Alignment.Center,
         ) {
             if (!boxArtPath.isNullOrBlank()) {
+                val imageRequest = remember(boxArtPath) {
+                    ImageRequest.Builder(context)
+                        .data(File(boxArtPath))
+                        .size(240, 240)
+                        .allowRgb565(true)
+                        .crossfade(false)
+                        .build()
+                }
                 AsyncImage(
-                    model = ImageRequest.Builder(context).data(File(boxArtPath)).crossfade(true).build(),
+                    model = imageRequest,
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),

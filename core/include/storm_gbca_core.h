@@ -20,7 +20,7 @@ extern "C" {
   #define STORM_GBCA_API __attribute__((visibility("default")))
 #endif
 
-#define STORM_GBCA_VERSION_STRING "1.4.0"
+#define STORM_GBCA_VERSION_STRING "1.5.0"
 
 /* Key bitmask */
 enum {
@@ -152,7 +152,7 @@ enum {
     STORM_SEARCH_DECREASED = 7,
 };
 
-/* Device Optimization Profiles (v1.2.0: old & new device tuning) */
+/* Device Optimization Profiles (1.2.0: old & new device tuning) */
 enum {
     STORM_OPT_LITE          = 0, /* Old / low-RAM / 32-bit devices */
     STORM_OPT_BALANCED      = 1, /* Balanced default */
@@ -160,7 +160,7 @@ enum {
     STORM_OPT_HIGH_ACCURACY = 3, /* Maximum cycle accuracy */
 };
 
-/* Multiplayer & Link Cable Modes (v1.2.0) */
+/* Multiplayer & Link Cable Modes (1.2.0) */
 enum {
     STORM_LINK_NONE            = 0,
     STORM_LINK_LAN_HOST        = 1, /* GB/GBC 2P Serial or GBA 2-4P Multi-SIO TCP Host + UDP Discovery */
@@ -320,18 +320,18 @@ STORM_GBCA_API int storm_gbca_write_memory(StormGbcaContext* ctx, int region, ui
 STORM_GBCA_API int storm_gbca_compute_ra_hash(const char* rom_path, int platform, char* out_hash_33);
 STORM_GBCA_API int storm_gbca_compute_ra_hash_buffer(const void* data, size_t size, int platform, char* out_hash_33);
 
-/* Resolution Upscaling & Performance (v1.1.0) */
+/* Resolution Upscaling & Performance (1.1.0) */
 STORM_GBCA_API void storm_gbca_set_upscale(StormGbcaContext* ctx, int scale_1_to_4, int upscale_mode);
 STORM_GBCA_API int storm_gbca_get_upscaled_size(const StormGbcaContext* ctx, int* out_w, int* out_h);
 STORM_GBCA_API int storm_gbca_copy_upscaled_frame(StormGbcaContext* ctx, uint32_t* dst, int dst_stride_px, int pixel_format, int* out_w, int* out_h);
 STORM_GBCA_API void storm_gbca_set_performance(StormGbcaContext* ctx, int cpu_overclock_pct, int frame_skip);
 
-/* RAM Cheat Finder (v1.1.0) */
+/* RAM Cheat Finder (1.1.0) */
 STORM_GBCA_API int storm_gbca_mem_search_reset(StormGbcaContext* ctx, int region, int value_size_bytes);
 STORM_GBCA_API int storm_gbca_mem_search_filter(StormGbcaContext* ctx, int cmp_op, uint32_t target_value);
 STORM_GBCA_API int storm_gbca_mem_search_get_results(const StormGbcaContext* ctx, uint32_t* out_addrs, uint32_t* out_vals, int max_count);
 
-/* Device Optimization & Full Multiplayer / Link Cable / Wireless / JoyBus / GB Printer (v1.2.0) */
+/* Device Optimization & Full Multiplayer / Link Cable / Wireless / JoyBus / GB Printer (1.2.0) */
 STORM_GBCA_API void storm_gbca_set_optimization_profile(StormGbcaContext* ctx, int profile);
 STORM_GBCA_API int storm_gbca_link_start(StormGbcaContext* ctx, int mode, const char* host_ip, int port, int clock_port, const char* room_name);
 STORM_GBCA_API void storm_gbca_link_stop(StormGbcaContext* ctx);

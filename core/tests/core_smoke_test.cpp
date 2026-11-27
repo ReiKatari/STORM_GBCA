@@ -295,9 +295,9 @@ int main() {
         }
     }
 
-    // v1.1.0 Tests: 3x xBRZ Upscaling (720x480) + RAM Cheat Finder + Overclock/FrameSkip
+    // 1.1.0 Tests: 3x xBRZ Upscaling (720x480) + RAM Cheat Finder + Overclock/FrameSkip
     {
-        bool v110_ok = (storm_gbca_load_rom_buffer(ctx, gba_rom.data(), gba_rom.size(), "v110.gba") == 0);
+        bool v110_ok = (storm_gbca_load_rom_buffer(ctx, gba_rom.data(), gba_rom.size(), "test110.gba") == 0);
         if (v110_ok) {
             storm_gbca_set_upscale(ctx, 3, STORM_UPSCALE_XBRZ);
             storm_gbca_set_performance(ctx, 150, 0);
@@ -327,14 +327,14 @@ int main() {
             storm_gbca_unload_rom(ctx);
         }
         if (!v110_ok) {
-            std::printf("[FAIL] v1.1.0-Power   | Upscale 3x xBRZ / RAM Cheat Finder failed\n");
+            std::printf("[FAIL] 1.1.0-Power   | Upscale 3x xBRZ / RAM Cheat Finder failed\n");
             ok = false;
         } else {
-            std::printf("[PASS] v1.1.0-Power   | 3x xBRZ (720x480) + RAM Cheat Finder (0x120=0x77) + Overclock OK\n");
+            std::printf("[PASS] 1.1.0-Power   | 3x xBRZ (720x480) + RAM Cheat Finder (0x120=0x77) + Overclock OK\n");
         }
     }
 
-    // v1.2.0 Tests: Device Optimization Profiles + LAN Host/Client Link + UDP Auto-Discovery + Wireless RFU + GB Printer
+    // 1.2.0 Tests: Device Optimization Profiles + LAN Host/Client Link + UDP Auto-Discovery + Wireless RFU + GB Printer
     {
         bool v120_ok = true;
         StormGbcaContext* host = storm_gbca_create();
@@ -390,10 +390,10 @@ int main() {
             storm_gbca_destroy(host);
         }
         if (!v120_ok) {
-            std::printf("[FAIL] v1.2.0-LinkOpt | Multiplayer LAN/Discovery/Printer/Optimization failed\n");
+            std::printf("[FAIL] 1.2.0-LinkOpt | Multiplayer LAN/Discovery/Printer/Optimization failed\n");
             ok = false;
         } else {
-            std::printf("[PASS] v1.2.0-LinkOpt | Optimization Profiles + LAN Host/Client + UDP Discovery + GB Printer + Loopback OK\n");
+            std::printf("[PASS] 1.2.0-LinkOpt | Optimization Profiles + LAN Host/Client + UDP Discovery + GB Printer + Loopback OK\n");
         }
     }
 

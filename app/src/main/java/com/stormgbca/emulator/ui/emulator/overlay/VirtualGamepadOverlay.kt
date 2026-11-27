@@ -35,6 +35,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -43,6 +44,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
@@ -60,17 +62,20 @@ import com.stormgbca.emulator.ui.theme.WatermelonMono
 import ru.stormgames.gbca.NativeCore
 import kotlin.math.roundToInt
 
-private fun triggerHapticTick(context: Context, enabled: Boolean) {
-    if (!enabled) return
+private fun resolveVibrator(context: Context): Vibrator? = runCatching {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+    }
+}.getOrNull()
+
+private fun triggerHapticTick(vibrator: Vibrator?, enabled: Boolean) {
+    if (!enabled || vibrator == null) return
     runCatching {
-        val vib = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-        }
-        if (vib != null && vib.hasVibrator()) {
-            vib.vibrate(VibrationEffect.createOneShot(14L, 90))
+        if (vibrator.hasVibrator()) {
+            vibrator.vibrate(VibrationEffect.createOneShot(14L, 90))
         }
     }
 }
@@ -112,6 +117,7 @@ fun VirtualGamepadOverlay(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val vibrator = remember(context) { resolveVibrator(context) }
     val style = remember(profile.buttonStyle) { ButtonThemeManager.resolve(profile.buttonStyle) }
     val alpha = (profile.opacityPercent.coerceIn(20, 100) / 100f)
     val baseScale = (profile.scalePercent.coerceIn(70, 140) / 100f)
@@ -119,6 +125,7 @@ fun VirtualGamepadOverlay(
     val showShoulders = profile.showShoulders || system == ConsoleSystem.GBA
 
     var activeTouchMask by remember { mutableIntStateOf(0) }
+    val touchMaskProvider = remember { { activeTouchMask } }
     val pointerButtons = remember { mutableMapOf<Int, Int>() }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -307,7 +314,7 @@ fun VirtualGamepadOverlay(
                             val mask = resolveMaskAt(Offset(ev.getX(idx), ev.getY(idx)))
                             if (mask != 0) {
                                 pointerButtons[pid] = mask
-                                triggerHapticTick(context, profile.hapticsEnabled)
+                                triggerHapticTick(vibrator, profile.hapticsEnabled)
                                 changed = true
                             }
                         }
@@ -342,40 +349,78 @@ fun VirtualGamepadOverlay(
                     pointerButtons.isNotEmpty()
                 },
         ) {
-            // D-Pad visual
-            Canvas(modifier = Modifier.fillMaxSize()) {
+            val dpadDraw = remember(style, alpha, rects) {
                 val c = rects.dpadCenter
                 val r = rects.dpadRadius
-                drawCircle(
-                    color = style.dpadBgBottom.copy(alpha = 0.42f),
-                    radius = r,
-                    center = c,
-                )
-                drawCircle(
-                    color = style.dpadBorder.copy(alpha = 0.55f),
-                    radius = r,
-                    center = c,
-                    style = Stroke(width = 2.5f),
-                )
                 val arm = r * 0.54f
                 val len = r * 1.66f
-                drawRoundRect(
-                    brush = Brush.verticalGradient(listOf(style.dpadBgTop, style.dpadBgBottom)),
-                    topLeft = Offset(c.x - arm / 2f, c.y - len / 2f),
-                    size = Size(arm, len),
-                    cornerRadius = CornerRadius(12f, 12f),
-                )
-                drawRoundRect(
-                    brush = Brush.verticalGradient(listOf(style.dpadBgTop, style.dpadBgBottom)),
-                    topLeft = Offset(c.x - len / 2f, c.y - arm / 2f),
-                    size = Size(len, arm),
-                    cornerRadius = CornerRadius(12f, 12f),
+                object {
+                    val center = c
+                    val radius = r
+                    val bgColor = style.dpadBgBottom.copy(alpha = 0.42f)
+                    val borderColor = style.dpadBorder.copy(alpha = 0.55f)
+                    val borderStroke = Stroke(width = 2.5f)
+                    val vTopLeft = Offset(c.x - arm / 2f, c.y - len / 2f)
+                    val vSize = Size(arm, len)
+                    val hTopLeft = Offset(c.x - len / 2f, c.y - arm / 2f)
+                    val hSize = Size(len, arm)
+                    val vBrush = Brush.verticalGradient(
+                        listOf(style.dpadBgTop, style.dpadBgBottom),
+                        startY = vTopLeft.y,
+                        endY = vTopLeft.y + len,
+                    )
+                    val hBrush = Brush.verticalGradient(
+                        listOf(style.dpadBgTop, style.dpadBgBottom),
+                        startY = hTopLeft.y,
+                        endY = hTopLeft.y + arm,
+                    )
+                    val corner = CornerRadius(12f, 12f)
+                    val centerDotColor = Color.Black.copy(alpha = 0.28f)
+                    val centerDotRadius = arm * 0.28f
+                    val pressGlowColor = style.glow.copy(alpha = 0.32f)
+                    val dirR = arm * 0.24f
+                    val upOffset = Offset(c.x, c.y - len * 0.34f)
+                    val downOffset = Offset(c.x, c.y + len * 0.34f)
+                    val leftOffset = Offset(c.x - len * 0.34f, c.y)
+                    val rightOffset = Offset(c.x + len * 0.34f, c.y)
+                }
+            }
+
+            // D-Pad visual (reads touchMaskProvider strictly inside DrawScope, zero recomposition)
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val mask = touchMaskProvider()
+                drawCircle(
+                    color = dpadDraw.bgColor,
+                    radius = dpadDraw.radius,
+                    center = dpadDraw.center,
                 )
                 drawCircle(
-                    color = Color.Black.copy(alpha = 0.28f),
-                    radius = arm * 0.28f,
-                    center = c,
+                    color = dpadDraw.borderColor,
+                    radius = dpadDraw.radius,
+                    center = dpadDraw.center,
+                    style = dpadDraw.borderStroke,
                 )
+                drawRoundRect(
+                    brush = dpadDraw.vBrush,
+                    topLeft = dpadDraw.vTopLeft,
+                    size = dpadDraw.vSize,
+                    cornerRadius = dpadDraw.corner,
+                )
+                drawRoundRect(
+                    brush = dpadDraw.hBrush,
+                    topLeft = dpadDraw.hTopLeft,
+                    size = dpadDraw.hSize,
+                    cornerRadius = dpadDraw.corner,
+                )
+                drawCircle(
+                    color = dpadDraw.centerDotColor,
+                    radius = dpadDraw.centerDotRadius,
+                    center = dpadDraw.center,
+                )
+                if ((mask and NativeCore.KEY_UP) != 0) drawCircle(dpadDraw.pressGlowColor, dpadDraw.dirR, dpadDraw.upOffset)
+                if ((mask and NativeCore.KEY_DOWN) != 0) drawCircle(dpadDraw.pressGlowColor, dpadDraw.dirR, dpadDraw.downOffset)
+                if ((mask and NativeCore.KEY_LEFT) != 0) drawCircle(dpadDraw.pressGlowColor, dpadDraw.dirR, dpadDraw.leftOffset)
+                if ((mask and NativeCore.KEY_RIGHT) != 0) drawCircle(dpadDraw.pressGlowColor, dpadDraw.dirR, dpadDraw.rightOffset)
             }
 
             ConcaveCircleButton(
@@ -386,7 +431,8 @@ fun VirtualGamepadOverlay(
                 bottomColor = style.btnBBottom,
                 borderGlow = style.glow,
                 textColor = style.labelColor,
-                pressed = (activeTouchMask and NativeCore.KEY_B) != 0,
+                keyBit = NativeCore.KEY_B,
+                touchMaskProvider = touchMaskProvider,
             )
             ConcaveCircleButton(
                 label = "A",
@@ -396,7 +442,8 @@ fun VirtualGamepadOverlay(
                 bottomColor = style.btnABottom,
                 borderGlow = style.glow,
                 textColor = style.labelColor,
-                pressed = (activeTouchMask and NativeCore.KEY_A) != 0,
+                keyBit = NativeCore.KEY_A,
+                touchMaskProvider = touchMaskProvider,
             )
 
             PillButton(
@@ -407,7 +454,8 @@ fun VirtualGamepadOverlay(
                 bgColor = style.pillBg,
                 borderColor = style.dpadBorder,
                 textColor = style.labelColor,
-                pressed = (activeTouchMask and NativeCore.KEY_SELECT) != 0,
+                keyBit = NativeCore.KEY_SELECT,
+                touchMaskProvider = touchMaskProvider,
             )
             PillButton(
                 label = "START",
@@ -417,7 +465,8 @@ fun VirtualGamepadOverlay(
                 bgColor = style.pillBg,
                 borderColor = style.dpadBorder,
                 textColor = style.labelColor,
-                pressed = (activeTouchMask and NativeCore.KEY_START) != 0,
+                keyBit = NativeCore.KEY_START,
+                touchMaskProvider = touchMaskProvider,
             )
 
             if (showShoulders) {
@@ -430,7 +479,8 @@ fun VirtualGamepadOverlay(
                     bottomColor = style.shoulderBottom,
                     borderGlow = style.glow,
                     textColor = style.labelColor,
-                    pressed = (activeTouchMask and NativeCore.KEY_L) != 0,
+                    keyBit = NativeCore.KEY_L,
+                    touchMaskProvider = touchMaskProvider,
                 )
                 ShoulderButton(
                     label = "R",
@@ -441,7 +491,8 @@ fun VirtualGamepadOverlay(
                     bottomColor = style.shoulderBottom,
                     borderGlow = style.glow,
                     textColor = style.labelColor,
-                    pressed = (activeTouchMask and NativeCore.KEY_R) != 0,
+                    keyBit = NativeCore.KEY_R,
+                    touchMaskProvider = touchMaskProvider,
                 )
             }
         }
@@ -458,7 +509,7 @@ fun VirtualGamepadOverlay(
                 active = false,
                 alpha = alpha,
                 onClick = {
-                    triggerHapticTick(context, profile.hapticsEnabled)
+                    triggerHapticTick(vibrator, profile.hapticsEnabled)
                     onRewindTap()
                 },
             )
@@ -473,7 +524,7 @@ fun VirtualGamepadOverlay(
                 active = fastForwardActive,
                 alpha = alpha,
                 onClick = {
-                    triggerHapticTick(context, profile.hapticsEnabled)
+                    triggerHapticTick(vibrator, profile.hapticsEnabled)
                     onToggleFastForward()
                 },
             )
@@ -488,7 +539,7 @@ fun VirtualGamepadOverlay(
                 active = false,
                 alpha = alpha,
                 onClick = {
-                    triggerHapticTick(context, profile.hapticsEnabled)
+                    triggerHapticTick(vibrator, profile.hapticsEnabled)
                     onQuickSave()
                 },
             )
@@ -503,7 +554,7 @@ fun VirtualGamepadOverlay(
                 active = false,
                 alpha = alpha,
                 onClick = {
-                    triggerHapticTick(context, profile.hapticsEnabled)
+                    triggerHapticTick(vibrator, profile.hapticsEnabled)
                     onQuickLoad()
                 },
             )
@@ -518,7 +569,7 @@ fun VirtualGamepadOverlay(
                 active = false,
                 alpha = alpha.coerceAtLeast(0.55f),
                 onClick = {
-                    triggerHapticTick(context, profile.hapticsEnabled)
+                    triggerHapticTick(vibrator, profile.hapticsEnabled)
                     onOpenMenu()
                 },
             )
@@ -540,6 +591,15 @@ private fun FloatingQuickActionButton(
     val density = LocalDensity.current
     val diameterDp = with(density) { (radiusPx * 2f).toDp() }
     val iconDp = with(density) { (radiusPx * 1.05f).toDp() }
+    val bgBrush = remember(active, accent) {
+        Brush.verticalGradient(
+            if (active) {
+                listOf(accent.copy(alpha = 0.42f), Color(0xDD0A0E1A))
+            } else {
+                listOf(Color(0xCC161C2E), Color(0xCC090C14))
+            }
+        )
+    }
     Box(
         modifier = Modifier
             .offset { IntOffset((center.x - radiusPx).roundToInt(), (center.y - radiusPx).roundToInt()) }
@@ -547,15 +607,7 @@ private fun FloatingQuickActionButton(
             .alpha(if (active) 1f else alpha.coerceIn(0.45f, 0.96f))
             .shadow(if (active) 10.dp else 4.dp, CircleShape, spotColor = if (active) accent else borderGlow)
             .clip(CircleShape)
-            .background(
-                Brush.verticalGradient(
-                    if (active) {
-                        listOf(accent.copy(alpha = 0.42f), Color(0xDD0A0E1A))
-                    } else {
-                        listOf(Color(0xCC161C2E), Color(0xCC090C14))
-                    }
-                )
-            )
+            .background(bgBrush)
             .border(
                 width = if (active) 1.8.dp else 1.1.dp,
                 color = if (active) accent else borderGlow.copy(alpha = 0.55f),
@@ -582,30 +634,55 @@ private fun ConcaveCircleButton(
     bottomColor: Color,
     borderGlow: Color,
     textColor: Color,
-    pressed: Boolean,
+    keyBit: Int,
+    touchMaskProvider: () -> Int,
 ) {
     val density = LocalDensity.current
     val diameterDp = with(density) { (radius * 2f).toDp() }
-    val scale = if (pressed) 0.90f else 1.0f
+    val drawResources = remember(topColor, bottomColor, borderGlow, radius, density) {
+        val normalStrokePx = with(density) { 1.6.dp.toPx() }
+        val pressedStrokePx = with(density) { 2.5.dp.toPx() }
+        object {
+            val glowBrush = Brush.radialGradient(
+                colors = listOf(borderGlow.copy(alpha = 0.24f), Color.Transparent),
+                center = Offset(radius, radius),
+                radius = radius * 1.16f,
+            )
+            val normalBrush = Brush.verticalGradient(listOf(topColor, bottomColor), startY = 0f, endY = radius * 2f)
+            val pressedBrush = Brush.verticalGradient(listOf(bottomColor, topColor), startY = 0f, endY = radius * 2f)
+            val normalBorderCol = borderGlow.copy(alpha = 0.72f)
+            val pressedBorderCol = borderGlow
+            val normalStroke = Stroke(width = normalStrokePx)
+            val pressedStroke = Stroke(width = pressedStrokePx)
+        }
+    }
     Box(
         modifier = Modifier
             .offset { IntOffset((center.x - radius).roundToInt(), (center.y - radius).roundToInt()) }
             .size(diameterDp)
-            .shadow(if (pressed) 2.dp else 8.dp, CircleShape, spotColor = borderGlow)
-            .clip(CircleShape)
-            .background(
-                Brush.verticalGradient(
-                    if (pressed) listOf(bottomColor, topColor) else listOf(topColor, bottomColor)
+            .graphicsLayer {
+                val pressed = (touchMaskProvider() and keyBit) != 0
+                val s = if (pressed) 0.91f else 1f
+                scaleX = s
+                scaleY = s
+            }
+            .drawBehind {
+                val pressed = (touchMaskProvider() and keyBit) != 0
+                drawCircle(brush = drawResources.glowBrush, radius = radius * 1.16f)
+                drawCircle(brush = if (pressed) drawResources.pressedBrush else drawResources.normalBrush, radius = radius)
+                drawCircle(
+                    color = if (pressed) drawResources.pressedBorderCol else drawResources.normalBorderCol,
+                    radius = radius - 1f,
+                    style = if (pressed) drawResources.pressedStroke else drawResources.normalStroke,
                 )
-            )
-            .border(if (pressed) 2.5.dp else 1.6.dp, borderGlow.copy(alpha = if (pressed) 1f else 0.72f), CircleShape),
+            },
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
             color = textColor,
             fontFamily = SpaceGrotesk,
-            fontSize = (18f * scale).sp,
+            fontSize = 18.sp,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center,
         )
@@ -621,19 +698,38 @@ private fun PillButton(
     bgColor: Color,
     borderColor: Color,
     textColor: Color,
-    pressed: Boolean,
+    keyBit: Int,
+    touchMaskProvider: () -> Int,
 ) {
     val density = LocalDensity.current
     val wDp = with(density) { widthPx.toDp() }
     val hDp = with(density) { heightPx.toDp() }
+    val drawRes = remember(bgColor, borderColor, widthPx, heightPx, density) {
+        object {
+            val normalBg = bgColor
+            val pressedBg = borderColor.copy(alpha = 0.65f)
+            val borderCol = borderColor.copy(alpha = 0.85f)
+            val borderStroke = Stroke(width = with(density) { 1.2.dp.toPx() })
+            val corner = CornerRadius(heightPx / 2f, heightPx / 2f)
+        }
+    }
     Box(
         modifier = Modifier
             .offset { IntOffset((center.x - widthPx / 2f).roundToInt(), (center.y - heightPx / 2f).roundToInt()) }
             .size(wDp, hDp)
             .rotate(-10f)
-            .clip(RoundedCornerShape(50))
-            .background(if (pressed) borderColor.copy(alpha = 0.65f) else bgColor)
-            .border(1.2.dp, borderColor.copy(alpha = 0.85f), RoundedCornerShape(50)),
+            .drawBehind {
+                val pressed = (touchMaskProvider() and keyBit) != 0
+                drawRoundRect(
+                    color = if (pressed) drawRes.pressedBg else drawRes.normalBg,
+                    cornerRadius = drawRes.corner,
+                )
+                drawRoundRect(
+                    color = drawRes.borderCol,
+                    cornerRadius = drawRes.corner,
+                    style = drawRes.borderStroke,
+                )
+            },
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -658,18 +754,39 @@ private fun ShoulderButton(
     bottomColor: Color,
     borderGlow: Color,
     textColor: Color,
-    pressed: Boolean,
+    keyBit: Int,
+    touchMaskProvider: () -> Int,
 ) {
     val density = LocalDensity.current
     val wDp = with(density) { widthPx.toDp() }
     val hDp = with(density) { heightPx.toDp() }
+    val drawRes = remember(topColor, bottomColor, borderGlow, widthPx, heightPx, density) {
+        val cornerPx = with(density) { 14.dp.toPx() }
+        object {
+            val bgBrush = Brush.verticalGradient(listOf(topColor, bottomColor), startY = 0f, endY = heightPx)
+            val normalBorderCol = borderGlow.copy(alpha = 0.72f)
+            val pressedBorderCol = borderGlow
+            val normalStroke = Stroke(width = with(density) { 1.4.dp.toPx() })
+            val pressedStroke = Stroke(width = with(density) { 2.2.dp.toPx() })
+            val corner = CornerRadius(cornerPx, cornerPx)
+        }
+    }
     Box(
         modifier = Modifier
             .offset { IntOffset((center.x - widthPx / 2f).roundToInt(), (center.y - heightPx / 2f).roundToInt()) }
             .size(wDp, hDp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Brush.verticalGradient(listOf(topColor, bottomColor)))
-            .border(if (pressed) 2.2.dp else 1.4.dp, borderGlow.copy(alpha = if (pressed) 1f else 0.72f), RoundedCornerShape(14.dp)),
+            .drawBehind {
+                val pressed = (touchMaskProvider() and keyBit) != 0
+                drawRoundRect(
+                    brush = drawRes.bgBrush,
+                    cornerRadius = drawRes.corner,
+                )
+                drawRoundRect(
+                    color = if (pressed) drawRes.pressedBorderCol else drawRes.normalBorderCol,
+                    cornerRadius = drawRes.corner,
+                    style = if (pressed) drawRes.pressedStroke else drawRes.normalStroke,
+                )
+            },
         contentAlignment = Alignment.Center,
     ) {
         Text(

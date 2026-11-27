@@ -46,17 +46,17 @@ struct VideoPostProcessor {
 
 // Audio DSP (SameBoy 3-mode high-pass + per-channel mixer + NBA Hermite interp + Ares DRC resampler)
 struct AudioDsp {
-    double hp_prev_in_l = 0.0;
-    double hp_prev_in_r = 0.0;
-    double hp_prev_out_l = 0.0;
-    double hp_prev_out_r = 0.0;
-    double dc_acc_l = 0.0;
-    double dc_acc_r = 0.0;
+    float hp_prev_in_l = 0.0f;
+    float hp_prev_in_r = 0.0f;
+    float hp_prev_out_l = 0.0f;
+    float hp_prev_out_r = 0.0f;
+    float dc_acc_l = 0.0f;
+    float dc_acc_r = 0.0f;
 
     // 4-sample history for cubic/Hermite interpolation
-    double hist_l[4] = {0.0, 0.0, 0.0, 0.0};
-    double hist_r[4] = {0.0, 0.0, 0.0, 0.0};
-    double frac_pos = 0.0;
+    float hist_l[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float hist_r[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float frac_pos = 0.0f;
     float buffer_fill_ratio = 0.5f;
 
     std::vector<int16_t> out_ring;
@@ -84,6 +84,8 @@ public:
 
     void configure(bool enabled, int buffer_mb, int interval);
     void reset();
+    bool should_capture_frame();
+    bool will_capture_next() const { return enabled_ && (frame_divider_ + 1 >= interval_); }
     void push_state(const uint8_t* state, size_t size);
     bool pop_state(std::vector<uint8_t>& out_state);
     int available_frames() const { return frame_count_; }
@@ -99,6 +101,7 @@ private:
     size_t capacity_deltas_ = 0;
     std::vector<DeltaSegment> deltas_;
     std::vector<uint8_t> last_state_;
+    std::vector<uint8_t> scratch_aligned_;
     bool has_first_ = false;
     size_t write_idx_ = 0;
     size_t delta_count_ = 0;

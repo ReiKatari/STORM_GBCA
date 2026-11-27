@@ -224,7 +224,7 @@ object NativeCore {
     )
     @JvmStatic external fun nativeGlesDestroy()
 
-    // v1.1.0 Upscaling, Performance, RAM Cheat Finder, RetroArch librashader, Vulkan
+    // 1.1.0 Upscaling, Performance, RAM Cheat Finder, RetroArch librashader, Vulkan
     const val UPSCALE_NONE = 0
     const val UPSCALE_XBRZ = 1
     const val UPSCALE_SCALE_EPX = 2
@@ -259,7 +259,7 @@ object NativeCore {
     @JvmStatic external fun nativeVkRender(handle: Long, vpX: Int, vpY: Int, vpW: Int, vpH: Int, linearFilter: Boolean, rotDeg: Int)
     @JvmStatic external fun nativeVkDestroy()
 
-    // v1.2.0 Device Optimization & Full Multiplayer / Link Cable / Wireless / JoyBus / GB Printer
+    // 1.2.0 Device Optimization & Full Multiplayer / Link Cable / Wireless / JoyBus / GB Printer
     const val OPT_LITE = 0
     const val OPT_BALANCED = 1
     const val OPT_PERFORMANCE = 2

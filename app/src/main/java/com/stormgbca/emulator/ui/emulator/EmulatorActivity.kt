@@ -12,6 +12,7 @@ import android.opengl.GLSurfaceView
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -25,6 +26,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -34,6 +36,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,6 +81,7 @@ import java.io.FileOutputStream
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.LockSupport
 import java.util.concurrent.locks.ReentrantLock
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
@@ -113,9 +117,15 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
     private var emuThread: Thread? = null
     private var sensorManager: SensorManager? = null
+    private var powerManager: PowerManager? = null
+    private var thermalListenerObj: Any? = null
     private var vibrator: Vibrator? = null
     private var lastRumbleTimeMs = 0L
     private var sessionStartMs = 0L
+    private val isThermalThrottled = AtomicBoolean(false)
+    @Volatile private var romSupportsTilt = false
+    @Volatile private var romSupportsGyro = false
+    @Volatile private var isActivityResumed = false
 
     private val showPauseMenuState = androidx.compose.runtime.mutableStateOf(false)
     private val showSkinPickerState = androidx.compose.runtime.mutableStateOf(false)
@@ -178,6 +188,9 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         activeBackendLabelState.value = if (wantVulkan) "Vulkan 1.1" else "GLES 3.2"
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        romSupportsTilt = rom.hasTilt
+        romSupportsGyro = rom.hasGyro
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
         } else {
@@ -239,8 +252,12 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                     val hPx = with(density) { maxHeight.toPx() }.roundToInt().coerceAtLeast(1)
                     val isLandscape = wPx > hPx
                     val activeScreenCfg = if (isLandscape) overlayProfile.landscapeScreen else overlayProfile.portraitScreen
-                    activeRotationDeg = activeScreenCfg.rotationDeg
-                    NativeCore.nativeGlesSetRotation(activeScreenCfg.rotationDeg)
+
+                    LaunchedEffect(activeScreenCfg.rotationDeg) {
+                        activeRotationDeg = activeScreenCfg.rotationDeg
+                        NativeCore.nativeGlesSetRotation(activeScreenCfg.rotationDeg)
+                        requestVideoRender()
+                    }
 
                     val screenRect = remember(
                         wPx, hPx, activeSystem, skinId, aspectMode,
@@ -258,11 +275,13 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                         )
                     }
 
-                    glVpX = screenRect.left.roundToInt()
-                    glVpY = (hPx - screenRect.bottom).roundToInt().coerceAtLeast(0)
-                    vkVpY = screenRect.top.roundToInt().coerceAtLeast(0)
-                    glVpW = screenRect.width.roundToInt().coerceAtLeast(1)
-                    glVpH = screenRect.height.roundToInt().coerceAtLeast(1)
+                    SideEffect {
+                        glVpX = screenRect.left.roundToInt()
+                        glVpY = (hPx - screenRect.bottom).roundToInt().coerceAtLeast(0)
+                        vkVpY = screenRect.top.roundToInt().coerceAtLeast(0)
+                        glVpW = screenRect.width.roundToInt().coerceAtLeast(1)
+                        glVpH = screenRect.height.roundToInt().coerceAtLeast(1)
+                    }
 
                     if (isVulkanActive) {
                         AndroidView(
@@ -504,7 +523,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 val cfg = GbcaPrefs.coreConfigState.value
                 val overlayProf = GbcaPrefs.getOverlayProfile(activeSystem)
                 val displayMode = overlayProf.shaderOverlay
-                val ghosting = cfg.lcdGhosting / 100f
+                val ghosting = if (isThermalThrottled.get()) 0f else cfg.lcdGhosting / 100f
                 val ccStrength = if (cfg.colorCorrectionMode == NativeCore.CC_DISABLED) 0f else 1f
                 val isGray = activeSystem == ConsoleSystem.GB
                 val intScale = cfg.aspectMode == 1
@@ -630,6 +649,17 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
                 NativeCore.getRomInfo(h)?.let { info ->
                     activeCoreLabelState.value = info.activeCore.ifBlank { "mGBA" }
+                    val newTilt = romSupportsTilt || info.hasTilt
+                    val newGyro = romSupportsGyro || info.hasGyro
+                    if (newTilt != romSupportsTilt || newGyro != romSupportsGyro) {
+                        romSupportsTilt = newTilt
+                        romSupportsGyro = newGyro
+                        if (isActivityResumed) {
+                            runOnUiThread {
+                                if (isActivityResumed) registerMotionSensorsIfNeeded()
+                            }
+                        }
+                    }
                 }
 
                 val cheats = GbcaPrefs.getCheatsForRom(RomRepository.getRomStorageKey(rom))
@@ -733,11 +763,29 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
                 if (!ff) {
                     nextTickNs += FRAME_DURATION_NS
-                    val sleepNs = nextTickNs - System.nanoTime()
-                    if (sleepNs > 1_000_000L) {
-                        Thread.sleep(sleepNs / 1_000_000L, (sleepNs % 1_000_000L).toInt())
-                    } else if (sleepNs < -FRAME_DURATION_NS * 4) {
+                    val thermalThrottle = isThermalThrottled.get()
+                    var remainingNs = nextTickNs - System.nanoTime()
+                    if (remainingNs < -FRAME_DURATION_NS * 4) {
                         nextTickNs = System.nanoTime()
+                    } else if (remainingNs > 0L) {
+                        if (thermalThrottle) {
+                            LockSupport.parkNanos(remainingNs)
+                        } else {
+                            if (remainingNs > 2_000_000L) {
+                                LockSupport.parkNanos(remainingNs - 1_500_000L)
+                            }
+                            while (isRunning.get() && !isPaused.get()) {
+                                remainingNs = nextTickNs - System.nanoTime()
+                                if (remainingNs <= 0L) break
+                                if (remainingNs > 400_000L) {
+                                    Thread.yield()
+                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    Thread.onSpinWait()
+                                } else {
+                                    Thread.yield()
+                                }
+                            }
+                        }
                     }
                 } else {
                     nextTickNs = System.nanoTime()
@@ -760,19 +808,24 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         val gbCore = if (ov >= 0) ov else cfg.preferredCoreGb
         val gbcCore = if (ov >= 0) ov else cfg.preferredCoreGbc
         val gbaCore = NativeCore.CORE_MGBA
+        val thermalThrottle = isThermalThrottled.get()
+        val effLcdGhosting = if (thermalThrottle) 0 else cfg.lcdGhosting
+        val effRunAhead = if (thermalThrottle) 0 else cfg.runAheadFrames
+        val effResScale = if (thermalThrottle) 1 else cfg.resolutionScale
+        val effUpscaleMode = if (thermalThrottle) NativeCore.UPSCALE_NONE else cfg.upscaleMode
 
         NativeCore.nativeSetConfig(
             h,
             gbCore, gbcCore, gbaCore,
             cfg.gbModel, cfg.sgbBorders, cfg.colorCorrectionMode,
-            cfg.dmgPaletteIndex, null, cfg.lcdGhosting, cfg.videoFilter,
+            cfg.dmgPaletteIndex, null, effLcdGhosting, cfg.videoFilter,
             cfg.audioHighpassMode, cfg.audioInterpMode,
             cfg.channelVolumes.toFloatArray(), cfg.masterVolume,
-            cfg.runAheadFrames, cfg.rewindEnabled, cfg.rewindBufferMb, cfg.rewindInterval,
+            effRunAhead, cfg.rewindEnabled, cfg.rewindBufferMb, cfg.rewindInterval,
             cfg.biosGbPath, cfg.biosGbcPath, cfg.biosGbaPath, cfg.biosSgbPath,
             cfg.skipBiosIntro, cfg.dynamicRateControl, cfg.drcMaxSkew,
         )
-        NativeCore.nativeSetUpscale(h, cfg.resolutionScale, cfg.upscaleMode)
+        NativeCore.nativeSetUpscale(h, effResScale, effUpscaleMode)
         NativeCore.nativeSetPerformance(h, cfg.cpuOverclockPct, cfg.frameSkip)
         NativeCore.nativeSetOptimizationProfile(h, GbcaPrefs.getEffectiveOptimizationProfile())
         NativeCore.nativeSetSolarLux(h, cfg.solarLux)
@@ -1015,23 +1068,61 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
+    private fun registerMotionSensorsIfNeeded() {
+        val mgr = sensorManager ?: return
+        mgr.unregisterListener(this)
+        if (romSupportsTilt) {
+            mgr.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
+                mgr.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+            }
+        }
+        if (romSupportsGyro) {
+            mgr.getDefaultSensor(Sensor.TYPE_GYROSCOPE)?.let {
+                mgr.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun registerThermalListenerApi29() {
+        val pm = powerManager ?: return
+        val initialThrottled = pm.currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
+        if (isThermalThrottled.getAndSet(initialThrottled) != initialThrottled) {
+            applyCoreConfig()
+        }
+        val listener = (thermalListenerObj as? PowerManager.OnThermalStatusChangedListener)
+            ?: PowerManager.OnThermalStatusChangedListener { status ->
+                val throttle = status >= PowerManager.THERMAL_STATUS_MODERATE
+                if (isThermalThrottled.getAndSet(throttle) != throttle) {
+                    applyCoreConfig()
+                }
+            }.also { thermalListenerObj = it }
+        runCatching { pm.addThermalStatusListener(listener) }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun unregisterThermalListenerApi29() {
+        val pm = powerManager ?: return
+        val listener = thermalListenerObj as? PowerManager.OnThermalStatusChangedListener ?: return
+        runCatching { pm.removeThermalStatusListener(listener) }
+    }
+
     override fun onResume() {
         super.onResume()
+        isActivityResumed = true
         supportActionBar?.hide()
         AppThemeManager.applyImmersiveFullscreen(this)
         if (!useVulkanState.value) glView?.onResume()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            registerThermalListenerApi29()
+        }
         applyCoreConfig()
         NativeCore.nativeSetRetroArchShader(GbcaPrefs.getOverlayProfile(activeSystem).retroArchShaderPath)
         if (!showPauseMenuState.value) {
             isPaused.set(false)
             NativeCore.nativeAudioPause(GbcaPrefs.coreConfigState.value.audioMuted)
         }
-        sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
-            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-        }
-        sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)?.let {
-            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-        }
+        registerMotionSensorsIfNeeded()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -1043,10 +1134,14 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onPause() {
         super.onPause()
+        isActivityResumed = false
         isPaused.set(true)
         NativeCore.nativeAudioPause(true)
         flushSram()
         sensorManager?.unregisterListener(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            unregisterThermalListenerApi29()
+        }
         if (!useVulkanState.value) glView?.onPause()
     }
 

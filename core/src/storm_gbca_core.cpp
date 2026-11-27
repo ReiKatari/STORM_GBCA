@@ -374,6 +374,7 @@ struct StormGbcaContext {
     float mgba_fps = 59.7275f;
     bool mgba_sram_dirty = false;
     std::vector<uint8_t> mgba_last_sram;
+    mutable std::vector<uint8_t> sram_check_buf_;
 
     // SameBoy backend
     StormSameboyHandle* sb = nullptr;
@@ -388,7 +389,7 @@ struct StormGbcaContext {
     std::atomic<uint32_t> key_mask{0};
     std::atomic<float> fast_forward{1.0f};
 
-    // Audio / Video / Rewind / Cheats / Upscaling / RAM Search (v1.1.0)
+    // Audio / Video / Rewind / Cheats / Upscaling / RAM Search (1.1.0)
     storm::VideoPostProcessor video_pp;
     storm::AudioDsp audio_dsp;
     storm::RewindRingBuffer rewind;
@@ -999,7 +1000,7 @@ STORM_GBCA_API int storm_gbca_run_frame(StormGbcaContext* ctx) {
         }
     }
 
-    if (ctx->rewind.enabled()) {
+    if (ctx->rewind.should_capture_frame()) {
         if (save_raw_state(ctx, ctx->scratch_state)) {
             ctx->rewind.push_state(ctx->scratch_state.data(), ctx->scratch_state.size());
         }
@@ -1171,15 +1172,29 @@ STORM_GBCA_API int storm_gbca_is_sram_dirty(const StormGbcaContext* ctx) {
     if (ctx->using_sameboy) {
         return storm_sb_is_sram_dirty(ctx->sb);
     }
-    void* sram = nullptr;
-    size_t sz = ctx->mgba->savedataClone(ctx->mgba, &sram);
-    if (!sram || sz == 0) {
-        if (sram) std::free(sram);
+    if (!ctx->mgba) return 0;
+    const uint8_t* sram_ptr = nullptr;
+    size_t sz = 0;
+    if (ctx->mgba->platform(ctx->mgba) == mPLATFORM_GBA) {
+        const auto* gba = static_cast<const struct GBA*>(ctx->mgba->board);
+        if (gba) {
+            sz = GBASavedataSize(&gba->memory.savedata);
+            sram_ptr = gba->memory.savedata.data;
+        }
+    } else {
+        const auto* gb = static_cast<const struct GB*>(ctx->mgba->board);
+        if (gb) {
+            sz = gb->sramSize;
+            sram_ptr = gb->memory.sram;
+        }
+    }
+    if (!sram_ptr || sz == 0) {
         return 0;
     }
+    ctx->sram_check_buf_.resize(sz);
+    std::memcpy(ctx->sram_check_buf_.data(), sram_ptr, sz);
     bool dirty = (ctx->mgba_last_sram.size() != sz) ||
-                 (std::memcmp(ctx->mgba_last_sram.data(), sram, sz) != 0);
-    std::free(sram);
+                 (std::memcmp(ctx->mgba_last_sram.data(), ctx->sram_check_buf_.data(), sz) != 0);
     return dirty ? 1 : 0;
 }
 

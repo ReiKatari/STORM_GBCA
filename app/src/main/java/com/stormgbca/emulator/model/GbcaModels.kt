@@ -127,7 +127,7 @@ data class ScreenRectConfig(
 
 @Serializable
 data class SystemOverlayProfile(
-    val layoutVersion: Int = 1, // v2 = v1.4.0 separate orientation controls + individual quick action buttons
+    val layoutVersion: Int = 1, // 2 = 1.4.0 separate orientation controls + individual quick action buttons
     val layoutPreset: String = OverlayLayoutPreset.CLASSIC_HANDHELD.key,
     val buttonStyle: String = "storm_neon",
     val uiThemeKey: String = "", // "" = follow app theme, or any Theme.preferenceValue per GB/GBC/GBA!
@@ -154,7 +154,7 @@ data class SystemOverlayProfile(
     ),
     val portraitControls: OrientationControlsLayout = OrientationControlsLayout.defaultPortrait(true),
     val landscapeControls: OrientationControlsLayout = OrientationControlsLayout.defaultLandscape(),
-    // Legacy v1 fields preserved for seamless JSON deserialization
+    // Legacy version 1 fields preserved for seamless JSON deserialization
     val dpadPos: CustomControlPos = CustomControlPos(0.10f, 0.70f, 1.0f),
     val abPos: CustomControlPos = CustomControlPos(0.90f, 0.70f, 1.0f),
     val btnAPos: CustomControlPos = CustomControlPos(0.94f, 0.64f, 1.0f),
@@ -172,6 +172,9 @@ data class CheatItem(
     val code: String,
     val enabled: Boolean = true,
 )
+
+private val YEAR_TAG_REGEX = Regex("""\s*[\(\[]\s*(?:19|20)\d{2}\b.*""")
+private val BRACKET_TAG_REGEX = Regex("""\s*[\(\[].*""")
 
 @Serializable
 data class RomEntry(
@@ -209,6 +212,18 @@ data class RomEntry(
     val displayTitle: String get() {
         val base = fileName.substringBeforeLast('.')
         return if (base.isNotBlank()) base else internalTitle.ifBlank { fileName }
+    }
+
+    val cleanTitleBeforeYear: String get() {
+        val raw = displayTitle
+        val yearMatch = YEAR_TAG_REGEX.find(raw)
+        val cut = if (yearMatch != null) {
+            raw.substring(0, yearMatch.range.first)
+        } else {
+            raw.replace(BRACKET_TAG_REGEX, "")
+        }
+        val trimmed = cut.trim().trimEnd('-', '_').trim()
+        return trimmed.ifBlank { raw }
     }
 
     fun formattedTitle(useInternalTitle: Boolean): String =

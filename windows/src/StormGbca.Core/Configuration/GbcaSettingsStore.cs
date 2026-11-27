@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using StormGbca.Core.Native;
 using StormGbca.Core.Paths;
 
@@ -142,7 +143,7 @@ public sealed class GbcaAppSettings
     public bool Show3DBootSplash { get; set; } = false;
     public bool AutoFetchCovers { get; set; } = false;
 
-    // v1.2.0: Separate Cover & Badge toggles (ALL OFF by default, identical to STORM DS!)
+    // Separate Cover & Badge toggles (ALL OFF by default, identical to STORM DS!)
     public bool ShowLibretroCovers { get; set; } = false;
     public bool ShowRaCovers { get; set; } = false;
     public bool ShowPlatformBadge { get; set; } = false;
@@ -150,10 +151,10 @@ public sealed class GbcaAppSettings
     public bool ShowHardwareBadges { get; set; } = false;
     public bool ShowRaBadge { get; set; } = false;
 
-    // v1.2.0: Hardware Optimization Profile (Old & New PCs)
+    // Hardware Optimization Profile (Old & New PCs)
     public StormOptimizationProfile OptimizationProfile { get; set; } = StormOptimizationProfile.Balanced;
 
-    // v1.2.0: Network & Local Multiplayer (Link Cable, Wireless RFU, IR, Dolphin JoyBus, GB Printer)
+    // Network & Local Multiplayer (Link Cable, Wireless RFU, IR, Dolphin JoyBus, GB Printer)
     public string MultiplayerRoomName { get; set; } = "STORM GBCA Room";
     public int MultiplayerPort { get; set; } = 54320;
     public string MultiplayerLastHostIp { get; set; } = "192.168.1.2";
@@ -339,11 +340,27 @@ public sealed class GbcaRomRecord
         _ => "WLD",
     };
 
+    private static readonly Regex s_yearTagRegex = new(@"\s*[\(\[]\s*(?:19|20)\d{2}\b.*", RegexOptions.Compiled);
+    private static readonly Regex s_metaTagRegex = new(@"\s*[\(\[].*", RegexOptions.Compiled);
+
     public string GetDisplayTitle()
     {
         string fileTitle = Path.GetFileNameWithoutExtension(FileName);
         if (!string.IsNullOrWhiteSpace(fileTitle)) return fileTitle;
         return !string.IsNullOrWhiteSpace(Title) ? Title : GameCode;
+    }
+
+    public string GetCleanTitleBeforeYear()
+    {
+        string raw = GetDisplayTitle();
+        if (string.IsNullOrWhiteSpace(raw)) return raw;
+
+        string cleaned = s_yearTagRegex.IsMatch(raw)
+            ? s_yearTagRegex.Replace(raw, string.Empty)
+            : s_metaTagRegex.Replace(raw, string.Empty);
+
+        cleaned = cleaned.Trim().TrimEnd('-', '_').Trim();
+        return string.IsNullOrWhiteSpace(cleaned) ? raw : cleaned;
     }
 }
 

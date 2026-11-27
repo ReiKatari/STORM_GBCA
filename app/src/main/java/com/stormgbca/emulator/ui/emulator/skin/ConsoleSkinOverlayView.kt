@@ -3,8 +3,10 @@ package com.stormgbca.emulator.ui.emulator.skin
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -12,16 +14,22 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Canvas as ComposeCanvas
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ImageBitmapConfig
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.ScreenRectConfig
 
@@ -313,42 +321,64 @@ fun ConsoleSkinOverlayView(
     modifier: Modifier = Modifier,
 ) {
     if (skinId == GbcaSkinId.NONE) return
-    val palette = resolvePalette(skinId)
+    val palette = remember(skinId) { resolvePalette(skinId) }
     val dimFactor = (dimmingPercent.coerceIn(30, 100) / 100f)
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
 
-    Canvas(modifier = modifier.fillMaxSize()) {
-        val w = size.width
-        val h = size.height
-        if (w <= 1f || h <= 1f) return@Canvas
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val wInt = constraints.maxWidth
+        val hInt = constraints.maxHeight
+        if (wInt <= 1 || hInt <= 1) return@BoxWithConstraints
 
-        val holePath = Path().apply {
-            addRoundRect(
-                RoundRect(
-                    rect = screenRect,
-                    cornerRadius = CornerRadius(6f, 6f),
+        val cachedBitmap = remember(wInt, hInt, skinId, screenRect, dimmingPercent) {
+            val imageBitmap = ImageBitmap(wInt, hInt, ImageBitmapConfig.Argb8888)
+            val offscreenCanvas = ComposeCanvas(imageBitmap)
+            val drawScope = CanvasDrawScope()
+            drawScope.draw(
+                density = density,
+                layoutDirection = layoutDirection,
+                canvas = offscreenCanvas,
+                size = Size(wInt.toFloat(), hInt.toFloat()),
+            ) {
+                val w = size.width
+                val h = size.height
+                val holePath = Path().apply {
+                    addRoundRect(
+                        RoundRect(
+                            rect = screenRect,
+                            cornerRadius = CornerRadius(6f, 6f),
+                        )
+                    )
+                }
+
+                clipPath(holePath, clipOp = ClipOp.Difference) {
+                    drawAuthenticHardwareChassis(w, h, screenRect, skinId, palette, dimFactor)
+                }
+
+                // Crisp recessed inner LCD glass rim & inner shadow
+                drawRoundRect(
+                    color = Color.Black.copy(alpha = 0.85f),
+                    topLeft = Offset(screenRect.left - 2.5f, screenRect.top - 2.5f),
+                    size = Size(screenRect.width + 5f, screenRect.height + 5f),
+                    cornerRadius = CornerRadius(8f, 8f),
+                    style = Stroke(width = 3.5f),
                 )
-            )
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.14f * dimFactor),
+                    topLeft = Offset(screenRect.left - 4f, screenRect.top - 4f),
+                    size = Size(screenRect.width + 8f, screenRect.height + 8f),
+                    cornerRadius = CornerRadius(10f, 10f),
+                    style = Stroke(width = 1.2f),
+                )
+            }
+            imageBitmap.prepareToDraw()
+            imageBitmap
         }
 
-        clipPath(holePath, clipOp = ClipOp.Difference) {
-            drawAuthenticHardwareChassis(w, h, screenRect, skinId, palette, dimFactor)
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawImage(cachedBitmap)
         }
-
-        // Crisp recessed inner LCD glass rim & inner shadow
-        drawRoundRect(
-            color = Color.Black.copy(alpha = 0.85f),
-            topLeft = Offset(screenRect.left - 2.5f, screenRect.top - 2.5f),
-            size = Size(screenRect.width + 5f, screenRect.height + 5f),
-            cornerRadius = CornerRadius(8f, 8f),
-            style = Stroke(width = 3.5f),
-        )
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.14f * dimFactor),
-            topLeft = Offset(screenRect.left - 4f, screenRect.top - 4f),
-            size = Size(screenRect.width + 8f, screenRect.height + 8f),
-            cornerRadius = CornerRadius(10f, 10f),
-            style = Stroke(width = 1.2f),
-        )
     }
 }
 

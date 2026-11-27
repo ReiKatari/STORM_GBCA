@@ -31,21 +31,28 @@ bool RewindRingBuffer::more_deltas(uint32_t idx) const {
     return (deltas_[idx % capacity_deltas_].offset_and_flag & kLastDeltaFlag) == 0;
 }
 
+bool RewindRingBuffer::should_capture_frame() {
+    if (!enabled_) return false;
+    if (++frame_divider_ < interval_) return false;
+    frame_divider_ = 0;
+    return true;
+}
+
 void RewindRingBuffer::push_state(const uint8_t* state, size_t size) {
     if (!enabled_ || !state || size == 0) return;
     if (capacity_deltas_ == 0) configure(true, 16, interval_);
 
-    if (++frame_divider_ < interval_) return;
-    frame_divider_ = 0;
-
     // Pad to multiple of 64 bytes for aligned uint64_t segment comparisons (SkyEmu algorithm)
     size_t padded_size = ((size + kSegmentSize - 1) / kSegmentSize) * kSegmentSize;
-    std::vector<uint8_t> aligned_state(padded_size, 0);
-    std::memcpy(aligned_state.data(), state, size);
+    scratch_aligned_.resize(padded_size);
+    std::memcpy(scratch_aligned_.data(), state, size);
+    if (padded_size > size) {
+        std::memset(scratch_aligned_.data() + size, 0, padded_size - size);
+    }
 
     if (!has_first_ || last_state_.size() != padded_size) {
         has_first_ = true;
-        last_state_ = std::move(aligned_state);
+        last_state_.assign(scratch_aligned_.begin(), scratch_aligned_.end());
         write_idx_ = 0;
         delta_count_ = 0;
         frame_count_ = 0;
@@ -54,7 +61,7 @@ void RewindRingBuffer::push_state(const uint8_t* state, size_t size) {
 
     const size_t total_segments = padded_size / kSegmentSize;
     uint64_t* old_data = reinterpret_cast<uint64_t*>(last_state_.data());
-    const uint64_t* new_data = reinterpret_cast<const uint64_t*>(aligned_state.data());
+    const uint64_t* new_data = reinterpret_cast<const uint64_t*>(scratch_aligned_.data());
     size_t total_deltas = 0;
 
     for (size_t s = 0; s < total_segments; ++s) {

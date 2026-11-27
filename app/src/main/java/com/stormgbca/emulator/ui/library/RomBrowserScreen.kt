@@ -482,7 +482,7 @@ fun RomBrowserScreen(
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        InfoBlockRow(stringResource(R.string.info_name), rom.displayTitle)
+                        InfoBlockRow(stringResource(R.string.info_name), rom.cleanTitleBeforeYear)
                         InfoBlockRow(stringResource(R.string.info_filename), rom.fileName)
                         InfoRow(stringResource(R.string.info_extension), rom.fileExtension)
                         InfoRow(stringResource(R.string.info_rom_header), rom.internalTitle.ifBlank { "-" })

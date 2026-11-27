@@ -45,7 +45,7 @@ public class RomDetailsModal : AuroraGlassCard
         header.Children.Add(new AuroraVectorIcon { Kind = AuroraIconKind.RomCartridge, Size = 20, VerticalAlignment = VerticalAlignment.Center });
         _headerTitle = new TextBlock
         {
-            Text = $"{rom.GetDisplayTitle()} ({rom.PlatformShortName})",
+            Text = $"{_rom.GetCleanTitleBeforeYear()} ({_rom.PlatformShortName})",
             FontSize = 14,
             FontWeight = FontWeight.Bold,
             Foreground = StormThemeBrushes.Accent,
@@ -146,7 +146,13 @@ public class RomDetailsModal : AuroraGlassCard
 
     private void BuildInfoTab(StackPanel stack)
     {
+        string sourceName = !string.IsNullOrWhiteSpace(_rom.FileName) ? _rom.FileName : _rom.FilePath;
+        string ext = Path.GetExtension(sourceName).ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(ext)) ext = "-";
+
+        stack.Children.Add(CreateMetaRow("Название игры:", _rom.GetCleanTitleBeforeYear()));
         stack.Children.Add(CreateMetaRow("Файл:", _rom.FilePath));
+        stack.Children.Add(CreateMetaRow("Расширение:", ext));
         stack.Children.Add(CreateMetaRow("Платформа:", _rom.PlatformShortName));
         stack.Children.Add(CreateMetaRow("Заголовок ROM:", string.IsNullOrWhiteSpace(_rom.Title) ? "-" : _rom.Title));
         stack.Children.Add(CreateMetaRow("Код игры:", string.IsNullOrWhiteSpace(_rom.GameCode) ? "-" : _rom.GameCode));

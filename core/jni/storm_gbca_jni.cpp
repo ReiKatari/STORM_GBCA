@@ -492,7 +492,7 @@ Java_ru_stormgames_gbca_NativeCore_nativeGlesDestroy(JNIEnv*, jclass) {
     storm::gles_destroy();
 }
 
-// --- v1.1.0 Upscaling, Performance, RAM Cheat Finder, RetroArch librashader, Vulkan ---
+// --- 1.1.0 Upscaling, Performance, RAM Cheat Finder, RetroArch librashader, Vulkan ---
 
 JNIEXPORT void JNICALL
 Java_ru_stormgames_gbca_NativeCore_nativeSetUpscale(JNIEnv*, jclass, jlong handle, jint scale, jint mode) {
@@ -619,12 +619,16 @@ Java_ru_stormgames_gbca_NativeCore_nativeVkRender(
     if (!ctx) return;
     int uw = 0, uh = 0;
     if (storm_gbca_get_upscaled_size(ctx, &uw, &uh) == 0 && uw > 0 && uh > 0) {
-        static thread_local std::vector<uint32_t> vk_buf;
-        vk_buf.resize(static_cast<size_t>(uw) * static_cast<size_t>(uh));
-        int out_w = uw, out_h = uh;
-        if (storm_gbca_copy_upscaled_frame(ctx, vk_buf.data(), uw, STORM_PIXEL_FORMAT_RGBA8888, &out_w, &out_h) == 0) {
-            storm::vk_render(vk_buf.data(), out_w, out_h, vpX, vpY, vpW, vpH, linearFilter == JNI_TRUE, rotDeg);
-            return;
+        int raw_w = 0, raw_h = 0;
+        storm_gbca_get_video_info(ctx, &raw_w, &raw_h, nullptr);
+        if (uw > raw_w || uh > raw_h) {
+            static thread_local std::vector<uint32_t> vk_buf;
+            vk_buf.resize(static_cast<size_t>(uw) * static_cast<size_t>(uh));
+            int out_w = uw, out_h = uh;
+            if (storm_gbca_copy_upscaled_frame(ctx, vk_buf.data(), uw, STORM_PIXEL_FORMAT_RGBA8888, &out_w, &out_h) == 0) {
+                storm::vk_render(vk_buf.data(), out_w, out_h, vpX, vpY, vpW, vpH, linearFilter == JNI_TRUE, rotDeg);
+                return;
+            }
         }
     }
     const uint32_t* raw = nullptr;
@@ -639,7 +643,7 @@ Java_ru_stormgames_gbca_NativeCore_nativeVkDestroy(JNIEnv*, jclass) {
     storm::vk_destroy();
 }
 
-// --- v1.2.0 Device Optimization, Multiplayer / Link Cable / Wireless / JoyBus / GB Printer ---
+// --- 1.2.0 Device Optimization, Multiplayer / Link Cable / Wireless / JoyBus / GB Printer ---
 
 JNIEXPORT void JNICALL
 Java_ru_stormgames_gbca_NativeCore_nativeSetOptimizationProfile(JNIEnv*, jclass, jlong handle, jint profile) {

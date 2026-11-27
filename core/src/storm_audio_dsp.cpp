@@ -7,34 +7,34 @@ namespace storm {
 
 namespace {
 
-inline double hermite4(double y0, double y1, double y2, double y3, double mu) {
+inline float hermite4(float y0, float y1, float y2, float y3, float mu) {
     // 4-point Catmull-Rom / cubic Hermite spline (inspired by NBA MusicPlayer2K HQ interpolation)
-    const double mu2 = mu * mu;
-    const double a0 = -0.5 * y0 + 1.5 * y1 - 1.5 * y2 + 0.5 * y3;
-    const double a1 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
-    const double a2 = -0.5 * y0 + 0.5 * y2;
-    const double a3 = y1;
+    const float mu2 = mu * mu;
+    const float a0 = -0.5f * y0 + 1.5f * y1 - 1.5f * y2 + 0.5f * y3;
+    const float a1 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+    const float a2 = -0.5f * y0 + 0.5f * y2;
+    const float a3 = y1;
     return ((a0 * mu + a1) * mu2 + a2 * mu + a3);
 }
 
-inline int16_t clamp_s16(double v) {
+inline int16_t clamp_s16(float v) {
     if (!std::isfinite(v)) return 0;
-    if (v > 32767.0) return 32767;
-    if (v < -32768.0) return -32768;
-    return static_cast<int16_t>(std::lrint(v));
+    if (v > 32767.0f) return 32767;
+    if (v < -32768.0f) return -32768;
+    return static_cast<int16_t>(std::lrintf(v));
 }
 
 } // namespace
 
 void AudioDsp::reset() {
-    hp_prev_in_l = hp_prev_in_r = 0.0;
-    hp_prev_out_l = hp_prev_out_r = 0.0;
-    dc_acc_l = dc_acc_r = 0.0;
+    hp_prev_in_l = hp_prev_in_r = 0.0f;
+    hp_prev_out_l = hp_prev_out_r = 0.0f;
+    dc_acc_l = dc_acc_r = 0.0f;
     for (int i = 0; i < 4; ++i) {
-        hist_l[i] = 0.0;
-        hist_r[i] = 0.0;
+        hist_l[i] = 0.0f;
+        hist_r[i] = 0.0f;
     }
-    frac_pos = 0.0;
+    frac_pos = 0.0f;
     buffer_fill_ratio = 0.5f;
     ring_read = 0;
     ring_write = 0;
@@ -63,21 +63,22 @@ void AudioDsp::push_source_frames(const int16_t* src_interleaved, int src_frames
         const double err = static_cast<double>(buffer_fill_ratio) - 0.5; // [-0.5 .. +0.5]
         drc_adj = 1.0 + err * 2.0 * max_skew;
     }
-    const double step = (src_rate * drc_adj) / dst_rate;
-    const double master = std::clamp(static_cast<double>(cfg.master_volume), 0.0, 2.0);
-    const double hp_alpha = (cfg.highpass_mode == STORM_AUDIO_HIGHPASS_ACCURATE) ? 0.9958 : 0.9992;
+    const float step = static_cast<float>((src_rate * drc_adj) / dst_rate);
+    const float master = std::clamp(cfg.master_volume, 0.0f, 2.0f);
+    const float hp_alpha = (cfg.highpass_mode == STORM_AUDIO_HIGHPASS_ACCURATE) ? 0.9958f : 0.9992f;
+    const float one_minus_hp = 1.0f - hp_alpha;
 
     ensure_capacity(48000); // 1 second ring buffer
     const size_t ring_cap_frames = out_ring.size() / 2;
 
     for (int i = 0; i < src_frames; ++i) {
-        double sl = static_cast<double>(src_interleaved[i * 2 + 0]) * master;
-        double sr = static_cast<double>(src_interleaved[i * 2 + 1]) * master;
+        float sl = static_cast<float>(src_interleaved[i * 2 + 0]) * master;
+        float sr = static_cast<float>(src_interleaved[i * 2 + 1]) * master;
 
         // SameBoy 3-mode high-pass / DC removal
         if (cfg.highpass_mode == STORM_AUDIO_HIGHPASS_ACCURATE) {
-            double out_l = sl - hp_prev_in_l + hp_alpha * hp_prev_out_l;
-            double out_r = sr - hp_prev_in_r + hp_alpha * hp_prev_out_r;
+            float out_l = sl - hp_prev_in_l + hp_alpha * hp_prev_out_l;
+            float out_r = sr - hp_prev_in_r + hp_alpha * hp_prev_out_r;
             hp_prev_in_l = sl;
             hp_prev_in_r = sr;
             hp_prev_out_l = out_l;
@@ -85,8 +86,8 @@ void AudioDsp::push_source_frames(const int16_t* src_interleaved, int src_frames
             sl = out_l;
             sr = out_r;
         } else if (cfg.highpass_mode == STORM_AUDIO_HIGHPASS_REMOVE_DC) {
-            dc_acc_l = dc_acc_l * hp_alpha + sl * (1.0 - hp_alpha);
-            dc_acc_r = dc_acc_r * hp_alpha + sr * (1.0 - hp_alpha);
+            dc_acc_l = dc_acc_l * hp_alpha + sl * one_minus_hp;
+            dc_acc_r = dc_acc_r * hp_alpha + sr * one_minus_hp;
             sl -= dc_acc_l;
             sr -= dc_acc_r;
         }
@@ -95,9 +96,9 @@ void AudioDsp::push_source_frames(const int16_t* src_interleaved, int src_frames
         hist_l[0] = hist_l[1]; hist_l[1] = hist_l[2]; hist_l[2] = hist_l[3]; hist_l[3] = sl;
         hist_r[0] = hist_r[1]; hist_r[1] = hist_r[2]; hist_r[2] = hist_r[3]; hist_r[3] = sr;
 
-        while (frac_pos < 1.0) {
-            double out_l = hist_l[2];
-            double out_r = hist_r[2];
+        while (frac_pos < 1.0f) {
+            float out_l = hist_l[2];
+            float out_r = hist_r[2];
             if (cfg.interp_mode == STORM_AUDIO_INTERP_LINEAR) {
                 out_l = hist_l[1] + (hist_l[2] - hist_l[1]) * frac_pos;
                 out_r = hist_r[1] + (hist_r[2] - hist_r[1]) * frac_pos;
@@ -120,7 +121,7 @@ void AudioDsp::push_source_frames(const int16_t* src_interleaved, int src_frames
             }
             frac_pos += step;
         }
-        frac_pos -= 1.0;
+        frac_pos -= 1.0f;
     }
 }
 

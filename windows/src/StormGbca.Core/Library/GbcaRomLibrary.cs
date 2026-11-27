@@ -65,7 +65,7 @@ public sealed partial class GbcaRomLibrary
 
     public GbcaRomLibrary()
     {
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.4.0 (Windows)");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.5.0 (Windows)");
         try
         {
             var initial = GbcaSettingsStore.Load();

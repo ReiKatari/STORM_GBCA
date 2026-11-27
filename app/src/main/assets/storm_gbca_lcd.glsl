@@ -19,40 +19,44 @@ void main() {
 
 #ifdef STORM_FRAGMENT_SHADER
 #version 300 es
-precision highp float;
+precision mediump float;
 precision highp int;
 
 uniform sampler2D u_tex;
 uniform sampler2D u_prev_tex;
 
-uniform vec2  u_emu_lcd_size;
-uniform vec2  u_render_size;
-uniform int   u_display_mode;        // 0=Nearest, 1=Bilinear, 2=LCD Grid, 3=RGB Subpixel, 4=xBRZ-lite, 5=CRT Scanlines, 6=Sharp Bilinear
-uniform float u_lcd_is_grayscale;
-uniform float u_integer_scaling;
-uniform float u_color_correction_strength;
-uniform vec3  u_red_color;
-uniform vec3  u_green_color;
-uniform vec3  u_blue_color;
-uniform float u_input_gamma;
-uniform float u_ghosting;            // 0.0 .. 1.0
+uniform highp vec2 u_emu_lcd_size;
+uniform highp vec2 u_render_size;
+uniform int        u_display_mode;        // 0=Nearest, 1=Bilinear, 2=LCD Grid, 3=RGB Subpixel, 4=xBRZ-lite, 5=CRT Scanlines, 6=Sharp Bilinear
+uniform float      u_lcd_is_grayscale;
+uniform float      u_integer_scaling;
+uniform float      u_color_correction_strength;
+uniform vec3       u_red_color;
+uniform vec3       u_green_color;
+uniform vec3       u_blue_color;
+uniform float      u_input_gamma;
+uniform float      u_ghosting;            // 0.0 .. 1.0
 
-in vec2 v_uv;
+in highp vec2 v_uv;
 out vec4 frag_color;
 
-vec4 sample_color_correct(vec2 uv) {
+vec4 sample_raw(highp vec2 uv) {
     vec4 curr = texture(u_tex, uv);
-    if (u_ghosting > 0.001) {
+    if (u_ghosting > 0.005) {
         vec4 prev = texture(u_prev_tex, uv);
         curr = mix(curr, prev, clamp(u_ghosting * 0.55, 0.0, 0.65));
     }
-    if (u_color_correction_strength > 0.001) {
-        vec3 lin = pow(max(curr.rgb, vec3(0.0)), vec3(u_input_gamma));
+    return curr;
+}
+
+vec3 apply_color_correct(vec3 c) {
+    if (u_color_correction_strength > 0.005) {
+        vec3 lin = pow(max(c, vec3(0.0)), vec3(u_input_gamma));
         vec3 corrected = lin.r * u_red_color + lin.g * u_green_color + lin.b * u_blue_color;
         corrected = pow(clamp(corrected, 0.0, 1.0), vec3(1.0 / 2.2));
-        curr.rgb = mix(curr.rgb, corrected, u_color_correction_strength);
+        c = mix(c, corrected, u_color_correction_strength);
     }
-    return curr;
+    return c;
 }
 
 #define BLEND_NONE 0
@@ -78,25 +82,25 @@ bool IsPixEqual(vec3 pixA, vec3 pixB) {
     return DistYCbCr(pixA, pixB) < EQUAL_COLOR_TOLERANCE;
 }
 
-float get_left_ratio(vec2 center, vec2 origin, vec2 direction, vec2 scale) {
-    vec2 P0 = center - origin;
-    vec2 proj = direction * (dot(P0, direction) / dot(direction, direction));
-    vec2 distv = P0 - proj;
-    vec2 orth = vec2(-direction.y, direction.x);
-    float side = sign(dot(P0, orth));
-    float v = side * length(distv * scale);
+float get_left_ratio(highp vec2 center, highp vec2 origin, highp vec2 direction, highp vec2 scale) {
+    highp vec2 P0 = center - origin;
+    highp vec2 proj = direction * (dot(P0, direction) / dot(direction, direction));
+    highp vec2 distv = P0 - proj;
+    highp vec2 orth = vec2(-direction.y, direction.x);
+    highp float side = sign(dot(P0, orth));
+    highp float v = side * length(distv * scale);
     return smoothstep(-sqrt(2.0) / 2.0, sqrt(2.0) / 2.0, v);
 }
 
 #define eq(a, b)  (all(lessThan(abs((a) - (b)), vec3(0.004))))
 #define neq(a, b) (!eq(a, b))
-#define P(x, y)   sample_color_correct(coord + invSize * vec2(float(x), float(y))).rgb
+#define P(x, y)   sample_raw(coord + invSize * vec2(float(x), float(y))).rgb
 
 vec4 xbrz_lite() {
-    vec2 invSize = 1.0 / u_emu_lcd_size;
-    vec2 scale = u_render_size * invSize;
-    vec2 pos = fract(v_uv * u_emu_lcd_size) - vec2(0.5, 0.5);
-    vec2 coord = v_uv - pos * invSize;
+    highp vec2 invSize = 1.0 / u_emu_lcd_size;
+    highp vec2 scale = u_render_size * invSize;
+    highp vec2 pos = fract(v_uv * u_emu_lcd_size) - vec2(0.5, 0.5);
+    highp vec2 coord = v_uv - pos * invSize;
 
     vec3 A = P(-1, -1); vec3 B = P(0, -1); vec3 C = P(1, -1);
     vec3 D = P(-1,  0); vec3 E = P(0,  0); vec3 F = P(1,  0);
@@ -137,8 +141,8 @@ vec4 xbrz_lite() {
         bool doLineBlend = (blendResult.z == BLEND_DOMINANT ||
             !((blendResult.y != BLEND_NONE && !IsPixEqual(E, G)) || (blendResult.w != BLEND_NONE && !IsPixEqual(E, C)) ||
               (IsPixEqual(G, H) && IsPixEqual(H, I) && IsPixEqual(I, F) && IsPixEqual(F, C) && !IsPixEqual(E, I))));
-        vec2 origin = vec2(0.0, 1.0 / sqrt(2.0));
-        vec2 direction = vec2(1.0, -1.0);
+        highp vec2 origin = vec2(0.0, 1.0 / sqrt(2.0));
+        highp vec2 direction = vec2(1.0, -1.0);
         if (doLineBlend) {
             bool haveShallow = (STEEP_DIRECTION_THRESHOLD * dist_F_G <= dist_H_C) && neq(E, G) && neq(D, G);
             bool haveSteep   = (STEEP_DIRECTION_THRESHOLD * dist_H_C <= dist_F_G) && neq(E, C) && neq(B, C);
@@ -155,8 +159,8 @@ vec4 xbrz_lite() {
         bool doLineBlend = (blendResult.w == BLEND_DOMINANT ||
             !((blendResult.z != BLEND_NONE && !IsPixEqual(E, A)) || (blendResult.x != BLEND_NONE && !IsPixEqual(E, I)) ||
               (IsPixEqual(A, D) && IsPixEqual(D, G) && IsPixEqual(G, H) && IsPixEqual(H, I) && !IsPixEqual(E, G))));
-        vec2 origin = vec2(-1.0 / sqrt(2.0), 0.0);
-        vec2 direction = vec2(1.0, 1.0);
+        highp vec2 origin = vec2(-1.0 / sqrt(2.0), 0.0);
+        highp vec2 direction = vec2(1.0, 1.0);
         if (doLineBlend) {
             bool haveShallow = (STEEP_DIRECTION_THRESHOLD * dist_H_A <= dist_D_I) && neq(E, A) && neq(B, A);
             bool haveSteep   = (STEEP_DIRECTION_THRESHOLD * dist_D_I <= dist_H_A) && neq(E, I) && neq(F, I);
@@ -173,8 +177,8 @@ vec4 xbrz_lite() {
         bool doLineBlend = (blendResult.y == BLEND_DOMINANT ||
             !((blendResult.x != BLEND_NONE && !IsPixEqual(E, I)) || (blendResult.z != BLEND_NONE && !IsPixEqual(E, A)) ||
               (IsPixEqual(I, F) && IsPixEqual(F, C) && IsPixEqual(C, B) && IsPixEqual(B, A) && !IsPixEqual(E, C))));
-        vec2 origin = vec2(1.0 / sqrt(2.0), 0.0);
-        vec2 direction = vec2(-1.0, -1.0);
+        highp vec2 origin = vec2(1.0 / sqrt(2.0), 0.0);
+        highp vec2 direction = vec2(-1.0, -1.0);
         if (doLineBlend) {
             bool haveShallow = (STEEP_DIRECTION_THRESHOLD * dist_B_I <= dist_F_A) && neq(E, I) && neq(H, I);
             bool haveSteep   = (STEEP_DIRECTION_THRESHOLD * dist_F_A <= dist_B_I) && neq(E, A) && neq(D, A);
@@ -191,8 +195,8 @@ vec4 xbrz_lite() {
         bool doLineBlend = (blendResult.x == BLEND_DOMINANT ||
             !((blendResult.w != BLEND_NONE && !IsPixEqual(E, C)) || (blendResult.y != BLEND_NONE && !IsPixEqual(E, G)) ||
               (IsPixEqual(C, B) && IsPixEqual(B, A) && IsPixEqual(A, D) && IsPixEqual(D, G) && !IsPixEqual(E, A))));
-        vec2 origin = vec2(0.0, -1.0 / sqrt(2.0));
-        vec2 direction = vec2(-1.0, 1.0);
+        highp vec2 origin = vec2(0.0, -1.0 / sqrt(2.0));
+        highp vec2 direction = vec2(-1.0, 1.0);
         if (doLineBlend) {
             bool haveShallow = (STEEP_DIRECTION_THRESHOLD * dist_D_C <= dist_B_G) && neq(E, C) && neq(F, C);
             bool haveSteep   = (STEEP_DIRECTION_THRESHOLD * dist_B_G <= dist_D_C) && neq(E, G) && neq(H, G);
@@ -207,49 +211,34 @@ vec4 xbrz_lite() {
 }
 
 void main() {
-    vec2 invSize = 1.0 / max(u_emu_lcd_size, vec2(1.0));
-    float smooth_width  = u_emu_lcd_size.x / max(u_render_size.x, 1.0);
-    float smooth_height = u_emu_lcd_size.y / max(u_render_size.y, 1.0);
-    vec2 pix_sub = fract(v_uv * u_emu_lcd_size);
+    highp vec2 invSize = 1.0 / max(u_emu_lcd_size, vec2(1.0));
+    highp float smooth_width  = u_emu_lcd_size.x / max(u_render_size.x, 1.0);
+    highp float smooth_height = u_emu_lcd_size.y / max(u_render_size.y, 1.0);
+    highp vec2 pix_sub = fract(v_uv * u_emu_lcd_size);
 
     int mode = u_display_mode;
     if (u_lcd_is_grayscale > 0.5 && mode == 3) {
         mode = 2;
     }
 
-    vec4 val = sample_color_correct(v_uv);
-    if (u_integer_scaling <= 0.5) {
-        vec2 ip = (floor(v_uv * u_emu_lcd_size - 0.5) + 0.5) * invSize;
-        vec2 residual = fract(v_uv * u_emu_lcd_size + 0.5);
-        vec4 v0 = sample_color_correct(ip);
-        vec4 v1 = sample_color_correct(ip + vec2(invSize.x, 0.0));
-        vec4 v2 = sample_color_correct(ip + vec2(0.0, invSize.y));
-        vec4 v3 = sample_color_correct(ip + invSize);
-        vec2 smooth_dim = vec2(smooth_width, smooth_height);
-        vec2 alpha = vec2(
-            smoothstep(0.5 - smooth_dim.x * 0.5, 0.5 + smooth_dim.x * 0.5, residual.x),
-            smoothstep(0.5 - smooth_dim.y * 0.5, 0.5 + smooth_dim.y * 0.5, residual.y)
-        );
-        val = mix(mix(v0, v1, alpha.x), mix(v2, v3, alpha.x), alpha.y);
-    }
-
-    frag_color = val;
-
     if (mode == 1) {
-        vec2 sub = fract(v_uv * u_emu_lcd_size - 0.5);
-        vec2 ip = (floor(v_uv * u_emu_lcd_size - 0.5) + 0.5) * invSize;
-        vec4 v0 = sample_color_correct(ip);
-        vec4 v1 = sample_color_correct(ip + vec2(invSize.x, 0.0));
-        vec4 v2 = sample_color_correct(ip + vec2(0.0, invSize.y));
-        vec4 v3 = sample_color_correct(ip + invSize);
+        highp vec2 sub = fract(v_uv * u_emu_lcd_size - 0.5);
+        highp vec2 ip = (floor(v_uv * u_emu_lcd_size - 0.5) + 0.5) * invSize;
+        vec4 v0 = sample_raw(ip);
+        vec4 v1 = sample_raw(ip + vec2(invSize.x, 0.0));
+        vec4 v2 = sample_raw(ip + vec2(0.0, invSize.y));
+        vec4 v3 = sample_raw(ip + invSize);
         frag_color = mix(mix(v0, v1, sub.x), mix(v2, v3, sub.x), sub.y);
     } else if (mode == 2) {
+        vec4 val = sample_raw(v_uv);
         float rgb_factor = smoothstep(0.0, smooth_height, pix_sub.y) - smoothstep(1.0 - smooth_height, 1.0, pix_sub.y);
         rgb_factor *= (smoothstep(0.0, smooth_width, pix_sub.x) - smoothstep(1.0 - smooth_width, 1.0, pix_sub.x));
         rgb_factor = mix(0.66, 1.0, rgb_factor);
+        frag_color = val;
         frag_color.rgb *= rgb_factor;
         frag_color = mix(frag_color, val, clamp(smooth_width, 0.0, 1.0));
     } else if (mode == 3) {
+        vec4 val = sample_raw(v_uv);
         float expansion = 0.15;
         float sw_sub = smooth_width * 1.5;
         float r_factor = smoothstep(0.0, sw_sub, pix_sub.x) - smoothstep(0.33 - sw_sub, 0.33 + expansion, pix_sub.x);
@@ -257,6 +246,7 @@ void main() {
         float b_factor = smoothstep(0.66 - expansion, 0.66 + sw_sub, pix_sub.x) - smoothstep(1.0 - sw_sub, 1.0, pix_sub.x);
         float rgb_factor = smoothstep(0.0, smooth_height, pix_sub.y) - smoothstep(1.0 - smooth_height, 1.0, pix_sub.y);
         rgb_factor = rgb_factor * 0.2 + 0.8;
+        frag_color = val;
         frag_color.r *= clamp(mix(0.6, 1.0, r_factor) * 1.33, 0.0, 1.0);
         frag_color.g *= clamp(mix(0.6, 1.0, g_factor) * 1.33, 0.0, 1.0);
         frag_color.b *= clamp(mix(0.6, 1.0, b_factor) * 1.33, 0.0, 1.0);
@@ -266,15 +256,35 @@ void main() {
     } else if (mode == 4) {
         frag_color = xbrz_lite();
     } else if (mode == 5) {
+        frag_color = sample_raw(v_uv);
         float scan = 0.82 + 0.18 * sin(pix_sub.y * 6.2831853);
         frag_color.rgb *= scan;
     } else if (mode == 6) {
-        vec2 scale = max(floor(u_render_size / max(u_emu_lcd_size, vec2(1.0))), vec2(1.0));
-        vec2 regionRange = 0.5 - (0.5 / scale);
-        vec2 texel = v_uv * u_emu_lcd_size;
-        vec2 centerDist = fract(texel) - 0.5;
-        vec2 modTexel = floor(texel) + (centerDist - clamp(centerDist, -regionRange, regionRange)) * scale + 0.5;
-        frag_color = sample_color_correct(modTexel * invSize);
+        if (u_integer_scaling <= 0.5) {
+            highp vec2 ip = (floor(v_uv * u_emu_lcd_size - 0.5) + 0.5) * invSize;
+            highp vec2 residual = fract(v_uv * u_emu_lcd_size + 0.5);
+            vec4 v0 = sample_raw(ip);
+            vec4 v1 = sample_raw(ip + vec2(invSize.x, 0.0));
+            vec4 v2 = sample_raw(ip + vec2(0.0, invSize.y));
+            vec4 v3 = sample_raw(ip + invSize);
+            highp vec2 smooth_dim = vec2(smooth_width, smooth_height);
+            vec2 alpha = vec2(
+                smoothstep(0.5 - smooth_dim.x * 0.5, 0.5 + smooth_dim.x * 0.5, residual.x),
+                smoothstep(0.5 - smooth_dim.y * 0.5, 0.5 + smooth_dim.y * 0.5, residual.y)
+            );
+            frag_color = mix(mix(v0, v1, alpha.x), mix(v2, v3, alpha.x), alpha.y);
+        } else {
+            highp vec2 scale = max(floor(u_render_size / max(u_emu_lcd_size, vec2(1.0))), vec2(1.0));
+            highp vec2 regionRange = 0.5 - (0.5 / scale);
+            highp vec2 texel = v_uv * u_emu_lcd_size;
+            highp vec2 centerDist = fract(texel) - 0.5;
+            highp vec2 modTexel = floor(texel) + (centerDist - clamp(centerDist, -regionRange, regionRange)) * scale + 0.5;
+            frag_color = sample_raw(modTexel * invSize);
+        }
+    } else {
+        frag_color = sample_raw(v_uv);
     }
+
+    frag_color.rgb = apply_color_correct(frag_color.rgb);
 }
 #endif
