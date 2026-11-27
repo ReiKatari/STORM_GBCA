@@ -345,7 +345,7 @@ private fun SettingsScreen(
                 fontWeight = FontWeight.ExtraBold,
             )
             Text(
-                text = "STORM GBCA v${BuildConfig.VERSION_NAME}",
+                text = "STORM GBCA ${BuildConfig.VERSION_NAME.trim().removePrefix("v").removePrefix("V")}",
                 color = colors.green,
                 fontFamily = WatermelonMono,
                 fontSize = 11.sp,
@@ -961,7 +961,7 @@ private fun SettingsScreen(
                     WatermelonSectionLabel("STORM GBCA")
                     WatermelonCard {
                         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("STORM GBCA v${BuildConfig.VERSION_NAME}", color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                            Text("STORM GBCA ${BuildConfig.VERSION_NAME.trim().removePrefix("v").removePrefix("V")}", color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
                             Text("mGBA + SameBoy + rcheevos + librashader + Oboe", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.5.sp)
                             Spacer(Modifier.height(4.dp))
                             Text("Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.5.sp)

@@ -43,7 +43,8 @@ object StormUpdateMirrorClient {
     private const val GITHUB_RELEASES_HTML = "https://github.com/ReiKatari/STORM_GBCA/releases"
     private const val SGW_API = "https://stormgamesworld.ru/api/programs/releases?repo=STORM_GBCA"
     private const val SGW_ALT_API = "https://storm-games.world/api/programs/releases?repo=STORM_GBCA"
-    private const val USER_AGENT = "STORM-GBCA-Updater/1.0.0"
+    private val USER_AGENT: String
+        get() = "STORM-GBCA-Updater/${BuildConfig.VERSION_NAME.trim().removePrefix("v").removePrefix("V")}"
 
     private val client by lazy {
         OkHttpClient.Builder()

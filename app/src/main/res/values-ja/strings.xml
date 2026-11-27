@@ -238,14 +238,14 @@
     <string name="export_backup_sub">プロファイル・スキン・オーバーレイをJSONに保存</string>
     <string name="check_updates">アップデートを確認</string>
     <string name="update_checking">確認中...</string>
-    <string name="update_latest">最新バージョン v%s です</string>
-    <string name="update_available_fmt">新バージョン v%s が利用可能</string>
+    <string name="update_latest">最新バージョン %s です</string>
+    <string name="update_available_fmt">アップデート可能: %s</string>
     <string name="update_dialog_title">アップデート利用可能</string>
     <string name="update_dialog_size_mb_fmt">%.1f MB</string>
-    <string name="update_now">今すぐ更新</string>
+    <string name="update_now">更新</string>
     <string name="update_skip">スキップ</string>
     <string name="update_install">アップデートをインストール</string>
-    <string name="update_downloading_fmt">ダウンロード中: %.0f%% (%.2f MB/s)</string>
+    <string name="update_downloading_fmt">ダウンロード中: %1$.0f%% (%2$.2f MB/s)</string>
     <string name="update_error_fmt">ダウンロードエラー: %s</string>
     <string name="shader_off_name">無効 (内蔵)</string>
     <string name="shader_off_desc">内蔵のSTORM / SkyEmu LCDシェーダーを使用</string>
@@ -401,4 +401,10 @@
     <string name="qbtn_qload">クイックロード</string>
     <string name="overlay_system_theme_fmt">UIテーマ (%s)</string>
     <string name="theme_follow_app">アプリ標準</string>
+    <string name="update_dialog_current_label">現在</string>
+    <string name="update_dialog_new_label">最新</string>
+    <string name="update_dialog_whats_new">更新内容</string>
+    <string name="update_dialog_remind_later">後で</string>
+    <string name="update_dialog_skip_version">スキップ</string>
+    <string name="update_dialog_open_page">リリースページを開く</string>
 </resources>

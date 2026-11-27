@@ -238,14 +238,14 @@
     <string name="export_backup_sub">Salvar perfis, skins e overlays em JSON</string>
     <string name="check_updates">Verificar atualizações</string>
     <string name="update_checking">Verificando...</string>
-    <string name="update_latest">Você tem a versão mais recente v%s</string>
-    <string name="update_available_fmt">Atualização disponível: v%s</string>
+    <string name="update_latest">Você tem a versão mais recente %s</string>
+    <string name="update_available_fmt">Atualização disponível: %s</string>
     <string name="update_dialog_title">Atualização disponível</string>
     <string name="update_dialog_size_mb_fmt">%.1f MB</string>
-    <string name="update_now">Atualizar agora</string>
+    <string name="update_now">Atualizar</string>
     <string name="update_skip">Pular</string>
     <string name="update_install">Instalar atualização</string>
-    <string name="update_downloading_fmt">Baixando: %.0f%% (%.2f MB/s)</string>
+    <string name="update_downloading_fmt">Baixando: %1$.0f%% (%2$.2f MB/s)</string>
     <string name="update_error_fmt">Erro no download: %s</string>
     <string name="shader_off_name">Desativado (Integrado)</string>
     <string name="shader_off_desc">Usar shader interno STORM / SkyEmu LCD</string>
@@ -401,4 +401,10 @@
     <string name="qbtn_qload">Carg. rápido</string>
     <string name="overlay_system_theme_fmt">Tema da interface (%s)</string>
     <string name="theme_follow_app">Padrão do app</string>
+    <string name="update_dialog_current_label">Atual</string>
+    <string name="update_dialog_new_label">Nova</string>
+    <string name="update_dialog_whats_new">Novidades</string>
+    <string name="update_dialog_remind_later">Depois</string>
+    <string name="update_dialog_skip_version">Ignorar</string>
+    <string name="update_dialog_open_page">Abrir página da versão</string>
 </resources>
