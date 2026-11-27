@@ -19,6 +19,7 @@ windows/installer/Payload.zip
 windows/src/StormGbca.Desktop/storm_gbca_core.dll
 
 # Packaged release artifacts (published to Releases, not committed into Git tree)
+Files/
 releases/
 *.apk
 *.aab
@@ -30,6 +31,14 @@ releases/
 *.pdb
 *.obj
 *.lib
+*.cer
+*.crt
+*.pfx
+*.p12
+*.jks
+*.keystore
+*.pem
+*.key
 
 # OS & temporary files
 .DS_Store
