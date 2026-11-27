@@ -13,6 +13,7 @@ import com.stormgbca.emulator.model.CheatItem
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.GbcaCoreConfig
 import com.stormgbca.emulator.model.OrientationControlsLayout
+import com.stormgbca.emulator.model.OverlayLayoutPreset
 import com.stormgbca.emulator.model.PhysicalAction
 import com.stormgbca.emulator.model.RomEntry
 import com.stormgbca.emulator.model.RomFilter
@@ -47,7 +48,7 @@ object GbcaPrefs {
 
     fun defaultOverlayFor(system: ConsoleSystem): SystemOverlayProfile = when (system) {
         ConsoleSystem.GB -> SystemOverlayProfile(
-            layoutVersion = 2,
+            layoutVersion = 3,
             buttonStyle = "dmg_magenta",
             shaderOverlay = NativeCore.FILTER_LCD_GRID,
             showShoulders = false,
@@ -55,7 +56,7 @@ object GbcaPrefs {
             landscapeControls = OrientationControlsLayout.defaultLandscape(),
         )
         ConsoleSystem.GBC -> SystemOverlayProfile(
-            layoutVersion = 2,
+            layoutVersion = 3,
             buttonStyle = "gbc_atomic_purple",
             shaderOverlay = NativeCore.FILTER_RGB_SUBPIXEL,
             showShoulders = false,
@@ -63,7 +64,7 @@ object GbcaPrefs {
             landscapeControls = OrientationControlsLayout.defaultLandscape(),
         )
         ConsoleSystem.GBA -> SystemOverlayProfile(
-            layoutVersion = 2,
+            layoutVersion = 3,
             buttonStyle = "gba_indigo",
             shaderOverlay = NativeCore.FILTER_RGB_SUBPIXEL,
             showShoulders = true,
@@ -216,13 +217,18 @@ object GbcaPrefs {
         if (!raw.isNullOrBlank()) {
             val decoded = runCatching { json.decodeFromString<SystemOverlayProfile>(raw) }.getOrNull()
             if (decoded != null) {
-                if (decoded.layoutVersion < 2) {
+                if (decoded.layoutVersion < 3) {
                     val hasLR = decoded.showShoulders || system == ConsoleSystem.GBA
-                    val migrated = decoded.copy(
-                        layoutVersion = 2,
-                        portraitControls = OrientationControlsLayout.defaultPortrait(hasShoulders = hasLR),
-                        landscapeControls = OrientationControlsLayout.defaultLandscape(),
-                    )
+                    val isCustom = decoded.layoutPreset.equals(OverlayLayoutPreset.CUSTOM.key, ignoreCase = true)
+                    val migrated = if (decoded.layoutVersion < 2 || !isCustom) {
+                        decoded.copy(
+                            layoutVersion = 3,
+                            portraitControls = OrientationControlsLayout.defaultPortrait(hasShoulders = hasLR),
+                            landscapeControls = OrientationControlsLayout.defaultLandscape(),
+                        )
+                    } else {
+                        decoded.copy(layoutVersion = 3)
+                    }
                     prefs.edit().putString(overlayPrefKey(system), json.encodeToString(migrated)).apply()
                     return migrated
                 }

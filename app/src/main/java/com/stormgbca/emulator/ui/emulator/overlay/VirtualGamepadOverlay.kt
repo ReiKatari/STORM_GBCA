@@ -154,28 +154,28 @@ fun VirtualGamepadOverlay(
                     rC = Offset(w * activeControls.rPos.xFraction, h * activeControls.rPos.yFraction)
                 }
                 OverlayLayoutPreset.WIDE_GRIP -> {
-                    dpadC = Offset(w * (if (isLandscape) 0.095f else 0.170f), h * (if (isLandscape) 0.62f else 0.755f))
-                    abBase = Offset(w * (if (isLandscape) 0.905f else 0.830f), h * (if (isLandscape) 0.62f else 0.755f))
+                    dpadC = Offset(w * (if (isLandscape) 0.095f else 0.170f), h * (if (isLandscape) 0.690f else 0.810f))
+                    abBase = Offset(w * (if (isLandscape) 0.905f else 0.830f), h * (if (isLandscape) 0.690f else 0.810f))
                     selectC = Offset(w * (if (isLandscape) 0.095f else 0.35f), h * (if (isLandscape) 0.905f else 0.925f))
                     startC = Offset(w * (if (isLandscape) 0.865f else 0.65f), h * (if (isLandscape) 0.905f else 0.925f))
-                    lC = Offset(w * (if (isLandscape) 0.085f else 0.115f), h * (if (isLandscape) 0.13f else 0.520f))
-                    rC = Offset(w * (if (isLandscape) 0.915f else 0.885f), h * (if (isLandscape) 0.13f else 0.520f))
+                    lC = Offset(w * (if (isLandscape) 0.085f else 0.115f), h * (if (isLandscape) 0.210f else 0.580f))
+                    rC = Offset(w * (if (isLandscape) 0.915f else 0.885f), h * (if (isLandscape) 0.210f else 0.580f))
                 }
                 OverlayLayoutPreset.COMPACT_MINIMAL -> {
-                    dpadC = Offset(w * (if (isLandscape) 0.100f else 0.175f), h * (if (isLandscape) 0.70f else 0.780f))
-                    abBase = Offset(w * (if (isLandscape) 0.900f else 0.825f), h * (if (isLandscape) 0.70f else 0.780f))
+                    dpadC = Offset(w * (if (isLandscape) 0.100f else 0.175f), h * (if (isLandscape) 0.745f else 0.825f))
+                    abBase = Offset(w * (if (isLandscape) 0.900f else 0.825f), h * (if (isLandscape) 0.745f else 0.825f))
                     selectC = Offset(w * (if (isLandscape) 0.100f else 0.36f), h * (if (isLandscape) 0.92f else 0.935f))
                     startC = Offset(w * (if (isLandscape) 0.865f else 0.64f), h * (if (isLandscape) 0.92f else 0.935f))
-                    lC = Offset(w * (if (isLandscape) 0.088f else 0.120f), h * (if (isLandscape) 0.14f else 0.535f))
-                    rC = Offset(w * (if (isLandscape) 0.912f else 0.880f), h * (if (isLandscape) 0.14f else 0.535f))
+                    lC = Offset(w * (if (isLandscape) 0.088f else 0.120f), h * (if (isLandscape) 0.220f else 0.595f))
+                    rC = Offset(w * (if (isLandscape) 0.912f else 0.880f), h * (if (isLandscape) 0.220f else 0.595f))
                 }
                 OverlayLayoutPreset.FLOATING_GLASS -> {
-                    dpadC = Offset(w * (if (isLandscape) 0.105f else 0.180f), h * (if (isLandscape) 0.64f else 0.750f))
-                    abBase = Offset(w * (if (isLandscape) 0.895f else 0.820f), h * (if (isLandscape) 0.64f else 0.750f))
+                    dpadC = Offset(w * (if (isLandscape) 0.105f else 0.180f), h * (if (isLandscape) 0.705f else 0.805f))
+                    abBase = Offset(w * (if (isLandscape) 0.895f else 0.820f), h * (if (isLandscape) 0.705f else 0.805f))
                     selectC = Offset(w * (if (isLandscape) 0.105f else 0.36f), h * (if (isLandscape) 0.905f else 0.920f))
                     startC = Offset(w * (if (isLandscape) 0.865f else 0.64f), h * (if (isLandscape) 0.905f else 0.920f))
-                    lC = Offset(w * (if (isLandscape) 0.090f else 0.120f), h * (if (isLandscape) 0.135f else 0.525f))
-                    rC = Offset(w * (if (isLandscape) 0.910f else 0.880f), h * (if (isLandscape) 0.135f else 0.525f))
+                    lC = Offset(w * (if (isLandscape) 0.090f else 0.120f), h * (if (isLandscape) 0.215f else 0.585f))
+                    rC = Offset(w * (if (isLandscape) 0.910f else 0.880f), h * (if (isLandscape) 0.215f else 0.585f))
                 }
                 OverlayLayoutPreset.CLASSIC_HANDHELD -> {
                     // Shifted D-Pad slightly left, B/A slightly right, SELECT & START completely off screen!
