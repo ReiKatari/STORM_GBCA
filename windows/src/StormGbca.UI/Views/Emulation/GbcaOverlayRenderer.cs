@@ -57,7 +57,7 @@ public static class GbcaOverlayRenderer
 
         // D-Pad on left
         double dpadR = Math.Clamp(deckH * 0.34, 24, 50);
-        double dpadCx = Math.Clamp(width * 0.11, dpadR + 18, 140);
+        double dpadCx = Math.Clamp(width * 0.085, dpadR + 14, 128);
         double arm = dpadR * 0.72;
         boxes.Add(new(StormKeyMask.Up, new Rect(dpadCx - arm * 0.5, cy - dpadR, arm, arm)));
         boxes.Add(new(StormKeyMask.Down, new Rect(dpadCx - arm * 0.5, cy + dpadR - arm, arm, arm)));
@@ -68,7 +68,7 @@ public static class GbcaOverlayRenderer
         double btnR = Math.Clamp(deckH * 0.21, 16, 32);
         double spacingFactor = Math.Clamp(profile.AbSpacingPercent, 95, 200) / 100.0;
         double distX = btnR * (profile.SeparateABButtons ? 2.65 : 2.35) * spacingFactor;
-        double abBaseX = width - Math.Clamp(width * 0.14, btnR * 3.0 + 24, 175);
+        double abBaseX = width - Math.Clamp(width * 0.105, btnR * 2.8 + 16, 155);
         double bCx = abBaseX - distX * 0.55;
         double aCx = abBaseX + distX * 0.45;
         double bCy = profile.SeparateABButtons ? cy + btnR * 0.30 : cy + btnR * 0.35;
@@ -80,9 +80,9 @@ public static class GbcaOverlayRenderer
         double pillW = Math.Clamp(52 * s, 40, 78);
         double pillH = Math.Clamp(18 * s, 14, 24);
         double midX = width * 0.5;
-        double pillY = height - pillH - 12;
-        boxes.Add(new(StormKeyMask.Select, new Rect(midX - pillW - 8, pillY, pillW, pillH)));
-        boxes.Add(new(StormKeyMask.Start, new Rect(midX + 8, pillY, pillW, pillH)));
+        double pillY = height - pillH - 10;
+        boxes.Add(new(StormKeyMask.Select, new Rect(Math.Max(14, dpadCx - pillW * 0.5), pillY, pillW, pillH)));
+        boxes.Add(new(StormKeyMask.Start, new Rect(Math.Min(width - pillW - 14, abBaseX - pillW * 0.5), pillY, pillW, pillH)));
 
         // L & R shoulder triggers (only when ShowLR is true, e.g. GBA!)
         if (profile.ShowLR)

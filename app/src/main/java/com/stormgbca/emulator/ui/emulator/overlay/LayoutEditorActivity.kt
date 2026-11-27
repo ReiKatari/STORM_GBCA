@@ -35,8 +35,13 @@ import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.OpenWith
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -59,6 +65,7 @@ import com.stormgbca.emulator.R
 import com.stormgbca.emulator.data.GbcaPrefs
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.CustomControlPos
+import com.stormgbca.emulator.model.OrientationControlsLayout
 import com.stormgbca.emulator.model.OverlayLayoutPreset
 import com.stormgbca.emulator.model.ScreenRectConfig
 import com.stormgbca.emulator.ui.common.WatermelonSwitch
@@ -109,7 +116,7 @@ private fun LayoutEditorScreen(
     val colors = watermelon
     var activeSystem by remember { mutableStateOf(initialSystem) }
     var profile by remember(activeSystem) { mutableStateOf(GbcaPrefs.getOverlayProfile(activeSystem)) }
-    var panelExpanded by remember { mutableStateOf(true) }
+    var panelExpanded by remember { mutableStateOf(false) }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -122,12 +129,23 @@ private fun LayoutEditorScreen(
         val density = LocalDensity.current
 
         val currentScreenCfg = if (isLandscape) profile.landscapeScreen else profile.portraitScreen
+        val currentControls = if (isLandscape) profile.landscapeControls else profile.portraitControls
+
         fun updateScreenCfg(transform: (ScreenRectConfig) -> ScreenRectConfig) {
             val nextCfg = transform(currentScreenCfg)
             profile = if (isLandscape) {
                 profile.copy(landscapeScreen = nextCfg)
             } else {
                 profile.copy(portraitScreen = nextCfg)
+            }
+        }
+
+        fun updateControls(transform: (OrientationControlsLayout) -> OrientationControlsLayout) {
+            val nextCtrl = transform(currentControls)
+            profile = if (isLandscape) {
+                profile.copy(layoutPreset = OverlayLayoutPreset.CUSTOM.key, landscapeControls = nextCtrl)
+            } else {
+                profile.copy(layoutPreset = OverlayLayoutPreset.CUSTOM.key, portraitControls = nextCtrl)
             }
         }
 
@@ -272,80 +290,142 @@ private fun LayoutEditorScreen(
             }
         }
 
-        // Draggable Virtual Controls (Grouped A/B OR Separate Independent A + B!)
+        // Draggable Main Virtual Controls (per-orientation!)
         DraggableNode(
             label = stringResource(R.string.layout_dpad),
-            pos = profile.dpadPos,
+            pos = currentControls.dpadPos,
             containerW = w,
             containerH = h,
-            sizeDp = 100,
+            sizeDp = 96,
             accent = colors.green,
-            onMove = { next -> profile = profile.copy(dpadPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
+            onMove = { next -> updateControls { it.copy(dpadPos = next) } },
         )
 
         if (profile.separateABButtons) {
             DraggableNode(
                 label = "A",
-                pos = profile.btnAPos,
+                pos = currentControls.btnAPos,
                 containerW = w,
                 containerH = h,
-                sizeDp = 66,
+                sizeDp = 64,
                 accent = colors.green,
-                onMove = { next -> profile = profile.copy(btnAPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
+                onMove = { next -> updateControls { it.copy(btnAPos = next) } },
             )
             DraggableNode(
                 label = "B",
-                pos = profile.btnBPos,
+                pos = currentControls.btnBPos,
                 containerW = w,
                 containerH = h,
-                sizeDp = 66,
+                sizeDp = 64,
                 accent = colors.red,
-                onMove = { next -> profile = profile.copy(btnBPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
+                onMove = { next -> updateControls { it.copy(btnBPos = next) } },
             )
         } else {
             DraggableNode(
-                label = "A / B",
-                pos = profile.abPos,
+                label = "B / A",
+                pos = currentControls.abPos,
                 containerW = w,
                 containerH = h,
-                sizeDp = 104,
+                sizeDp = 98,
                 accent = colors.red,
-                onMove = { next -> profile = profile.copy(abPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
+                onMove = { next -> updateControls { it.copy(abPos = next) } },
             )
         }
 
+        // Separate draggable SELECT and START nodes!
         DraggableNode(
-            label = "START / SELECT",
-            pos = profile.startSelectPos,
+            label = "SELECT",
+            pos = currentControls.selectPos,
             containerW = w,
             containerH = h,
-            sizeDp = 88,
+            sizeDp = 62,
             accent = colors.green,
-            onMove = { next -> profile = profile.copy(startSelectPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
+            onMove = { next -> updateControls { it.copy(selectPos = next) } },
+        )
+        DraggableNode(
+            label = "START",
+            pos = currentControls.startPos,
+            containerW = w,
+            containerH = h,
+            sizeDp = 62,
+            accent = colors.green,
+            onMove = { next -> updateControls { it.copy(startPos = next) } },
         )
 
         if (profile.showShoulders || activeSystem == ConsoleSystem.GBA) {
             DraggableNode(
                 label = "L",
-                pos = profile.lPos,
+                pos = currentControls.lPos,
                 containerW = w,
                 containerH = h,
-                sizeDp = 68,
+                sizeDp = 64,
                 accent = colors.green,
-                onMove = { next -> profile = profile.copy(lPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
+                onMove = { next -> updateControls { it.copy(lPos = next) } },
             )
             DraggableNode(
                 label = "R",
-                pos = profile.rPos,
+                pos = currentControls.rPos,
                 containerW = w,
                 containerH = h,
-                sizeDp = 68,
+                sizeDp = 64,
                 accent = colors.green,
-                onMove = { next -> profile = profile.copy(rPos = next, layoutPreset = OverlayLayoutPreset.CUSTOM.key) },
+                onMove = { next -> updateControls { it.copy(rPos = next) } },
             )
         }
 
-        // Floating Top Bar + Collapsible Precision Screen & A/B Panel
+        // 5 SEPARATELY DRAGGABLE QUICK ACTION BUTTONS (STORM DS Parity!)
+        if (profile.showQuickStrip && profile.showRewindBtn) {
+            DraggableIconNode(
+                icon = Icons.Filled.History,
+                pos = currentControls.rewindBtnPos,
+                containerW = w,
+                containerH = h,
+                accent = Color(0xFF94A3B8),
+                onMove = { next -> updateControls { it.copy(rewindBtnPos = next) } },
+            )
+        }
+        if (profile.showQuickStrip && profile.showFastForwardBtn) {
+            DraggableIconNode(
+                icon = Icons.Filled.FastForward,
+                pos = currentControls.fastForwardBtnPos,
+                containerW = w,
+                containerH = h,
+                accent = colors.green,
+                onMove = { next -> updateControls { it.copy(fastForwardBtnPos = next) } },
+            )
+        }
+        if (profile.showQuickStrip && profile.showQuickSaveBtn) {
+            DraggableIconNode(
+                icon = Icons.Filled.Save,
+                pos = currentControls.quickSaveBtnPos,
+                containerW = w,
+                containerH = h,
+                accent = Color(0xFF38BDF8),
+                onMove = { next -> updateControls { it.copy(quickSaveBtnPos = next) } },
+            )
+        }
+        if (profile.showQuickStrip && profile.showQuickLoadBtn) {
+            DraggableIconNode(
+                icon = Icons.Filled.Upload,
+                pos = currentControls.quickLoadBtnPos,
+                containerW = w,
+                containerH = h,
+                accent = Color(0xFFA855F7),
+                onMove = { next -> updateControls { it.copy(quickLoadBtnPos = next) } },
+            )
+        }
+        if (profile.showMenuBtn || !profile.showQuickStrip) {
+            DraggableIconNode(
+                icon = Icons.Filled.Menu,
+                pos = currentControls.menuBtnPos,
+                containerW = w,
+                containerH = h,
+                accent = Color.White,
+                onMove = { next -> updateControls { it.copy(menuBtnPos = next) } },
+            )
+        }
+
+        // Floating Top Bar + Collapsible Precision Screen & Quick Buttons Panel
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
@@ -433,7 +513,6 @@ private fun LayoutEditorScreen(
                         .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    // Header + Quick Fullscreen 100% + Rotate
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text(
                             stringResource(
@@ -462,7 +541,7 @@ private fun LayoutEditorScreen(
                         }
                     }
 
-                    // 1-Tap Screen Mode Presets (Fullscreen 100%, Max Aspect Fit, Inside 3D Skin, Pixel-Perfect)
+                    // 1-Tap Screen Mode Presets
                     val presets = listOf(
                         2 to R.string.screen_preset_fullscreen,
                         1 to R.string.screen_preset_max_fit,
@@ -505,7 +584,7 @@ private fun LayoutEditorScreen(
                         }
                     }
 
-                    // Aspect Mode Row (Original / Integer / Stretch / Free)
+                    // Aspect Mode Row
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         listOf(0 to R.string.vid_aspect_orig, 1 to R.string.vid_aspect_int, 2 to R.string.vid_aspect_full, 3 to R.string.layout_aspect_free).forEach { (m, labelRes) ->
                             val sel = currentScreenCfg.aspectMode == m
@@ -523,7 +602,7 @@ private fun LayoutEditorScreen(
                         }
                     }
 
-                    // Quick Position Snaps (Top / Middle / Bottom / Center X)
+                    // Position Snaps
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         listOf(
                             0.24f to R.string.screen_snap_top,
@@ -559,7 +638,6 @@ private fun LayoutEditorScreen(
                         }
                     }
 
-                    // Precision Sliders
                     ScreenSliderRow(stringResource(R.string.layout_width), "${(currentScreenCfg.widthFraction * 100).roundToInt()}%", currentScreenCfg.widthFraction, 0.20f..1.0f) { v ->
                         updateScreenCfg { it.copy(useCustom = true, screenPreset = 4, widthFraction = v) }
                     }
@@ -573,7 +651,7 @@ private fun LayoutEditorScreen(
                         updateScreenCfg { it.copy(useCustom = true, screenPreset = 4, centerY = v) }
                     }
 
-                    // Separate A/B Toggle & Spacing right inside Layout Editor!
+                    // Separate A/B Toggle & Spacing
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.overlay_separate_ab), color = colors.text, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         WatermelonSwitch(
@@ -587,6 +665,28 @@ private fun LayoutEditorScreen(
                         }
                     }
 
+                    // Individual Quick Action Buttons visibility toggles
+                    Text(stringResource(R.string.quick_buttons_section), color = colors.text2, fontFamily = WatermelonMono, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+                        QuickToggleChip(stringResource(R.string.qbtn_rewind), profile.showRewindBtn, Modifier.weight(1f)) {
+                            profile = profile.copy(showRewindBtn = !profile.showRewindBtn)
+                        }
+                        QuickToggleChip(stringResource(R.string.qbtn_ff), profile.showFastForwardBtn, Modifier.weight(1f)) {
+                            profile = profile.copy(showFastForwardBtn = !profile.showFastForwardBtn)
+                        }
+                        QuickToggleChip(stringResource(R.string.qbtn_menu), profile.showMenuBtn, Modifier.weight(1f)) {
+                            profile = profile.copy(showMenuBtn = !profile.showMenuBtn)
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+                        QuickToggleChip(stringResource(R.string.qbtn_qsave), profile.showQuickSaveBtn, Modifier.weight(1f)) {
+                            profile = profile.copy(showQuickSaveBtn = !profile.showQuickSaveBtn)
+                        }
+                        QuickToggleChip(stringResource(R.string.qbtn_qload), profile.showQuickLoadBtn, Modifier.weight(1f)) {
+                            profile = profile.copy(showQuickLoadBtn = !profile.showQuickLoadBtn)
+                        }
+                    }
+
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.screen_hide_skin_fs), color = colors.text, fontSize = 11.5.sp, modifier = Modifier.weight(1f))
                         WatermelonSwitch(
@@ -597,6 +697,22 @@ private fun LayoutEditorScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun QuickToggleChip(label: String, active: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val colors = watermelon
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (active) colors.green else colors.surface2)
+            .border(1.dp, if (active) colors.green else colors.line, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 5.dp, horizontal = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (active) Color(0xFF05060A) else colors.text, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
@@ -649,8 +765,8 @@ private fun DraggableNode(
             .pointerInput(containerW, containerH, pos) {
                 detectDragGestures { change, dragAmount ->
                     change.consume()
-                    val nx = ((pos.xFraction * containerW + dragAmount.x) / containerW).coerceIn(0.05f, 0.95f)
-                    val ny = ((pos.yFraction * containerH + dragAmount.y) / containerH).coerceIn(0.06f, 0.94f)
+                    val nx = ((pos.xFraction * containerW + dragAmount.x) / containerW).coerceIn(0.03f, 0.97f)
+                    val ny = ((pos.yFraction * containerH + dragAmount.y) / containerH).coerceIn(0.05f, 0.95f)
                     onMove(pos.copy(xFraction = nx, yFraction = ny))
                 }
             },
@@ -661,7 +777,43 @@ private fun DraggableNode(
             color = Color.White,
             fontFamily = SpaceGrotesk,
             fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
+            fontSize = 10.5.sp,
         )
+    }
+}
+
+@Composable
+private fun DraggableIconNode(
+    icon: ImageVector,
+    pos: CustomControlPos,
+    containerW: Float,
+    containerH: Float,
+    accent: Color,
+    onMove: (CustomControlPos) -> Unit,
+) {
+    val density = LocalDensity.current
+    val sizeDp = 44
+    val sizePx = with(density) { sizeDp.dp.toPx() }
+    val xPx = pos.xFraction * containerW
+    val yPx = pos.yFraction * containerH
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset((xPx - sizePx / 2f).roundToInt(), (yPx - sizePx / 2f).roundToInt()) }
+            .size(sizeDp.dp)
+            .clip(CircleShape)
+            .background(Color(0xCC0D1220))
+            .border(1.8.dp, accent, CircleShape)
+            .pointerInput(containerW, containerH, pos) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    val nx = ((pos.xFraction * containerW + dragAmount.x) / containerW).coerceIn(0.03f, 0.97f)
+                    val ny = ((pos.yFraction * containerH + dragAmount.y) / containerH).coerceIn(0.05f, 0.95f)
+                    onMove(pos.copy(xFraction = nx, yFraction = ny))
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
     }
 }

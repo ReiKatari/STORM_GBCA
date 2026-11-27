@@ -58,6 +58,61 @@ data class CustomControlPos(
 )
 
 @Serializable
+data class OrientationControlsLayout(
+    val dpadPos: CustomControlPos,
+    val abPos: CustomControlPos,
+    val btnAPos: CustomControlPos,
+    val btnBPos: CustomControlPos,
+    val selectPos: CustomControlPos,
+    val startPos: CustomControlPos,
+    val lPos: CustomControlPos,
+    val rPos: CustomControlPos,
+    val menuBtnPos: CustomControlPos,
+    val rewindBtnPos: CustomControlPos,
+    val fastForwardBtnPos: CustomControlPos,
+    val quickSaveBtnPos: CustomControlPos,
+    val quickLoadBtnPos: CustomControlPos,
+) {
+    companion object {
+        fun defaultPortrait(hasShoulders: Boolean = true): OrientationControlsLayout {
+            val qy = if (hasShoulders) 0.595f else 0.545f
+            return OrientationControlsLayout(
+                dpadPos = CustomControlPos(0.175f, 0.755f, 1.0f),
+                abPos = CustomControlPos(0.825f, 0.755f, 1.0f),
+                btnAPos = CustomControlPos(0.895f, 0.710f, 1.0f),
+                btnBPos = CustomControlPos(0.735f, 0.800f, 1.0f),
+                selectPos = CustomControlPos(0.360f, 0.925f, 1.0f),
+                startPos = CustomControlPos(0.640f, 0.925f, 1.0f),
+                lPos = CustomControlPos(0.115f, 0.520f, 1.0f),
+                rPos = CustomControlPos(0.885f, 0.520f, 1.0f),
+                rewindBtnPos = CustomControlPos(0.140f, qy, 1.0f),
+                fastForwardBtnPos = CustomControlPos(0.320f, qy, 1.0f),
+                menuBtnPos = CustomControlPos(0.500f, qy, 1.0f),
+                quickSaveBtnPos = CustomControlPos(0.680f, qy, 1.0f),
+                quickLoadBtnPos = CustomControlPos(0.860f, qy, 1.0f),
+            )
+        }
+
+        fun defaultLandscape(): OrientationControlsLayout = OrientationControlsLayout(
+            // All controls comfortably outside the centered game screen & 3D bezel!
+            dpadPos = CustomControlPos(0.100f, 0.630f, 1.0f),
+            abPos = CustomControlPos(0.900f, 0.630f, 1.0f),
+            btnAPos = CustomControlPos(0.942f, 0.570f, 1.0f),
+            btnBPos = CustomControlPos(0.848f, 0.695f, 1.0f),
+            selectPos = CustomControlPos(0.105f, 0.905f, 1.0f),
+            startPos = CustomControlPos(0.865f, 0.905f, 1.0f),
+            lPos = CustomControlPos(0.088f, 0.130f, 1.0f),
+            rPos = CustomControlPos(0.912f, 0.130f, 1.0f),
+            rewindBtnPos = CustomControlPos(0.052f, 0.320f, 1.0f),
+            fastForwardBtnPos = CustomControlPos(0.130f, 0.320f, 1.0f),
+            quickSaveBtnPos = CustomControlPos(0.870f, 0.320f, 1.0f),
+            quickLoadBtnPos = CustomControlPos(0.948f, 0.320f, 1.0f),
+            menuBtnPos = CustomControlPos(0.955f, 0.905f, 1.0f),
+        )
+    }
+}
+
+@Serializable
 data class ScreenRectConfig(
     val useCustom: Boolean = false,
     val screenPreset: Int = 0, // 0=Inside 3D Skin, 1=Max Aspect Fit, 2=Fullscreen Edge-to-Edge, 3=Integer Pixel-Perfect, 4=Free Custom
@@ -72,8 +127,10 @@ data class ScreenRectConfig(
 
 @Serializable
 data class SystemOverlayProfile(
+    val layoutVersion: Int = 1, // v2 = v1.4.0 separate orientation controls + individual quick action buttons
     val layoutPreset: String = OverlayLayoutPreset.CLASSIC_HANDHELD.key,
     val buttonStyle: String = "storm_neon",
+    val uiThemeKey: String = "", // "" = follow app theme, or any Theme.preferenceValue per GB/GBC/GBA!
     val shaderOverlay: Int = NativeCore.FILTER_RGB_SUBPIXEL,
     val retroArchShaderPath: String = "",
     val opacityPercent: Int = 78,
@@ -81,6 +138,12 @@ data class SystemOverlayProfile(
     val hapticsEnabled: Boolean = true,
     val showShoulders: Boolean = false,
     val showQuickStrip: Boolean = true,
+    // Individual Quick Action Button toggles (STORM DS parity)
+    val showMenuBtn: Boolean = true,
+    val showRewindBtn: Boolean = true,
+    val showFastForwardBtn: Boolean = true,
+    val showQuickSaveBtn: Boolean = true,
+    val showQuickLoadBtn: Boolean = true,
     val separateABButtons: Boolean = false,
     val abSpacingPercent: Int = 128, // 100..180% gap multiplier so A and B never overlap
     val portraitScreen: ScreenRectConfig = ScreenRectConfig(
@@ -89,13 +152,16 @@ data class SystemOverlayProfile(
     val landscapeScreen: ScreenRectConfig = ScreenRectConfig(
         useCustom = false, screenPreset = 0, hideSkinInFullscreen = true, centerX = 0.50f, centerY = 0.50f, widthFraction = 0.64f, heightFraction = 0.88f, aspectMode = 0, rotationDeg = 0,
     ),
-    val dpadPos: CustomControlPos = CustomControlPos(0.16f, 0.72f, 1.0f),
-    val abPos: CustomControlPos = CustomControlPos(0.84f, 0.72f, 1.0f),
-    val btnAPos: CustomControlPos = CustomControlPos(0.89f, 0.67f, 1.0f),
-    val btnBPos: CustomControlPos = CustomControlPos(0.73f, 0.77f, 1.0f),
-    val startSelectPos: CustomControlPos = CustomControlPos(0.50f, 0.89f, 1.0f),
-    val lPos: CustomControlPos = CustomControlPos(0.10f, 0.14f, 1.0f),
-    val rPos: CustomControlPos = CustomControlPos(0.90f, 0.14f, 1.0f),
+    val portraitControls: OrientationControlsLayout = OrientationControlsLayout.defaultPortrait(true),
+    val landscapeControls: OrientationControlsLayout = OrientationControlsLayout.defaultLandscape(),
+    // Legacy v1 fields preserved for seamless JSON deserialization
+    val dpadPos: CustomControlPos = CustomControlPos(0.10f, 0.63f, 1.0f),
+    val abPos: CustomControlPos = CustomControlPos(0.90f, 0.63f, 1.0f),
+    val btnAPos: CustomControlPos = CustomControlPos(0.94f, 0.57f, 1.0f),
+    val btnBPos: CustomControlPos = CustomControlPos(0.85f, 0.69f, 1.0f),
+    val startSelectPos: CustomControlPos = CustomControlPos(0.50f, 0.92f, 1.0f),
+    val lPos: CustomControlPos = CustomControlPos(0.09f, 0.13f, 1.0f),
+    val rPos: CustomControlPos = CustomControlPos(0.91f, 0.13f, 1.0f),
     val quickStripPos: CustomControlPos = CustomControlPos(0.50f, 0.08f, 1.0f),
 )
 
@@ -133,6 +199,11 @@ data class RomEntry(
         NativeCore.PLATFORM_GBA -> "GBA"
         NativeCore.PLATFORM_SGB -> "SGB"
         else -> "GB"
+    }
+
+    val fileExtension: String get() {
+        val ext = fileName.substringAfterLast('.', "").trim()
+        return if (ext.isNotBlank() && ext.length <= 8) ".${ext.uppercase()}" else "-"
     }
 
     val displayTitle: String get() {
@@ -185,7 +256,7 @@ data class GbcaCoreConfig(
     val solarLux: Int = 5,
     val showBootSplash: Boolean = false,
 
-    // v1.2.0: Separate Cover & Badge toggles (ALL OFF by default, identical to STORM DS!)
+    // Separate Cover & Badge toggles (ALL OFF by default, identical to STORM DS!)
     val showLibretroCovers: Boolean = false,
     val showRaCovers: Boolean = false,
     val showPlatformBadge: Boolean = false,
@@ -194,7 +265,7 @@ data class GbcaCoreConfig(
     val showRaBadge: Boolean = false,
     val romDisplayNameMode: Int = 0, // 0=File name, 1=Internal ROM header
 
-    // v1.2.0: Graphics, Vulkan, Upscaling & Device Optimization (Old + New devices)
+    // Graphics, Vulkan, Upscaling & Device Optimization (Old + New devices)
     val graphicsBackend: Int = 0, // 0=OpenGL ES 3.2, 1=Vulkan 1.1
     val customVulkanDriverPath: String = "",
     val resolutionScale: Int = 1, // 1..4x internal upscaling
@@ -203,12 +274,12 @@ data class GbcaCoreConfig(
     val frameSkip: Int = 0, // 0..4
     val optimizationProfile: Int = -1, // -1=Auto-detect hardware, 0=Lite, 1=Balanced, 2=Performance, 3=High Accuracy
 
-    // v1.2.0: App language, Pause Menu, Auto-Update
+    // App language, Pause Menu, Auto-Update
     val appLanguage: String = "system",
     val extendedPauseMenu: Boolean = false,
     val autoCheckUpdates: Boolean = true,
 
-    // v1.2.0: Multiplayer defaults
+    // Multiplayer defaults
     val mpRoomName: String = "STORM GBCA Room",
     val mpPort: Int = 54320,
     val mpLastHostIp: String = "192.168.1.2",

@@ -10,13 +10,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +43,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -91,6 +89,12 @@ data class ResolvedControlRects(
     val shoulderRCenter: Offset,
     val shoulderW: Float,
     val shoulderH: Float,
+    val menuCenter: Offset,
+    val rewindCenter: Offset,
+    val fastForwardCenter: Offset,
+    val quickSaveCenter: Offset,
+    val quickLoadCenter: Offset,
+    val quickBtnRadius: Float,
 )
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -108,7 +112,6 @@ fun VirtualGamepadOverlay(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current
     val style = remember(profile.buttonStyle) { ButtonThemeManager.resolve(profile.buttonStyle) }
     val alpha = (profile.opacityPercent.coerceIn(20, 100) / 100f)
     val baseScale = (profile.scalePercent.coerceIn(70, 140) / 100f)
@@ -122,57 +125,66 @@ fun VirtualGamepadOverlay(
         val w = constraints.maxWidth.toFloat().coerceAtLeast(1f)
         val h = constraints.maxHeight.toFloat().coerceAtLeast(1f)
         val isLandscape = w > h
+        val activeControls = if (isLandscape) profile.landscapeControls else profile.portraitControls
 
-        val rects = remember(w, h, isLandscape, preset, profile, baseScale) {
+        val rects = remember(w, h, isLandscape, preset, profile, baseScale, activeControls) {
             val minDim = minOf(w, h)
-            val dpadR = (minDim * 0.160f * baseScale).coerceIn(88f, 185f)
-            val abR = (minDim * 0.082f * baseScale).coerceIn(48f, 98f)
-            val pillW = (minDim * 0.12f * baseScale).coerceIn(76f, 140f)
+            val dpadR = (minDim * 0.155f * baseScale).coerceIn(84f, 180f)
+            val abR = (minDim * 0.080f * baseScale).coerceIn(46f, 95f)
+            val pillW = (minDim * 0.125f * baseScale).coerceIn(76f, 142f)
             val pillH = pillW * 0.36f
-            val shW = (minDim * 0.18f * baseScale).coerceIn(110f, 210f)
-            val shH = shW * 0.40f
+            val shW = (minDim * 0.175f * baseScale).coerceIn(106f, 200f)
+            val shH = shW * 0.39f
+            val qBtnR = (minDim * 0.048f * baseScale).coerceIn(34f, 60f)
 
             val dpadC: Offset
             val abBase: Offset
-            val ssCenter: Offset
+            val selectC: Offset
+            val startC: Offset
             val lC: Offset
             val rC: Offset
 
             when (preset) {
                 OverlayLayoutPreset.CUSTOM -> {
-                    dpadC = Offset(w * profile.dpadPos.xFraction, h * profile.dpadPos.yFraction)
-                    abBase = Offset(w * profile.abPos.xFraction, h * profile.abPos.yFraction)
-                    ssCenter = Offset(w * profile.startSelectPos.xFraction, h * profile.startSelectPos.yFraction)
-                    lC = Offset(w * profile.lPos.xFraction, h * profile.lPos.yFraction)
-                    rC = Offset(w * profile.rPos.xFraction, h * profile.rPos.yFraction)
+                    dpadC = Offset(w * activeControls.dpadPos.xFraction, h * activeControls.dpadPos.yFraction)
+                    abBase = Offset(w * activeControls.abPos.xFraction, h * activeControls.abPos.yFraction)
+                    selectC = Offset(w * activeControls.selectPos.xFraction, h * activeControls.selectPos.yFraction)
+                    startC = Offset(w * activeControls.startPos.xFraction, h * activeControls.startPos.yFraction)
+                    lC = Offset(w * activeControls.lPos.xFraction, h * activeControls.lPos.yFraction)
+                    rC = Offset(w * activeControls.rPos.xFraction, h * activeControls.rPos.yFraction)
                 }
                 OverlayLayoutPreset.WIDE_GRIP -> {
-                    dpadC = Offset(w * 0.15f, h * (if (isLandscape) 0.64f else 0.74f))
-                    abBase = Offset(w * 0.84f, h * (if (isLandscape) 0.64f else 0.74f))
-                    ssCenter = Offset(w * 0.50f, h * 0.90f)
-                    lC = Offset(w * 0.12f, h * (if (isLandscape) 0.16f else 0.55f))
-                    rC = Offset(w * 0.88f, h * (if (isLandscape) 0.16f else 0.55f))
+                    dpadC = Offset(w * (if (isLandscape) 0.095f else 0.170f), h * (if (isLandscape) 0.62f else 0.755f))
+                    abBase = Offset(w * (if (isLandscape) 0.905f else 0.830f), h * (if (isLandscape) 0.62f else 0.755f))
+                    selectC = Offset(w * (if (isLandscape) 0.095f else 0.35f), h * (if (isLandscape) 0.905f else 0.925f))
+                    startC = Offset(w * (if (isLandscape) 0.865f else 0.65f), h * (if (isLandscape) 0.905f else 0.925f))
+                    lC = Offset(w * (if (isLandscape) 0.085f else 0.115f), h * (if (isLandscape) 0.13f else 0.520f))
+                    rC = Offset(w * (if (isLandscape) 0.915f else 0.885f), h * (if (isLandscape) 0.13f else 0.520f))
                 }
                 OverlayLayoutPreset.COMPACT_MINIMAL -> {
-                    dpadC = Offset(w * 0.17f, h * 0.78f)
-                    abBase = Offset(w * 0.82f, h * 0.78f)
-                    ssCenter = Offset(w * 0.50f, h * 0.92f)
-                    lC = Offset(w * 0.14f, h * 0.56f)
-                    rC = Offset(w * 0.86f, h * 0.56f)
+                    dpadC = Offset(w * (if (isLandscape) 0.100f else 0.175f), h * (if (isLandscape) 0.70f else 0.780f))
+                    abBase = Offset(w * (if (isLandscape) 0.900f else 0.825f), h * (if (isLandscape) 0.70f else 0.780f))
+                    selectC = Offset(w * (if (isLandscape) 0.100f else 0.36f), h * (if (isLandscape) 0.92f else 0.935f))
+                    startC = Offset(w * (if (isLandscape) 0.865f else 0.64f), h * (if (isLandscape) 0.92f else 0.935f))
+                    lC = Offset(w * (if (isLandscape) 0.088f else 0.120f), h * (if (isLandscape) 0.14f else 0.535f))
+                    rC = Offset(w * (if (isLandscape) 0.912f else 0.880f), h * (if (isLandscape) 0.14f else 0.535f))
                 }
                 OverlayLayoutPreset.FLOATING_GLASS -> {
-                    dpadC = Offset(w * 0.18f, h * (if (isLandscape) 0.66f else 0.73f))
-                    abBase = Offset(w * 0.81f, h * (if (isLandscape) 0.66f else 0.73f))
-                    ssCenter = Offset(w * 0.50f, h * 0.88f)
-                    lC = Offset(w * 0.13f, h * (if (isLandscape) 0.18f else 0.55f))
-                    rC = Offset(w * 0.87f, h * (if (isLandscape) 0.18f else 0.55f))
+                    dpadC = Offset(w * (if (isLandscape) 0.105f else 0.180f), h * (if (isLandscape) 0.64f else 0.750f))
+                    abBase = Offset(w * (if (isLandscape) 0.895f else 0.820f), h * (if (isLandscape) 0.64f else 0.750f))
+                    selectC = Offset(w * (if (isLandscape) 0.105f else 0.36f), h * (if (isLandscape) 0.905f else 0.920f))
+                    startC = Offset(w * (if (isLandscape) 0.865f else 0.64f), h * (if (isLandscape) 0.905f else 0.920f))
+                    lC = Offset(w * (if (isLandscape) 0.090f else 0.120f), h * (if (isLandscape) 0.135f else 0.525f))
+                    rC = Offset(w * (if (isLandscape) 0.910f else 0.880f), h * (if (isLandscape) 0.135f else 0.525f))
                 }
                 OverlayLayoutPreset.CLASSIC_HANDHELD -> {
-                    dpadC = Offset(w * (if (isLandscape) 0.15f else 0.20f), h * (if (isLandscape) 0.66f else 0.74f))
-                    abBase = Offset(w * (if (isLandscape) 0.84f else 0.78f), h * (if (isLandscape) 0.66f else 0.74f))
-                    ssCenter = Offset(w * 0.50f, h * (if (isLandscape) 0.88f else 0.90f))
-                    lC = Offset(w * 0.13f, h * (if (isLandscape) 0.15f else 0.55f))
-                    rC = Offset(w * 0.87f, h * (if (isLandscape) 0.15f else 0.55f))
+                    // Shifted D-Pad slightly left, B/A slightly right, SELECT & START completely off screen!
+                    dpadC = Offset(w * activeControls.dpadPos.xFraction, h * activeControls.dpadPos.yFraction)
+                    abBase = Offset(w * activeControls.abPos.xFraction, h * activeControls.abPos.yFraction)
+                    selectC = Offset(w * activeControls.selectPos.xFraction, h * activeControls.selectPos.yFraction)
+                    startC = Offset(w * activeControls.startPos.xFraction, h * activeControls.startPos.yFraction)
+                    lC = Offset(w * activeControls.lPos.xFraction, h * activeControls.lPos.yFraction)
+                    rC = Offset(w * activeControls.rPos.xFraction, h * activeControls.rPos.yFraction)
                 }
             }
 
@@ -181,15 +193,14 @@ fun VirtualGamepadOverlay(
             val btnB: Offset
             if (profile.separateABButtons) {
                 btnA = Offset(
-                    (w * profile.btnAPos.xFraction).coerceIn(abR + 8f, (w - abR - 8f).coerceAtLeast(abR + 8f)),
-                    (h * profile.btnAPos.yFraction).coerceIn(abR + 8f, (h - abR - 8f).coerceAtLeast(abR + 8f)),
+                    (w * activeControls.btnAPos.xFraction).coerceIn(abR + 8f, (w - abR - 8f).coerceAtLeast(abR + 8f)),
+                    (h * activeControls.btnAPos.yFraction).coerceIn(abR + 8f, (h - abR - 8f).coerceAtLeast(abR + 8f)),
                 )
                 btnB = Offset(
-                    (w * profile.btnBPos.xFraction).coerceIn(abR + 8f, (w - abR - 8f).coerceAtLeast(abR + 8f)),
-                    (h * profile.btnBPos.yFraction).coerceIn(abR + 8f, (h - abR - 8f).coerceAtLeast(abR + 8f)),
+                    (w * activeControls.btnBPos.xFraction).coerceIn(abR + 8f, (w - abR - 8f).coerceAtLeast(abR + 8f)),
+                    (h * activeControls.btnBPos.yFraction).coerceIn(abR + 8f, (h - abR - 8f).coerceAtLeast(abR + 8f)),
                 )
             } else {
-                // Guaranteed zero-overlap geometry: center-to-center distance = 2.65 * abR * (spacing/125) >= 2.24 * abR
                 val spacingFactor = (profile.abSpacingPercent.coerceIn(100, 180) / 100f)
                 val halfDist = abR * 1.12f * spacingFactor
                 val dx = halfDist * 0.86f
@@ -199,28 +210,51 @@ fun VirtualGamepadOverlay(
                 btnB = Offset(clampedBaseX - dx, (abBase.y + dy).coerceIn(abR + 8f, h - abR - 8f))
                 btnA = Offset(clampedBaseX + dx, (abBase.y - dy).coerceIn(abR + 8f, h - abR - 8f))
             }
-            val selectC = Offset(ssCenter.x - pillW * 0.68f, ssCenter.y)
-            val startC = Offset(ssCenter.x + pillW * 0.68f, ssCenter.y)
+
+            fun clampQuick(xf: Float, yf: Float): Offset = Offset(
+                (w * xf).coerceIn(qBtnR + 6f, (w - qBtnR - 6f).coerceAtLeast(qBtnR + 6f)),
+                (h * yf).coerceIn(qBtnR + 6f, (h - qBtnR - 6f).coerceAtLeast(qBtnR + 6f)),
+            )
 
             ResolvedControlRects(
-                dpadCenter = dpadC,
+                dpadCenter = Offset(
+                    dpadC.x.coerceIn(dpadR + 8f, (w - dpadR - 8f).coerceAtLeast(dpadR + 8f)),
+                    dpadC.y.coerceIn(dpadR + 8f, (h - dpadR - 8f).coerceAtLeast(dpadR + 8f)),
+                ),
                 dpadRadius = dpadR,
                 btnACenter = btnA,
                 btnBCenter = btnB,
                 btnRadius = abR,
-                selectCenter = selectC,
-                startCenter = startC,
+                selectCenter = Offset(
+                    selectC.x.coerceIn(pillW * 0.55f + 6f, (w - pillW * 0.55f - 6f).coerceAtLeast(pillW * 0.55f + 6f)),
+                    selectC.y.coerceIn(pillH + 6f, (h - pillH - 6f).coerceAtLeast(pillH + 6f)),
+                ),
+                startCenter = Offset(
+                    startC.x.coerceIn(pillW * 0.55f + 6f, (w - pillW * 0.55f - 6f).coerceAtLeast(pillW * 0.55f + 6f)),
+                    startC.y.coerceIn(pillH + 6f, (h - pillH - 6f).coerceAtLeast(pillH + 6f)),
+                ),
                 pillW = pillW,
                 pillH = pillH,
-                shoulderLCenter = lC,
-                shoulderRCenter = rC,
+                shoulderLCenter = Offset(
+                    lC.x.coerceIn(shW * 0.5f + 8f, (w - shW * 0.5f - 8f).coerceAtLeast(shW * 0.5f + 8f)),
+                    lC.y.coerceIn(shH * 0.5f + 8f, (h - shH * 0.5f - 8f).coerceAtLeast(shH * 0.5f + 8f)),
+                ),
+                shoulderRCenter = Offset(
+                    rC.x.coerceIn(shW * 0.5f + 8f, (w - shW * 0.5f - 8f).coerceAtLeast(shW * 0.5f + 8f)),
+                    rC.y.coerceIn(shH * 0.5f + 8f, (h - shH * 0.5f - 8f).coerceAtLeast(shH * 0.5f + 8f)),
+                ),
                 shoulderW = shW,
                 shoulderH = shH,
+                menuCenter = clampQuick(activeControls.menuBtnPos.xFraction, activeControls.menuBtnPos.yFraction),
+                rewindCenter = clampQuick(activeControls.rewindBtnPos.xFraction, activeControls.rewindBtnPos.yFraction),
+                fastForwardCenter = clampQuick(activeControls.fastForwardBtnPos.xFraction, activeControls.fastForwardBtnPos.yFraction),
+                quickSaveCenter = clampQuick(activeControls.quickSaveBtnPos.xFraction, activeControls.quickSaveBtnPos.yFraction),
+                quickLoadCenter = clampQuick(activeControls.quickLoadBtnPos.xFraction, activeControls.quickLoadBtnPos.yFraction),
+                quickBtnRadius = qBtnR,
             )
         }
 
         fun resolveMaskAt(pt: Offset): Int {
-            // D-Pad with diagonal slide support
             val dx = pt.x - rects.dpadCenter.x
             val dy = pt.y - rects.dpadCenter.y
             val distSq = dx * dx + dy * dy
@@ -344,7 +378,6 @@ fun VirtualGamepadOverlay(
                 )
             }
 
-            // Centered single-glyph A & B buttons
             ConcaveCircleButton(
                 label = "B",
                 center = rects.btnBCenter,
@@ -366,7 +399,6 @@ fun VirtualGamepadOverlay(
                 pressed = (activeTouchMask and NativeCore.KEY_A) != 0,
             )
 
-            // Angled Pill SELECT / START
             PillButton(
                 label = "SELECT",
                 center = rects.selectCenter,
@@ -388,7 +420,6 @@ fun VirtualGamepadOverlay(
                 pressed = (activeTouchMask and NativeCore.KEY_START) != 0,
             )
 
-            // GBA Shoulder L / R Triggers
             if (showShoulders) {
                 ShoulderButton(
                     label = "L",
@@ -415,59 +446,130 @@ fun VirtualGamepadOverlay(
             }
         }
 
-        // Quick Action Strip (Fast Forward, Rewind, Quick Save, Quick Load, Menu)
-        if (profile.showQuickStrip) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 12.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xB3090C14))
-                    .border(1.dp, style.glow.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-            ) {
-                QuickStripChip(Icons.Filled.History, false, Color(0xFF94A3B8), onRewindTap)
-                QuickStripChip(Icons.Filled.FastForward, fastForwardActive, style.glow, onToggleFastForward)
-                QuickStripChip(Icons.Filled.Save, false, Color(0xFF38BDF8), onQuickSave)
-                QuickStripChip(Icons.Filled.Upload, false, Color(0xFFA855F7), onQuickLoad)
-                QuickStripChip(Icons.Filled.Menu, false, Color.White, onOpenMenu)
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(Color(0x99090C14))
-                    .border(1.dp, style.glow.copy(alpha = 0.55f), CircleShape)
-                    .clickable(onClick = onOpenMenu),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Menu, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-            }
+        // 5 SEPARATE INDEPENDENTLY POSITIONABLE QUICK ACTION BUTTONS (STORM DS Parity!)
+        val showAnyQuick = profile.showQuickStrip
+        if (showAnyQuick && profile.showRewindBtn) {
+            FloatingQuickActionButton(
+                icon = Icons.Filled.History,
+                center = rects.rewindCenter,
+                radiusPx = rects.quickBtnRadius,
+                accent = Color(0xFF94A3B8),
+                borderGlow = style.glow,
+                active = false,
+                alpha = alpha,
+                onClick = {
+                    triggerHapticTick(context, profile.hapticsEnabled)
+                    onRewindTap()
+                },
+            )
+        }
+        if (showAnyQuick && profile.showFastForwardBtn) {
+            FloatingQuickActionButton(
+                icon = Icons.Filled.FastForward,
+                center = rects.fastForwardCenter,
+                radiusPx = rects.quickBtnRadius,
+                accent = style.glow,
+                borderGlow = style.glow,
+                active = fastForwardActive,
+                alpha = alpha,
+                onClick = {
+                    triggerHapticTick(context, profile.hapticsEnabled)
+                    onToggleFastForward()
+                },
+            )
+        }
+        if (showAnyQuick && profile.showQuickSaveBtn) {
+            FloatingQuickActionButton(
+                icon = Icons.Filled.Save,
+                center = rects.quickSaveCenter,
+                radiusPx = rects.quickBtnRadius,
+                accent = Color(0xFF38BDF8),
+                borderGlow = style.glow,
+                active = false,
+                alpha = alpha,
+                onClick = {
+                    triggerHapticTick(context, profile.hapticsEnabled)
+                    onQuickSave()
+                },
+            )
+        }
+        if (showAnyQuick && profile.showQuickLoadBtn) {
+            FloatingQuickActionButton(
+                icon = Icons.Filled.Upload,
+                center = rects.quickLoadCenter,
+                radiusPx = rects.quickBtnRadius,
+                accent = Color(0xFFA855F7),
+                borderGlow = style.glow,
+                active = false,
+                alpha = alpha,
+                onClick = {
+                    triggerHapticTick(context, profile.hapticsEnabled)
+                    onQuickLoad()
+                },
+            )
+        }
+        if (profile.showMenuBtn || !showAnyQuick) {
+            FloatingQuickActionButton(
+                icon = Icons.Filled.Menu,
+                center = rects.menuCenter,
+                radiusPx = rects.quickBtnRadius,
+                accent = Color.White,
+                borderGlow = style.glow,
+                active = false,
+                alpha = alpha.coerceAtLeast(0.55f),
+                onClick = {
+                    triggerHapticTick(context, profile.hapticsEnabled)
+                    onOpenMenu()
+                },
+            )
         }
     }
 }
 
 @Composable
-private fun QuickStripChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun FloatingQuickActionButton(
+    icon: ImageVector,
+    center: Offset,
+    radiusPx: Float,
+    accent: Color,
+    borderGlow: Color,
     active: Boolean,
-    tint: Color,
+    alpha: Float,
     onClick: () -> Unit,
 ) {
+    val density = LocalDensity.current
+    val diameterDp = with(density) { (radiusPx * 2f).toDp() }
+    val iconDp = with(density) { (radiusPx * 1.05f).toDp() }
     Box(
         modifier = Modifier
-            .size(32.dp)
+            .offset { IntOffset((center.x - radiusPx).roundToInt(), (center.y - radiusPx).roundToInt()) }
+            .size(diameterDp)
+            .alpha(if (active) 1f else alpha.coerceIn(0.45f, 0.96f))
+            .shadow(if (active) 10.dp else 4.dp, CircleShape, spotColor = if (active) accent else borderGlow)
             .clip(CircleShape)
-            .background(if (active) tint.copy(alpha = 0.25f) else Color.Transparent)
+            .background(
+                Brush.verticalGradient(
+                    if (active) {
+                        listOf(accent.copy(alpha = 0.42f), Color(0xDD0A0E1A))
+                    } else {
+                        listOf(Color(0xCC161C2E), Color(0xCC090C14))
+                    }
+                )
+            )
+            .border(
+                width = if (active) 1.8.dp else 1.1.dp,
+                color = if (active) accent else borderGlow.copy(alpha = 0.55f),
+                shape = CircleShape,
+            )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = if (active) tint else Color(0xFFE2E8F0), modifier = Modifier.size(17.dp))
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (active) accent else Color.White,
+            modifier = Modifier.size(iconDp),
+        )
     }
 }
 
@@ -528,7 +630,7 @@ private fun PillButton(
         modifier = Modifier
             .offset { IntOffset((center.x - widthPx / 2f).roundToInt(), (center.y - heightPx / 2f).roundToInt()) }
             .size(wDp, hDp)
-            .rotate(-14f)
+            .rotate(-10f)
             .clip(RoundedCornerShape(50))
             .background(if (pressed) borderColor.copy(alpha = 0.65f) else bgColor)
             .border(1.2.dp, borderColor.copy(alpha = 0.85f), RoundedCornerShape(50)),

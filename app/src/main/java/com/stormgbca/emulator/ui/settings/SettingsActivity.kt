@@ -112,6 +112,7 @@ private enum class SettingsPage {
     VIDEO,
     AUDIO,
     CONTROLS,
+    GAMEPAD,
     MULTIPLAYER,
     RETROACHIEVEMENTS,
     LIBRARY,
@@ -226,6 +227,7 @@ class SettingsActivity : AppCompatActivity() {
                         startActivity(intent)
                     },
                     onStartBindKey = { action -> awaitingActionState.value = action },
+                    onCancelBindKey = { awaitingActionState.value = null },
                     onExportBackup = { backupExportPicker.launch("storm_gbca_backup.json") },
                     onAddRomFolder = { romFolderPicker.launch(null) },
                 )
@@ -249,9 +251,14 @@ class SettingsActivity : AppCompatActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         val action = awaitingActionState.value
         if (action != null) {
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                awaitingActionState.value = null
+                return true
+            }
             GbcaPrefs.setKeyCodeForAction(action, keyCode)
             awaitingActionState.value = null
-            Toast.makeText(this, "${action.name}: ${KeyEvent.keyCodeToString(keyCode)}", Toast.LENGTH_SHORT).show()
+            val cleanKey = KeyEvent.keyCodeToString(keyCode).replace("KEYCODE_", "").replace("BUTTON_", "").replace("_", " ")
+            Toast.makeText(this, "${action.name}: $cleanKey", Toast.LENGTH_SHORT).show()
             return true
         }
         return super.onKeyDown(keyCode, event)
@@ -268,6 +275,7 @@ private fun SettingsScreen(
     onImportShader: (ConsoleSystem) -> Unit,
     onOpenLayoutEditor: (ConsoleSystem) -> Unit,
     onStartBindKey: (PhysicalAction) -> Unit,
+    onCancelBindKey: () -> Unit,
     onExportBackup: () -> Unit,
     onAddRomFolder: () -> Unit,
 ) {
@@ -280,7 +288,6 @@ private fun SettingsScreen(
     var skinDialogSystem by remember { mutableStateOf<ConsoleSystem?>(null) }
     var overlayDialogSystem by remember { mutableStateOf<ConsoleSystem?>(null) }
     var shaderTabSystem by remember { mutableStateOf(ConsoleSystem.GBA) }
-    var showInputDialog by remember { mutableStateOf(false) }
     var foundUpdate by remember { mutableStateOf<UpdateReleaseInfo?>(null) }
     var downloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
@@ -291,7 +298,15 @@ private fun SettingsScreen(
     val shaderPresets = remember(shaderTick) { ShaderRepository.listPresets(context) }
 
     val handleBack: () -> Unit = {
-        if (currentPage == SettingsPage.HOME) onCloseActivity() else currentPage = SettingsPage.HOME
+        if (awaitingAction != null) {
+            onCancelBindKey()
+        } else if (currentPage == SettingsPage.GAMEPAD) {
+            currentPage = SettingsPage.CONTROLS
+        } else if (currentPage == SettingsPage.HOME) {
+            onCloseActivity()
+        } else {
+            currentPage = SettingsPage.HOME
+        }
     }
 
     BackHandler(onBack = handleBack)
@@ -302,6 +317,7 @@ private fun SettingsScreen(
         SettingsPage.VIDEO -> stringResource(R.string.set_video_title)
         SettingsPage.AUDIO -> stringResource(R.string.set_audio_title)
         SettingsPage.CONTROLS -> stringResource(R.string.set_controls_title)
+        SettingsPage.GAMEPAD -> stringResource(R.string.ctrl_gamepad)
         SettingsPage.MULTIPLAYER -> stringResource(R.string.set_multiplayer_title)
         SettingsPage.RETROACHIEVEMENTS -> stringResource(R.string.set_ra_title)
         SettingsPage.LIBRARY -> stringResource(R.string.set_library_title)
@@ -750,8 +766,16 @@ private fun SettingsScreen(
                             icon = Icons.Filled.Gamepad,
                             title = stringResource(R.string.ctrl_gamepad),
                             subtitle = stringResource(R.string.ctrl_gamepad_sub),
-                        ) { showInputDialog = true }
+                        ) { currentPage = SettingsPage.GAMEPAD }
                     }
+                }
+
+                SettingsPage.GAMEPAD -> {
+                    PhysicalInputSetupContent(
+                        awaitingAction = awaitingAction,
+                        onStartBind = onStartBindKey,
+                        onCancelBind = onCancelBindKey,
+                    )
                 }
 
                 SettingsPage.MULTIPLAYER -> {
@@ -991,14 +1015,6 @@ private fun SettingsScreen(
         OverlayPickerDialog(initialSystem = sys, onDismiss = { overlayDialogSystem = null })
     }
 
-    if (showInputDialog) {
-        PhysicalInputSetupDialog(
-            awaitingAction = awaitingAction,
-            onStartBind = onStartBindKey,
-            onDismiss = { showInputDialog = false },
-        )
-    }
-
     foundUpdate?.let { rel ->
         StormUpdateDialog(
             release = rel,
@@ -1152,77 +1168,5 @@ private fun BiosChip(label: String, loaded: Boolean, modifier: Modifier = Modifi
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
         )
-    }
-}
-
-@Composable
-private fun PhysicalInputSetupDialog(
-    awaitingAction: PhysicalAction?,
-    onStartBind: (PhysicalAction) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = watermelon
-    var refreshTick by remember { mutableIntStateOf(0) }
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = colors.surface,
-            modifier = Modifier.fillMaxWidth().border(1.dp, colors.line, RoundedCornerShape(18.dp)),
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.ctrl_gamepad), color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(20.dp).clickable(onClick = onDismiss))
-                }
-                Spacer(Modifier.height(10.dp))
-                Column(
-                    modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    PhysicalAction.entries.forEach { action ->
-                        val waiting = awaitingAction == action
-                        val code = remember(refreshTick, awaitingAction) { GbcaPrefs.getKeyCodeForAction(action) }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (waiting) colors.greenDim else colors.surface2)
-                                .border(1.dp, if (waiting) colors.green else colors.line, RoundedCornerShape(10.dp))
-                                .clickable { onStartBind(action) }
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                        ) {
-                            Text(action.name, color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                            Text(
-                                text = if (waiting) "..." else KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_"),
-                                color = if (waiting) colors.green else colors.text2,
-                                fontFamily = WatermelonMono,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.red.copy(alpha = 0.16f))
-                        .clickable {
-                            GbcaPrefs.resetKeyMappings()
-                            refreshTick++
-                        }
-                        .padding(vertical = 9.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(stringResource(R.string.reset), color = colors.red, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
-                }
-                Spacer(Modifier.height(10.dp))
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    UnifiedBackButton(onClick = onDismiss)
-                }
-            }
-        }
     }
 }

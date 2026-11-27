@@ -383,7 +383,7 @@ public class GbcaSkinAndOverlayViews : Grid
 
         // RetroArch .slangp shader presets installed in shaders/
         var shaderFiles = DiscoverRetroArchShaders();
-        var shaderLabels = new List<string> { "Отключен (Встроенный шейдер)" };
+        var shaderLabels = new List<string> { "Отключен (Встроенный)" };
         shaderLabels.AddRange(shaderFiles.Select(Path.GetFileNameWithoutExtension)!);
         int shaderIdx = 0;
         if (!string.IsNullOrWhiteSpace(prof.RetroArchShaderPath))

@@ -191,8 +191,11 @@ private fun watermelonMaterialColors(colors: WatermelonColors): Colors {
 }
 
 @Composable
-fun StormWatermelonTheme(content: @Composable () -> Unit) {
-    val theme = AppThemeManager.themeState.value
+fun StormWatermelonTheme(
+    themeOverride: Theme? = null,
+    content: @Composable () -> Unit,
+) {
+    val theme = themeOverride ?: AppThemeManager.themeState.value
     val accentKey = AppThemeManager.accentColorState.value
     val watermelonColors = getCustomizedAccentColors(baseWatermelonColorsFor(theme), accentKey)
 

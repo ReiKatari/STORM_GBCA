@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -450,24 +453,47 @@ fun RomBrowserScreen(
     infoRom?.let { rom ->
         Dialog(onDismissRequest = { infoRom = null }) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 color = colors.surface,
-                modifier = Modifier.fillMaxWidth().border(1.dp, colors.line, RoundedCornerShape(16.dp)),
+                modifier = Modifier.fillMaxWidth().border(1.dp, colors.line, RoundedCornerShape(18.dp)),
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.info_title), color = colors.text, fontFamily = SpaceGrotesk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Icon(Icons.Filled.Close, contentDescription = null, tint = colors.text, modifier = Modifier.size(20.dp).clickable { infoRom = null })
+                        Text(
+                            text = stringResource(R.string.info_title),
+                            color = colors.text,
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = null,
+                            tint = colors.text,
+                            modifier = Modifier.size(20.dp).clickable { infoRom = null },
+                        )
                     }
-                    InfoRow(stringResource(R.string.info_name), rom.displayTitle)
-                    InfoRow(stringResource(R.string.info_rom_header), rom.internalTitle)
-                    InfoRow(stringResource(R.string.info_platform), rom.platformLabel)
-                    InfoRow(stringResource(R.string.info_code), rom.gameCode.ifBlank { "-" })
-                    InfoRow(stringResource(R.string.info_region), rom.region)
-                    InfoRow(stringResource(R.string.info_size), "${rom.romSize / 1024} KB")
-                    InfoRow("CRC32", rom.crc32.toString(16).uppercase())
-                    InfoRow("MD5", rom.md5)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(10.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        InfoBlockRow(stringResource(R.string.info_name), rom.displayTitle)
+                        InfoBlockRow(stringResource(R.string.info_filename), rom.fileName)
+                        InfoRow(stringResource(R.string.info_extension), rom.fileExtension)
+                        InfoRow(stringResource(R.string.info_rom_header), rom.internalTitle.ifBlank { "-" })
+                        InfoRow(stringResource(R.string.info_platform), rom.platformLabel)
+                        InfoRow(stringResource(R.string.info_code), rom.gameCode.ifBlank { "-" })
+                        InfoRow(stringResource(R.string.info_region), rom.region)
+                        InfoRow(stringResource(R.string.info_size), "${rom.romSize / 1024} KB")
+                        InfoRow("CRC32", rom.crc32.toString(16).uppercase().padStart(8, '0'))
+                        InfoBlockRow("MD5", rom.md5.ifBlank { "-" })
+                    }
+                    Spacer(Modifier.height(12.dp))
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         UnifiedBackButton(onClick = { infoRom = null })
                     }
@@ -497,11 +523,59 @@ private fun HeaderActionPill(icon: ImageVector, label: String, onClick: () -> Un
 }
 
 @Composable
+private fun InfoBlockRow(label: String, value: String) {
+    val colors = watermelon
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.surface2)
+            .border(1.dp, colors.line, RoundedCornerShape(10.dp))
+            .padding(horizontal = 11.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(
+            text = label,
+            color = colors.text2,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = value,
+            color = colors.text,
+            fontFamily = WatermelonMono,
+            fontSize = 11.5.sp,
+            lineHeight = 16.sp,
+            softWrap = true,
+        )
+    }
+}
+
+@Composable
 private fun InfoRow(label: String, value: String) {
     val colors = watermelon
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = colors.text2, fontSize = 12.sp)
-        Text(value, color = colors.text, fontFamily = WatermelonMono, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = label,
+            color = colors.text2,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(end = 12.dp),
+        )
+        Text(
+            text = value,
+            color = colors.text,
+            fontFamily = WatermelonMono,
+            fontSize = 11.5.sp,
+            lineHeight = 16.sp,
+            textAlign = TextAlign.End,
+            softWrap = true,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

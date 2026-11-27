@@ -65,6 +65,7 @@ import com.stormgbca.emulator.ui.ra.RetroAchievementsAccountDialog
 import com.stormgbca.emulator.ui.settings.SettingsActivity
 import com.stormgbca.emulator.ui.theme.AppThemeManager
 import com.stormgbca.emulator.ui.theme.StormWatermelonTheme
+import com.stormgbca.emulator.ui.theme.Theme
 import com.stormgbca.emulator.ui.theme.WatermelonMono
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -191,7 +192,15 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         vkView = vkSurface
 
         setContent {
-            StormWatermelonTheme {
+            val initOverlayForTheme = when (activeSystem) {
+                ConsoleSystem.GB -> GbcaPrefs.gbOverlayState.value
+                ConsoleSystem.GBC -> GbcaPrefs.gbcOverlayState.value
+                ConsoleSystem.GBA -> GbcaPrefs.gbaOverlayState.value
+            }
+            val systemThemeOverride = remember(initOverlayForTheme.uiThemeKey) {
+                initOverlayForTheme.uiThemeKey.takeIf { it.isNotBlank() }?.let { Theme.fromPreference(it) }
+            }
+            StormWatermelonTheme(themeOverride = systemThemeOverride) {
                 val skinKey = when (activeSystem) {
                     ConsoleSystem.GB -> GbcaPrefs.gbSkinState.value
                     ConsoleSystem.GBC -> GbcaPrefs.gbcSkinState.value
@@ -303,30 +312,6 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                         onRewindTap = { performRewindStep() },
                         onOpenMenu = { togglePauseMenu() },
                     )
-
-                    // Subtle live HUD pill (Core + Platform + Backend + Scale + Link)
-                    if (!showPauseMenuState.value) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 8.dp, end = 10.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xB3060912))
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
-                        ) {
-                            val ffTag = if (fastForward.get()) " | FF" else ""
-                            val scaleTag = if (coreCfg.resolutionScale > 1) " | ${coreCfg.resolutionScale}x" else ""
-                            val linkTag = if (linkStatusState.value.mode != NativeCore.LINK_NONE && linkStatusState.value.connected) {
-                                " | LINK ${linkStatusState.value.playerCount}P"
-                            } else ""
-                            Text(
-                                text = "${activeCoreLabelState.value} | ${activeSystem.label} | ${activeBackendLabelState.value}$scaleTag$ffTag$linkTag",
-                                color = Color.White,
-                                fontFamily = WatermelonMono,
-                                fontSize = 10.sp,
-                            )
-                        }
-                    }
 
                     statusToastState.value?.let { msg ->
                         Box(
@@ -1105,11 +1090,15 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_UNKNOWN) return super.onKeyDown(keyCode, event)
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_BUTTON_MODE) {
             togglePauseMenu()
             return true
         }
-        val matched = PhysicalAction.entries.firstOrNull { GbcaPrefs.getKeyCodeForAction(it) == keyCode }
+        val matched = PhysicalAction.entries.firstOrNull {
+            val mapped = GbcaPrefs.getKeyCodeForAction(it)
+            mapped != 0 && mapped == keyCode
+        }
         if (matched != null) {
             if (matched.coreKeyMask != 0) {
                 physicalKeyMask.updateAndGet { it or matched.coreKeyMask }
@@ -1123,7 +1112,11 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        val matched = PhysicalAction.entries.firstOrNull { GbcaPrefs.getKeyCodeForAction(it) == keyCode }
+        if (keyCode == KeyEvent.KEYCODE_UNKNOWN) return super.onKeyUp(keyCode, event)
+        val matched = PhysicalAction.entries.firstOrNull {
+            val mapped = GbcaPrefs.getKeyCodeForAction(it)
+            mapped != 0 && mapped == keyCode
+        }
         if (matched != null) {
             if (matched.coreKeyMask != 0) {
                 physicalKeyMask.updateAndGet { it and matched.coreKeyMask.inv() }

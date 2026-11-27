@@ -85,7 +85,7 @@ public class RomInspectorPane : Border
             FontWeight = FontWeight.Bold,
             TextAlignment = TextAlignment.Center,
             TextWrapping = TextWrapping.Wrap,
-            MaxLines = 2
+            MaxLines = 4
         };
         stack.Children.Add(_titleText);
 
@@ -233,7 +233,7 @@ public class RomInspectorPane : Border
 
         if (rom == null)
         {
-            _titleText.Text = "STORM GBCA 1.3.0";
+            _titleText.Text = "STORM GBCA 1.4.0";
             _metaText.Text = "Выберите игру в списке";
             _coverImage.Source = null;
             return;
@@ -244,7 +244,8 @@ public class RomInspectorPane : Border
         BentoRomCard.AddHardwareBadges(_badgesRow, rom.HardwareFlags);
 
         _titleText.Text = rom.GetDisplayTitle();
-        _metaText.Text = $"{BentoRomCard.FormatRomSize(rom.RomSize)} | CRC32: {rom.Crc32Hex}";
+        string ext = Path.GetExtension(rom.FileName).ToUpperInvariant(); if (string.IsNullOrWhiteSpace(ext)) ext = "-";
+        _metaText.Text = $"{ext} | {BentoRomCard.FormatRomSize(rom.RomSize)} | CRC32: {rom.Crc32Hex}";
         _coverImage.Source = BitmapHelper.LoadBitmapCached(rom.CoverLocalPath);
     }
 

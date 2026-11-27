@@ -59,6 +59,7 @@ import com.stormgbca.emulator.model.OverlayLayoutPreset
 import com.stormgbca.emulator.ui.common.UnifiedBackButton
 import com.stormgbca.emulator.ui.common.WatermelonSwitch
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
+import com.stormgbca.emulator.ui.theme.Theme
 import com.stormgbca.emulator.ui.theme.WatermelonMono
 import com.stormgbca.emulator.ui.theme.watermelon
 import kotlinx.coroutines.launch
@@ -494,6 +495,64 @@ fun OverlayPickerDialog(
                             checked = profile.showQuickStrip,
                             onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(showQuickStrip = c) } },
                         )
+                    }
+
+                    if (profile.showQuickStrip) {
+                        Text(stringResource(R.string.quick_buttons_section), color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.qbtn_menu), color = colors.text, fontSize = 12.5.sp, modifier = Modifier.weight(1f))
+                                WatermelonSwitch(checked = profile.showMenuBtn, onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(showMenuBtn = c) } })
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.qbtn_rewind), color = colors.text, fontSize = 12.5.sp, modifier = Modifier.weight(1f))
+                                WatermelonSwitch(checked = profile.showRewindBtn, onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(showRewindBtn = c) } })
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.qbtn_ff), color = colors.text, fontSize = 12.5.sp, modifier = Modifier.weight(1f))
+                                WatermelonSwitch(checked = profile.showFastForwardBtn, onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(showFastForwardBtn = c) } })
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.qbtn_qsave), color = colors.text, fontSize = 12.5.sp, modifier = Modifier.weight(1f))
+                                WatermelonSwitch(checked = profile.showQuickSaveBtn, onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(showQuickSaveBtn = c) } })
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.qbtn_qload), color = colors.text, fontSize = 12.5.sp, modifier = Modifier.weight(1f))
+                                WatermelonSwitch(checked = profile.showQuickLoadBtn, onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(showQuickLoadBtn = c) } })
+                            }
+                        }
+                    }
+
+                    // Per-System UI Theme selector (GB / GBC / GBA each have their own optional theme!)
+                    Text(stringResource(R.string.overlay_system_theme_fmt, activeTab.label), color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    val themeChoices = listOf("" to stringResource(R.string.theme_follow_app)) + Theme.entries.map { it.preferenceValue to it.displayName }
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        themeChoices.chunked(2).forEach { pair ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                pair.forEach { (key, label) ->
+                                    val selected = profile.uiThemeKey == key
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (selected) colors.green else colors.surface2)
+                                            .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(10.dp))
+                                            .clickable { GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(uiThemeKey = key) } }
+                                            .padding(vertical = 8.dp, horizontal = 6.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            color = if (selected) Color(0xFF05060A) else colors.text,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                }
+                                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
 

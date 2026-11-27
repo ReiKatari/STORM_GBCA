@@ -94,7 +94,7 @@ data class RaGameSession(
 
 object RetroAchievementsClient {
     private const val CONNECT_URL = "https://retroachievements.org/dorequest.php"
-    private const val UA = "STORM-GBCA/1.3.0"
+    private const val UA = "STORM-GBCA/1.4.0"
 
     private val gameIdCache = ConcurrentHashMap<String, Int>()
     private val boxArtCache = ConcurrentHashMap<String, String>()

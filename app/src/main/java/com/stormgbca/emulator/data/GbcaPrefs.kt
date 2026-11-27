@@ -12,6 +12,7 @@ import androidx.preference.PreferenceManager
 import com.stormgbca.emulator.model.CheatItem
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.GbcaCoreConfig
+import com.stormgbca.emulator.model.OrientationControlsLayout
 import com.stormgbca.emulator.model.PhysicalAction
 import com.stormgbca.emulator.model.RomEntry
 import com.stormgbca.emulator.model.RomFilter
@@ -26,9 +27,9 @@ object GbcaPrefs {
     private lateinit var prefs: SharedPreferences
 
     val coreConfigState = mutableStateOf(GbcaCoreConfig())
-    val gbSkinState = mutableStateOf("gb_storm_aurora")
-    val gbcSkinState = mutableStateOf("gbc_storm_aurora")
-    val gbaSkinState = mutableStateOf("gba_storm_aurora")
+    val gbSkinState = mutableStateOf("dmg_classic")
+    val gbcSkinState = mutableStateOf("gbc_atomic_purple")
+    val gbaSkinState = mutableStateOf("gba_indigo")
     val gbSkinDimmingState = mutableIntStateOf(100)
     val gbcSkinDimmingState = mutableIntStateOf(100)
     val gbaSkinDimmingState = mutableIntStateOf(100)
@@ -46,19 +47,28 @@ object GbcaPrefs {
 
     fun defaultOverlayFor(system: ConsoleSystem): SystemOverlayProfile = when (system) {
         ConsoleSystem.GB -> SystemOverlayProfile(
+            layoutVersion = 2,
             buttonStyle = "dmg_magenta",
             shaderOverlay = NativeCore.FILTER_LCD_GRID,
             showShoulders = false,
+            portraitControls = OrientationControlsLayout.defaultPortrait(hasShoulders = false),
+            landscapeControls = OrientationControlsLayout.defaultLandscape(),
         )
         ConsoleSystem.GBC -> SystemOverlayProfile(
+            layoutVersion = 2,
             buttonStyle = "gbc_atomic_purple",
             shaderOverlay = NativeCore.FILTER_RGB_SUBPIXEL,
             showShoulders = false,
+            portraitControls = OrientationControlsLayout.defaultPortrait(hasShoulders = false),
+            landscapeControls = OrientationControlsLayout.defaultLandscape(),
         )
         ConsoleSystem.GBA -> SystemOverlayProfile(
+            layoutVersion = 2,
             buttonStyle = "gba_indigo",
             shaderOverlay = NativeCore.FILTER_RGB_SUBPIXEL,
             showShoulders = true,
+            portraitControls = OrientationControlsLayout.defaultPortrait(hasShoulders = true),
+            landscapeControls = OrientationControlsLayout.defaultLandscape(),
         )
     }
 
@@ -93,9 +103,9 @@ object GbcaPrefs {
         // Apply saved app language immediately
         applyAppLanguage(loaded.appLanguage)
 
-        gbSkinState.value = prefs.getString("gb_console_skin", "gb_storm_aurora") ?: "gb_storm_aurora"
-        gbcSkinState.value = prefs.getString("gbc_console_skin", "gbc_storm_aurora") ?: "gbc_storm_aurora"
-        gbaSkinState.value = prefs.getString("gba_console_skin", "gba_storm_aurora") ?: "gba_storm_aurora"
+        gbSkinState.value = prefs.getString("gb_console_skin", "dmg_classic") ?: "dmg_classic"
+        gbcSkinState.value = prefs.getString("gbc_console_skin", "gbc_atomic_purple") ?: "gbc_atomic_purple"
+        gbaSkinState.value = prefs.getString("gba_console_skin", "gba_indigo") ?: "gba_indigo"
 
         gbSkinDimmingState.intValue = prefs.getInt("gb_skin_dimming", 100).coerceIn(30, 100)
         gbcSkinDimmingState.intValue = prefs.getInt("gbc_skin_dimming", 100).coerceIn(30, 100)
@@ -204,7 +214,20 @@ object GbcaPrefs {
     private fun loadOverlayProfile(system: ConsoleSystem): SystemOverlayProfile {
         val raw = prefs.getString(overlayPrefKey(system), null)
         if (!raw.isNullOrBlank()) {
-            runCatching { return json.decodeFromString<SystemOverlayProfile>(raw) }
+            val decoded = runCatching { json.decodeFromString<SystemOverlayProfile>(raw) }.getOrNull()
+            if (decoded != null) {
+                if (decoded.layoutVersion < 2) {
+                    val hasLR = decoded.showShoulders || system == ConsoleSystem.GBA
+                    val migrated = decoded.copy(
+                        layoutVersion = 2,
+                        portraitControls = OrientationControlsLayout.defaultPortrait(hasShoulders = hasLR),
+                        landscapeControls = OrientationControlsLayout.defaultLandscape(),
+                    )
+                    prefs.edit().putString(overlayPrefKey(system), json.encodeToString(migrated)).apply()
+                    return migrated
+                }
+                return decoded
+            }
         }
         return defaultOverlayFor(system)
     }
@@ -299,6 +322,16 @@ object GbcaPrefs {
 
     fun setKeyCodeForAction(action: PhysicalAction, keyCode: Int) {
         prefs.edit().putInt("key_map_${action.name}", keyCode).apply()
+    }
+
+    fun clearKeyCodeForAction(action: PhysicalAction) {
+        prefs.edit().putInt("key_map_${action.name}", 0).apply()
+    }
+
+    fun clearAllKeyMappings() {
+        val edit = prefs.edit()
+        PhysicalAction.entries.forEach { edit.putInt("key_map_${it.name}", 0) }
+        edit.apply()
     }
 
     fun resetKeyMappings() {

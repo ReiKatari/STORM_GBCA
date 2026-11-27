@@ -77,7 +77,7 @@ public sealed class RetroAchievementsService
     public RetroAchievementsService(HttpClient? httpClient = null)
     {
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM_GBCA/1.3.0");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM_GBCA/1.4.0");
         LoadOfflineQueue();
     }
 
