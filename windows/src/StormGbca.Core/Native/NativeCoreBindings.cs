@@ -543,7 +543,7 @@ public static unsafe class NativeCoreBindings
     public static extern void storm_gbca_set_upscale(nint ctx, int scale_1_to_4, int upscale_mode);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern void storm_gbca_get_upscaled_size(nint ctx, int* out_w, int* out_h);
+    public static extern int storm_gbca_get_upscaled_size(nint ctx, int* out_w, int* out_h);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern int storm_gbca_copy_upscaled_frame(nint ctx, uint* dst, int dst_stride_px, int pixel_format, int* out_w, int* out_h);

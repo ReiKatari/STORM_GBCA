@@ -25,8 +25,11 @@ public class CoverViewerModal : AuroraGlassCard
 
     public CoverViewerModal(GbcaRomRecord rom)
     {
-        Width = 680;
-        Height = 620;
+        MaxWidth = 680;
+        MaxHeight = 620;
+        Margin = new Thickness(24, 18);
+        HorizontalAlignment = HorizontalAlignment.Stretch;
+        VerticalAlignment = VerticalAlignment.Center;
         Padding = new Thickness(20);
         SpotlightEnabled = true;
 
@@ -34,19 +37,31 @@ public class CoverViewerModal : AuroraGlassCard
 
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 0, 0, 12) };
         var titleStack = new StackPanel { Spacing = 4 };
-        titleStack.Children.Add(new TextBlock
+        var titleText = new TextBlock
         {
             Text = rom.GetDisplayTitle(),
             FontSize = 16,
             FontWeight = FontWeight.Bold,
             Foreground = StormThemeBrushes.PrimaryText,
             TextTrimming = TextTrimming.CharacterEllipsis
-        });
+        };
+        titleStack.Children.Add(titleText);
+
+        var settings = StormGbcaUiState.Instance.Settings;
         var badges = new WrapPanel { Orientation = Orientation.Horizontal };
-        badges.Children.Add(BentoRomCard.CreateTagBadge(rom.PlatformShortName, StormGbcaUiState.GetPlatformBadgeColor(rom.Platform), true));
-        badges.Children.Add(BentoRomCard.CreateTagBadge(rom.RegionBadgeCode, Color.Parse("#38BDF8"), false));
-        BentoRomCard.AddHardwareBadges(badges, rom.HardwareFlags);
-        titleStack.Children.Add(badges);
+        if (settings.ShowPlatformBadge)
+        {
+            badges.Children.Add(BentoRomCard.CreateTagBadge(rom.PlatformShortName, StormGbcaUiState.GetPlatformBadgeColor(rom.Platform), true));
+        }
+        if (settings.ShowRegionBadge)
+        {
+            badges.Children.Add(BentoRomCard.CreateTagBadge(rom.RegionBadgeCode, Color.Parse("#38BDF8"), false));
+        }
+        if (settings.ShowHardwareBadges)
+        {
+            BentoRomCard.AddHardwareBadges(badges, rom.HardwareFlags);
+        }
+        if (badges.Children.Count > 0) titleStack.Children.Add(badges);
         header.Children.Add(titleStack);
 
         var closeBtn = new Button
@@ -65,8 +80,9 @@ public class CoverViewerModal : AuroraGlassCard
 
         var imgHost = new Border
         {
+            MinHeight = 200,
             CornerRadius = new CornerRadius(14),
-            Background = new SolidColorBrush(Color.FromArgb(140, 8, 10, 18)),
+            Background = StormThemeBrushes.RowSurface,
             BorderBrush = StormThemeBrushes.StrongBorder,
             BorderThickness = new Thickness(1),
             Padding = new Thickness(16)
@@ -76,13 +92,18 @@ public class CoverViewerModal : AuroraGlassCard
             Stretch = Stretch.Uniform,
             Source = BitmapHelper.LoadBitmapCached(rom.CoverLocalPath)
         };
+        bool allowAutoCover = settings.ShowLibretroCovers || settings.ShowRaCovers;
         var statusLabel = new TextBlock
         {
-            Text = img.Source == null ? "Загрузка обложки из Libretro Thumbnails..." : string.Empty,
+            Text = img.Source == null
+                ? (allowAutoCover ? "Загрузка обложки из Libretro Thumbnails..." : "Автозагрузка обложек отключена. Нажмите «Загрузить обложку».")
+                : string.Empty,
             FontSize = 12,
             Foreground = StormThemeBrushes.SecondaryText,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
             IsVisible = img.Source == null
         };
         var imgContainer = new Grid();
@@ -92,16 +113,23 @@ public class CoverViewerModal : AuroraGlassCard
         grid.Children.Add(imgHost);
         Grid.SetRow(imgHost, 1);
 
-        var footer = new StackPanel
+        var footer = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Spacing = 10,
             Margin = new Thickness(0, 12, 0, 0)
         };
 
-        var fetchBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(14, 0) };
-        fetchBtn.Content = new TextBlock { Text = "Обновить обложку", FontSize = 12, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+        var fetchBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 10, 4) };
+        var fetchLabel = new TextBlock
+        {
+            Text = img.Source == null ? "Загрузить обложку" : "Обновить обложку",
+            FontSize = 12,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = StormThemeBrushes.PrimaryText,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        fetchBtn.Content = fetchLabel;
         fetchBtn.Click += async (_, _) =>
         {
             statusLabel.Text = "Поиск обложки...";
@@ -116,7 +144,7 @@ public class CoverViewerModal : AuroraGlassCard
         };
         footer.Children.Add(fetchBtn);
 
-        var playBtn = new AuroraVolumetricButton { IsHero = true, Height = 34, Padding = new Thickness(16, 0) };
+        var playBtn = new AuroraVolumetricButton { IsHero = true, Height = 34, Padding = new Thickness(16, 0), Margin = new Thickness(0, 0, 0, 4) };
         playBtn.Content = new TextBlock { Text = "Запустить игру", FontSize = 12, FontWeight = FontWeight.Bold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
         playBtn.Click += (_, _) =>
         {
@@ -130,7 +158,16 @@ public class CoverViewerModal : AuroraGlassCard
 
         Content = grid;
 
-        if (img.Source == null)
+        StormThemeBrushes.BindTheme(this, () =>
+        {
+            titleText.Foreground = StormThemeBrushes.PrimaryText;
+            imgHost.Background = StormThemeBrushes.RowSurface;
+            imgHost.BorderBrush = StormThemeBrushes.StrongBorder;
+            statusLabel.Foreground = StormThemeBrushes.SecondaryText;
+            fetchLabel.Foreground = StormThemeBrushes.PrimaryText;
+        });
+
+        if (img.Source == null && allowAutoCover)
         {
             _ = Task.Run(async () =>
             {

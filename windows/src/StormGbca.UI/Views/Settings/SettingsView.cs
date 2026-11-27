@@ -17,62 +17,92 @@ using StormGbca.Core.Configuration;
 using StormGbca.Core.Engine;
 using StormGbca.Core.Localization;
 using StormGbca.Core.Native;
+using StormGbca.Core.Paths;
 using StormGbca.UI.Common;
 
 namespace StormGbca.UI.Views.Settings;
 
 /// <summary>
-/// Full Settings View covering Core (mGBA/SameBoy + BIOS + Run-Ahead + Rewind),
+/// Full Settings View covering Core (mGBA/SameBoy + BIOS + ROM Folders + Run-Ahead + Rewind),
 /// Video (7-mode Color Correction + 28 DMG Palettes + SGB Borders + LCD Ghosting + Filters),
 /// Audio (48kHz + High-Pass + Hermite + DRC + 6-Channel Mixer),
-/// Per-System 3D Skins & Overlays, Input (Keyboard with glossy 3D physical key badges + XInput),
+/// Per-System 3D Skins & Overlays, Input (Keyboard with theme-aware 3D keycaps + XInput),
 /// RetroAchievements, and 9 STORM Themes / 13 Accents / 10 Fonts / 11 Languages / Dual-Mirror Updater.
 /// </summary>
 public class SettingsView : Grid
 {
     private readonly AuroraSearchBox _searchBox;
+    private readonly ScrollViewer _tabsScroll;
     private readonly StackPanel _tabsRail;
+    private readonly AuroraGlassCard _glassCard;
     private readonly ContentControl _contentPresenter;
     private readonly TextBlock _savedFeedbackText;
+    private readonly TextBlock _savePillLabel;
+    private readonly DispatcherTimer _saveDebounceTimer;
     private readonly List<(int Index, AuroraIconKind Icon, string Title, Border Button)> _tabButtons = [];
+
     private int _activeTabIndex;
     private string _filterQuery = string.Empty;
     private string? _listeningActionKey;
+    private bool _pendingDebouncedBanner;
+    private bool _isCompactLayout;
+    private bool _isWideInputCols = true;
+    private string _lastRefreshSignature = string.Empty;
+    private UniformGrid? _inputBindingsGrid;
+
+    private StormLinkMode _mpSelectedMode = StormLinkMode.LanHost;
+    private readonly List<GbcaLanRoomInfo> _discoveredRooms = [];
+    private string _mpFeedback = string.Empty;
 
     public SettingsView()
     {
         Margin = new Thickness(16, 8, 16, 12);
         RowDefinitions = new RowDefinitions("Auto,*");
-        ColumnDefinitions = new ColumnDefinitions("240,*");
+        ColumnDefinitions = new ColumnDefinitions("200,*");
+
+        _saveDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _saveDebounceTimer.Tick += (_, _) =>
+        {
+            _saveDebounceTimer.Stop();
+            CommitSave(_pendingDebouncedBanner);
+            _pendingDebouncedBanner = false;
+        };
+
+        var topHeader = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            Margin = new Thickness(0, 0, 0, 10)
+        };
 
         _searchBox = new AuroraSearchBox
         {
-            PlaceholderText = "Поиск настроек...",
+            PlaceholderText = GbcaLoc.T("SearchSettingsPlaceholder"),
             HotkeyHint = "Ctrl+F",
             Height = 36,
-            Margin = new Thickness(0, 0, 14, 10)
+            MaxWidth = 360,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 0, 14, 0)
         };
         _searchBox.TextChanged += (_, _) =>
         {
             _filterQuery = _searchBox.Text ?? string.Empty;
             LoadTab(_activeTabIndex);
         };
-        Children.Add(_searchBox);
+        topHeader.Children.Add(_searchBox);
 
         var topRight = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 12,
             HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 0, 10)
+            VerticalAlignment = VerticalAlignment.Center
         };
         _savedFeedbackText = new TextBlock
         {
             Text = string.Empty,
             FontSize = 11.5,
             FontWeight = FontWeight.SemiBold,
-            Foreground = new SolidColorBrush(Color.Parse("#10B981")),
+            Foreground = GetSuccessTextBrush(),
             VerticalAlignment = VerticalAlignment.Center,
             IsVisible = false
         };
@@ -90,7 +120,15 @@ public class SettingsView : Grid
         };
         var spStack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
         spStack.Children.Add(new AuroraVectorIcon { Kind = AuroraIconKind.CheckSuccess, Size = 14, VerticalAlignment = VerticalAlignment.Center });
-        spStack.Children.Add(new TextBlock { Text = "Сохранить настройки", FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(Color.Parse("#10B981")), VerticalAlignment = VerticalAlignment.Center });
+        _savePillLabel = new TextBlock
+        {
+            Text = GbcaLoc.T("SaveSettingsBtn"),
+            FontSize = 11.5,
+            FontWeight = FontWeight.Bold,
+            Foreground = GetSuccessTextBrush(),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        spStack.Children.Add(_savePillLabel);
         savePill.Child = spStack;
         savePill.PointerPressed += (_, _) =>
         {
@@ -98,11 +136,19 @@ public class SettingsView : Grid
             CommitSave(showBanner: true);
         };
         topRight.Children.Add(savePill);
-        Children.Add(topRight);
+        topHeader.Children.Add(topRight);
         Grid.SetColumn(topRight, 1);
 
-        var tabsScroll = new ScrollViewer { Padding = new Thickness(0, 0, 10, 0), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-        _tabsRail = new StackPanel { Spacing = 4 };
+        Children.Add(topHeader);
+        Grid.SetColumnSpan(topHeader, 2);
+
+        _tabsScroll = new ScrollViewer
+        {
+            Padding = new Thickness(0, 0, 10, 0),
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        };
+        _tabsRail = new StackPanel { Spacing = 4, Orientation = Orientation.Vertical };
         AddTabHeader(0, AuroraIconKind.SettingsCore, "TabCoreOpt");
         AddTabHeader(1, AuroraIconKind.ShaderPrism, "TabVideo");
         AddTabHeader(2, AuroraIconKind.RomCartridge, "TabCoversBadges");
@@ -112,33 +158,119 @@ public class SettingsView : Grid
         AddTabHeader(6, AuroraIconKind.GamepadController, "TabInput");
         AddTabHeader(7, AuroraIconKind.TrophyCrown, "TabRA");
         AddTabHeader(8, AuroraIconKind.ThemePalette, "TabThemes");
-        tabsScroll.Content = _tabsRail;
-        Children.Add(tabsScroll);
-        Grid.SetRow(tabsScroll, 1);
+        _tabsScroll.Content = _tabsRail;
+        Children.Add(_tabsScroll);
+        Grid.SetRow(_tabsScroll, 1);
 
-        var glassCard = new AuroraGlassCard { SpotlightEnabled = true, Margin = new Thickness(6, 0, 0, 0) };
+        _glassCard = new AuroraGlassCard { SpotlightEnabled = true, Margin = new Thickness(6, 0, 0, 0) };
         _contentPresenter = new ContentControl();
-        glassCard.Content = _contentPresenter;
-        Children.Add(glassCard);
-        Grid.SetRow(glassCard, 1);
-        Grid.SetColumn(glassCard, 1);
+        _glassCard.Content = _contentPresenter;
+        Children.Add(_glassCard);
+        Grid.SetRow(_glassCard, 1);
+        Grid.SetColumn(_glassCard, 1);
 
         KeyDown += OnKeyCaptureKeyDown;
-        GbcaLoc.LanguageChanged += _ => Dispatcher.UIThread.Post(RefreshTabLabelsAndContent);
-        StormThemeBrushes.BindTheme(this, RefreshTabLabelsAndContent);
-        LoadTab(0);
+        SizeChanged += (_, e) => UpdateResponsiveLayout(e.NewSize.Width);
+        GbcaLoc.LanguageChanged += _ => Dispatcher.UIThread.Post(() => RefreshTabLabelsAndContent(force: false));
+        StormThemeBrushes.BindTheme(this, () => RefreshTabLabelsAndContent(force: false));
+    }
+
+    private static IBrush GetSuccessTextBrush()
+        => new SolidColorBrush(StormThemeBrushes.IsDark ? Color.Parse("#34D399") : Color.Parse("#047857"));
+
+    private static IBrush GetDangerTextBrush()
+        => new SolidColorBrush(StormThemeBrushes.IsDark ? Color.Parse("#F87171") : Color.Parse("#DC2626"));
+
+    private void UpdateResponsiveLayout(double width)
+    {
+        if (width <= 0) return;
+
+        bool compact = width < 960;
+        if (compact != _isCompactLayout)
+        {
+            _isCompactLayout = compact;
+            if (compact)
+            {
+                RowDefinitions = new RowDefinitions("Auto,Auto,*");
+                ColumnDefinitions = new ColumnDefinitions("*,Auto");
+                _tabsRail.Orientation = Orientation.Horizontal;
+                _tabsRail.Spacing = 6;
+                _tabsScroll.Padding = new Thickness(0, 0, 0, 8);
+                _tabsScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
+                _tabsScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                Grid.SetRow(_tabsScroll, 1);
+                Grid.SetColumn(_tabsScroll, 0);
+                Grid.SetColumnSpan(_tabsScroll, 2);
+
+                _glassCard.Margin = new Thickness(0, 4, 0, 0);
+                Grid.SetRow(_glassCard, 2);
+                Grid.SetColumn(_glassCard, 0);
+                Grid.SetColumnSpan(_glassCard, 2);
+            }
+            else
+            {
+                RowDefinitions = new RowDefinitions("Auto,*");
+                ColumnDefinitions = new ColumnDefinitions("200,*");
+                _tabsRail.Orientation = Orientation.Vertical;
+                _tabsRail.Spacing = 4;
+                _tabsScroll.Padding = new Thickness(0, 0, 10, 0);
+                _tabsScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                _tabsScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+                Grid.SetRow(_tabsScroll, 1);
+                Grid.SetColumn(_tabsScroll, 0);
+                Grid.SetColumnSpan(_tabsScroll, 1);
+
+                _glassCard.Margin = new Thickness(6, 0, 0, 0);
+                Grid.SetRow(_glassCard, 1);
+                Grid.SetColumn(_glassCard, 1);
+                Grid.SetColumnSpan(_glassCard, 1);
+            }
+        }
+
+        bool wideInput = width >= 900;
+        if (wideInput != _isWideInputCols)
+        {
+            _isWideInputCols = wideInput;
+            if (_inputBindingsGrid != null)
+            {
+                _inputBindingsGrid.Columns = wideInput ? 2 : 1;
+            }
+        }
     }
 
     private void CommitSave(bool showBanner = false)
     {
+        _saveDebounceTimer.Stop();
+        _pendingDebouncedBanner = false;
         StormGbcaUiState.Instance.SaveSettings(showBanner);
+        _savedFeedbackText.Foreground = GetSuccessTextBrush();
         _savedFeedbackText.Text = GbcaLoc.T("SettingsSavedMsg");
         _savedFeedbackText.IsVisible = true;
         DispatcherTimer.RunOnce(() => _savedFeedbackText.IsVisible = false, TimeSpan.FromSeconds(2));
     }
 
-    private void RefreshTabLabelsAndContent()
+    private void ScheduleDebouncedSave(bool showBanner = false)
     {
+        _pendingDebouncedBanner = _pendingDebouncedBanner || showBanner;
+        _saveDebounceTimer.Stop();
+        _saveDebounceTimer.Start();
+    }
+
+    private void RefreshTabLabelsAndContent(bool force)
+    {
+        var theme = AuroraThemeManager.Instance.CurrentTheme;
+        string signature = $"{theme.Id}|{AuroraThemeManager.Instance.CurrentAccentOverride}|{AuroraThemeManager.Instance.CurrentTypography}|{GbcaLoc.CurrentLanguage}";
+        if (!force && string.Equals(_lastRefreshSignature, signature, StringComparison.Ordinal))
+        {
+            return;
+        }
+        _lastRefreshSignature = signature;
+
+        _searchBox.PlaceholderText = GbcaLoc.T("SearchSettingsPlaceholder");
+        _savePillLabel.Text = GbcaLoc.T("SaveSettingsBtn");
+        _savePillLabel.Foreground = GetSuccessTextBrush();
+        _savedFeedbackText.Foreground = GetSuccessTextBrush();
+
         foreach (var item in _tabButtons)
         {
             if (item.Button.Child is Grid g && g.Children.Count > 1 && g.Children[1] is TextBlock tb)
@@ -153,7 +285,7 @@ public class SettingsView : Grid
     {
         var btn = new Border
         {
-            Height = 44,
+            Height = 42,
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(10, 0),
             Background = Brushes.Transparent,
@@ -168,6 +300,10 @@ public class SettingsView : Grid
         btn.PointerPressed += (_, _) =>
         {
             AuroraTactileFeedbackService.Instance.PlayClick();
+            if (_saveDebounceTimer.IsEnabled)
+            {
+                CommitSave(false);
+            }
             LoadTab(idx);
         };
         _tabsRail.Children.Add(btn);
@@ -177,6 +313,7 @@ public class SettingsView : Grid
     private void LoadTab(int index)
     {
         _activeTabIndex = index;
+        _inputBindingsGrid = null;
         var primary = StormThemeBrushes.AccentPrimaryColor;
 
         foreach (var item in _tabButtons)
@@ -191,7 +328,7 @@ public class SettingsView : Grid
             }
         }
 
-        var scroll = new ScrollViewer { Padding = new Thickness(18, 16, 26, 16), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        var scroll = new ScrollViewer { Padding = new Thickness(18, 16, 22, 16), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         var container = new StackPanel { Spacing = 12 };
         string q = _filterQuery.Trim();
 
@@ -279,13 +416,24 @@ public class SettingsView : Grid
                 s.RewindEnabled = true;
                 s.RunAheadFrames = Math.Max(s.RunAheadFrames, 1);
             }
-        }));
+            else if (s.OptimizationProfile == StormOptimizationProfile.HighAccuracy)
+            {
+                s.AudioInterpMode = StormAudioInterpMode.Hermite;
+                s.AudioHighpassMode = StormAudioHighpassMode.Accurate;
+                s.RewindBufferMb = Math.Max(s.RewindBufferMb, 24);
+            }
+        }, reloadAfter: true));
         p.Children.Add(new TextBlock
         {
             Text = $"CPU Cores: {Environment.ProcessorCount} | 64-bit OS: {Environment.Is64BitOperatingSystem} | Recommended: {(Environment.ProcessorCount <= 4 ? "Lite" : "Balanced")}",
             FontSize = 11,
-            Foreground = StormThemeBrushes.SecondaryText
+            Foreground = StormThemeBrushes.SecondaryText,
+            TextWrapping = TextWrapping.Wrap
         });
+
+        // ROM Folders Manager Card
+        p.Children.Add(CreateSectionTitle(GbcaLoc.T("RomFoldersTitle")));
+        p.Children.Add(BuildRomFoldersCard(s));
 
         p.Children.Add(CreateSectionTitle("Выбор эмулирующих ядер, BIOS и перемотки"));
         p.Children.Add(CreateCombo("Ядро для Game Boy (GB):", ["mGBA (Высокая скорость)", "SameBoy (Максимальная точность)"], (int)s.PreferredCoreGb, i => s.PreferredCoreGb = (StormCoreBackend)i));
@@ -299,10 +447,152 @@ public class SettingsView : Grid
         p.Children.Add(CreateSlider("Скорость ускорения (Fast-Forward):", 1, 8, s.FastForwardMultiplier, "x", v => s.FastForwardMultiplier = (float)v));
 
         p.Children.Add(CreateSectionTitle("Файлы BIOS (необязательно)"));
-        p.Children.Add(CreatePathRow("BIOS Game Boy:", s.BiosGbPath, ["*.bin"], t => { s.BiosGbPath = t; CommitSave(); }));
-        p.Children.Add(CreatePathRow("BIOS Game Boy Color:", s.BiosGbcPath, ["*.bin"], t => { s.BiosGbcPath = t; CommitSave(); }));
-        p.Children.Add(CreatePathRow("BIOS Game Boy Advance:", s.BiosGbaPath, ["*.bin"], t => { s.BiosGbaPath = t; CommitSave(); }));
-        p.Children.Add(CreatePathRow("BIOS Super Game Boy:", s.BiosSgbPath, ["*.bin"], t => { s.BiosSgbPath = t; CommitSave(); }));
+        p.Children.Add(CreatePathRow("BIOS Game Boy:", s.BiosGbPath, ["*.bin"], t => { s.BiosGbPath = t; ScheduleDebouncedSave(); }, tImmediate => { s.BiosGbPath = tImmediate; CommitSave(); }));
+        p.Children.Add(CreatePathRow("BIOS Game Boy Color:", s.BiosGbcPath, ["*.bin"], t => { s.BiosGbcPath = t; ScheduleDebouncedSave(); }, tImmediate => { s.BiosGbcPath = tImmediate; CommitSave(); }));
+        p.Children.Add(CreatePathRow("BIOS Game Boy Advance:", s.BiosGbaPath, ["*.bin"], t => { s.BiosGbaPath = t; ScheduleDebouncedSave(); }, tImmediate => { s.BiosGbaPath = tImmediate; CommitSave(); }));
+        p.Children.Add(CreatePathRow("BIOS Super Game Boy:", s.BiosSgbPath, ["*.bin"], t => { s.BiosSgbPath = t; ScheduleDebouncedSave(); }, tImmediate => { s.BiosSgbPath = tImmediate; CommitSave(); }));
+    }
+
+    private Border BuildRomFoldersCard(GbcaAppSettings s)
+    {
+        var card = new Border
+        {
+            Padding = new Thickness(12, 10),
+            CornerRadius = new CornerRadius(10),
+            Background = StormThemeBrushes.CardSurface,
+            BorderBrush = StormThemeBrushes.SubtleBorder,
+            BorderThickness = new Thickness(1)
+        };
+        var col = new StackPanel { Spacing = 8 };
+        col.Children.Add(new TextBlock
+        {
+            Text = $"{GbcaLoc.T("RomFoldersDesc")} ({StormGbcaPaths.RomsDirectory})",
+            FontSize = 11,
+            Foreground = StormThemeBrushes.SecondaryText,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        if (s.RomDirectories.Count == 0)
+        {
+            col.Children.Add(new TextBlock
+            {
+                Text = GbcaLoc.T("RomFoldersEmpty"),
+                FontSize = 11.5,
+                Foreground = StormThemeBrushes.SecondaryText
+            });
+        }
+        else
+        {
+            foreach (string dir in s.RomDirectories.ToList())
+            {
+                string captured = dir;
+                var row = new Border
+                {
+                    Padding = new Thickness(10, 6),
+                    CornerRadius = new CornerRadius(8),
+                    Background = StormThemeBrushes.RowSurface,
+                    BorderBrush = StormThemeBrushes.SubtleBorder,
+                    BorderThickness = new Thickness(1)
+                };
+                var rg = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+                rg.Children.Add(new TextBlock
+                {
+                    Text = captured,
+                    FontSize = 11.5,
+                    Foreground = StormThemeBrushes.PrimaryText,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Margin = new Thickness(0, 0, 10, 0)
+                });
+                var removeBtn = new AuroraVolumetricButton
+                {
+                    Height = 28,
+                    Padding = new Thickness(10, 0)
+                };
+                removeBtn.Content = new TextBlock
+                {
+                    Text = GbcaLoc.T("BtnRemoveFolder"),
+                    FontSize = 11,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = StormThemeBrushes.PrimaryText,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                removeBtn.Click += (_, _) =>
+                {
+                    s.RomDirectories.RemoveAll(d => string.Equals(d, captured, StringComparison.OrdinalIgnoreCase));
+                    CommitSave();
+                    _ = StormGbcaUiState.Instance.Library.RescanAsync(s.RomDirectories);
+                    LoadTab(_activeTabIndex);
+                };
+                rg.Children.Add(removeBtn);
+                Grid.SetColumn(removeBtn, 1);
+                row.Child = rg;
+                col.Children.Add(row);
+            }
+        }
+
+        var actions = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        var addBtn = new AuroraVolumetricButton
+        {
+            Height = 32,
+            Padding = new Thickness(12, 0),
+            Margin = new Thickness(0, 0, 8, 4)
+        };
+        addBtn.Content = new TextBlock
+        {
+            Text = GbcaLoc.T("BtnAddFolder"),
+            FontSize = 11.5,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = StormThemeBrushes.PrimaryText,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        addBtn.Click += async (_, _) =>
+        {
+            var top = TopLevel.GetTopLevel(this);
+            if (top?.StorageProvider == null) return;
+            var folders = await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = GbcaLoc.T("MenuScanFolder"),
+                AllowMultiple = false
+            });
+            string? folder = folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
+            if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+            {
+                if (!s.RomDirectories.Contains(folder, StringComparer.OrdinalIgnoreCase))
+                {
+                    s.RomDirectories.Add(folder);
+                    CommitSave();
+                    _ = StormGbcaUiState.Instance.Library.RescanAsync(s.RomDirectories);
+                    LoadTab(_activeTabIndex);
+                }
+            }
+        };
+        actions.Children.Add(addBtn);
+
+        var rescanBtn = new AuroraVolumetricButton
+        {
+            Height = 32,
+            Padding = new Thickness(12, 0),
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+        rescanBtn.Content = new TextBlock
+        {
+            Text = GbcaLoc.T("MenuRescanLibrary"),
+            FontSize = 11.5,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = StormThemeBrushes.PrimaryText,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        rescanBtn.Click += (_, _) =>
+        {
+            _ = StormGbcaUiState.Instance.Library.RescanAsync(s.RomDirectories);
+            StormGbcaUiState.Instance.NotifyStatus(GbcaLoc.T("MenuRescanLibrary"));
+        };
+        actions.Children.Add(rescanBtn);
+        col.Children.Add(actions);
+
+        card.Child = col;
+        return card;
     }
 
     private void BuildVideoTab(StackPanel p)
@@ -322,7 +612,7 @@ public class SettingsView : Grid
             {
                 s.UpscaleMode = StormUpscaleMode.Xbrz;
             }
-        }));
+        }, reloadAfter: true));
 
         p.Children.Add(CreateCombo("Алгоритм апскейлинга изображения:",
         [
@@ -339,7 +629,7 @@ public class SettingsView : Grid
             {
                 s.ResolutionScale = 2;
             }
-        }));
+        }, reloadAfter: true));
 
         p.Children.Add(CreateSlider("Разгон процессора консоли (CPU Overclock):", 50, 400, s.CpuOverclockPct, "%", v => s.CpuOverclockPct = Math.Clamp(((int)v / 25) * 25, 50, 400)));
         p.Children.Add(CreateCombo("Пропуск кадров (Frame Skip):", ["Выкл (0)", "1 кадр", "2 кадра", "3 кадра", "4 кадра"], Math.Clamp(s.FrameSkip, 0, 4), i => s.FrameSkip = i));
@@ -382,42 +672,49 @@ public class SettingsView : Grid
         p.Children.Add(CreateCheck("Показывать 3D-заставку STORM при запуске игры", s.Show3DBootSplash, v => s.Show3DBootSplash = v));
     }
 
-
-    private StormLinkMode _mpSelectedMode = StormLinkMode.LanHost;
-    private readonly List<GbcaLanRoomInfo> _discoveredRooms = [];
-    private string _mpFeedback = string.Empty;
-
     private void BuildCoversBadgesTab(StackPanel p)
     {
         var s = StormGbcaUiState.Instance.Settings;
+        var lib = StormGbcaUiState.Instance.Library;
+
         p.Children.Add(CreateSectionTitle(GbcaLoc.T("SecCoversTitle")));
         p.Children.Add(CreateCheck(GbcaLoc.T("OptLibretroCovers"), s.ShowLibretroCovers, v =>
         {
             s.ShowLibretroCovers = v;
             s.AutoFetchCovers = v;
-            if (v) _ = StormGbcaUiState.Instance.Library.PreloadAllMissingCoversAsync();
+            lib.ConfigureCoverSources(s.ShowLibretroCovers, s.ShowRaCovers, s.RetroAchievementsUsername, s.RetroAchievementsToken);
+            if (v) _ = lib.PreloadAllMissingCoversAsync(s);
         }));
-        p.Children.Add(CreateCheck(GbcaLoc.T("OptRaCovers"), s.ShowRaCovers, v => s.ShowRaCovers = v));
+        p.Children.Add(CreateCheck(GbcaLoc.T("OptRaCovers"), s.ShowRaCovers, v =>
+        {
+            s.ShowRaCovers = v;
+            lib.ConfigureCoverSources(s.ShowLibretroCovers, s.ShowRaCovers, s.RetroAchievementsUsername, s.RetroAchievementsToken);
+            if (v) _ = lib.PreloadAllMissingCoversAsync(s);
+        }));
 
         var covActions = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 4) };
         var fetchBtn = new AuroraVolumetricButton { IsHero = true, Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 10, 4) };
         fetchBtn.Content = new TextBlock { Text = GbcaLoc.T("BtnFetchCoversNow"), FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
         fetchBtn.Click += (_, _) =>
         {
-            s.ShowLibretroCovers = true;
-            s.AutoFetchCovers = true;
+            if (!s.ShowLibretroCovers && !s.ShowRaCovers)
+            {
+                s.ShowLibretroCovers = true;
+                s.AutoFetchCovers = true;
+            }
+            lib.ConfigureCoverSources(s.ShowLibretroCovers, s.ShowRaCovers, s.RetroAchievementsUsername, s.RetroAchievementsToken);
             CommitSave();
-            _ = StormGbcaUiState.Instance.Library.PreloadAllMissingCoversAsync();
-            StormGbcaUiState.Instance.NotifyStatus("Downloading covers from Libretro 9,132-title index...");
+            _ = lib.PreloadAllMissingCoversAsync(s);
+            StormGbcaUiState.Instance.NotifyStatus("Downloading missing covers...");
             LoadTab(_activeTabIndex);
         };
         covActions.Children.Add(fetchBtn);
 
         var clearBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 0, 4) };
-        clearBtn.Content = new TextBlock { Text = GbcaLoc.T("BtnClearCoverCache"), FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+        clearBtn.Content = new TextBlock { Text = GbcaLoc.T("BtnClearCoverCache"), FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center };
         clearBtn.Click += (_, _) =>
         {
-            int removed = StormGbcaUiState.Instance.Library.ClearCoverCache();
+            int removed = lib.ClearCoverCache();
             StormGbcaUiState.Instance.NotifyStatus($"Cover cache cleared ({removed} files)");
             CommitSave();
         };
@@ -455,7 +752,8 @@ public class SettingsView : Grid
                 : $"Mode: {status.Mode} | Players: {status.PlayerCount} | Port: {status.Port} | Ping: {status.PingMs} ms",
             FontSize = 12.5,
             FontWeight = FontWeight.Bold,
-            Foreground = status.Connected ? new SolidColorBrush(Color.Parse("#34D399")) : StormThemeBrushes.PrimaryText
+            Foreground = status.Connected ? GetSuccessTextBrush() : StormThemeBrushes.PrimaryText,
+            TextWrapping = TextWrapping.Wrap
         });
         stCol.Children.Add(new TextBlock
         {
@@ -497,24 +795,36 @@ public class SettingsView : Grid
                 else s.MultiplayerPort = pv;
             }
         }));
+        p.Children.Add(CreateTextRow(GbcaLoc.T("MpDolphinClockPort"), s.DolphinClockPort.ToString(), t =>
+        {
+            if (int.TryParse(t, out int pv) && pv is >= 1024 and <= 65535)
+            {
+                s.DolphinClockPort = pv;
+            }
+        }));
 
         var btnWrap = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 2) };
         var startBtn = new AuroraVolumetricButton { IsHero = true, Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 8, 6) };
         startBtn.Content = new TextBlock { Text = GbcaLoc.T("MpBtnConnect"), FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
-        startBtn.Click += (_, _) =>
+        startBtn.Click += async (_, _) =>
         {
             CommitSave();
             string ip = _mpSelectedMode == StormLinkMode.DolphinJoyBus ? s.DolphinIp : s.MultiplayerLastHostIp;
             int port = _mpSelectedMode == StormLinkMode.DolphinJoyBus ? s.DolphinDataPort : s.MultiplayerPort;
             int clk = _mpSelectedMode == StormLinkMode.DolphinJoyBus ? s.DolphinClockPort : 0;
-            bool ok = emu.StartLink(_mpSelectedMode, ip, port, clk, s.MultiplayerRoomName);
-            _mpFeedback = ok ? $"Link started: {_mpSelectedMode}" : "Start a game first or verify host IP/port";
+            _mpFeedback = $"Connecting: {_mpSelectedMode}...";
             LoadTab(_activeTabIndex);
+            bool ok = await emu.StartLinkAsync(_mpSelectedMode, ip, port, clk, s.MultiplayerRoomName);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                _mpFeedback = ok ? $"Link started: {_mpSelectedMode}" : "Start a game first or verify host IP/port";
+                LoadTab(_activeTabIndex);
+            });
         };
         btnWrap.Children.Add(startBtn);
 
         var stopBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 8, 6) };
-        stopBtn.Content = new TextBlock { Text = GbcaLoc.T("MpBtnDisconnect"), FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+        stopBtn.Content = new TextBlock { Text = GbcaLoc.T("MpBtnDisconnect"), FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center };
         stopBtn.Click += (_, _) =>
         {
             emu.StopLink();
@@ -524,7 +834,7 @@ public class SettingsView : Grid
         btnWrap.Children.Add(stopBtn);
 
         var scanBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(14, 0), Margin = new Thickness(0, 0, 0, 6) };
-        scanBtn.Content = new TextBlock { Text = GbcaLoc.T("MpBtnScanLan"), FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+        scanBtn.Content = new TextBlock { Text = GbcaLoc.T("MpBtnScanLan"), FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center };
         scanBtn.Click += async (_, _) =>
         {
             _mpFeedback = "Scanning local network (UDP 54321)...";
@@ -543,7 +853,7 @@ public class SettingsView : Grid
 
         if (!string.IsNullOrWhiteSpace(_mpFeedback))
         {
-            p.Children.Add(new TextBlock { Text = _mpFeedback, FontSize = 11.5, Foreground = StormThemeBrushes.AccentSecondary });
+            p.Children.Add(new TextBlock { Text = _mpFeedback, FontSize = 11.5, Foreground = StormThemeBrushes.AccentSecondary, TextWrapping = TextWrapping.Wrap });
         }
 
         foreach (var room in _discoveredRooms)
@@ -563,20 +873,21 @@ public class SettingsView : Grid
                 Text = $"{room.RoomName} ({room.HostIp}:{room.Port}) - {room.GameTitle} [{room.PlayerCount}/{room.MaxPlayers}]",
                 FontSize = 11.5,
                 Foreground = StormThemeBrushes.PrimaryText,
-                VerticalAlignment = VerticalAlignment.Center
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap
             });
             var joinLbl = new TextBlock { Text = "Join ->", FontSize = 11, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.Accent, VerticalAlignment = VerticalAlignment.Center };
             rg.Children.Add(joinLbl);
             Grid.SetColumn(joinLbl, 1);
             rBorder.Child = rg;
-            rBorder.PointerPressed += (_, _) =>
+            rBorder.PointerPressed += async (_, _) =>
             {
                 s.MultiplayerLastHostIp = room.HostIp;
                 s.MultiplayerPort = room.Port;
                 _mpSelectedMode = room.Mode == StormLinkMode.WirelessHost ? StormLinkMode.WirelessClient : (room.Mode == StormLinkMode.IrHost ? StormLinkMode.IrClient : StormLinkMode.LanClient);
-                emu.StartLink(_mpSelectedMode, room.HostIp, room.Port, 0, room.RoomName);
                 CommitSave();
-                LoadTab(_activeTabIndex);
+                await emu.StartLinkAsync(_mpSelectedMode, room.HostIp, room.Port, 0, room.RoomName);
+                await Dispatcher.UIThread.InvokeAsync(() => LoadTab(_activeTabIndex));
             };
             p.Children.Add(rBorder);
         }
@@ -615,7 +926,7 @@ public class SettingsView : Grid
         p.Children.Add(CreateCombo("3D-корпус для Game Boy Advance (GBA):", Enum.GetNames<GbaConsoleSkin>(), (int)s.GbaConsoleSkin, i => { s.GbaConsoleSkin = (GbaConsoleSkin)i; StormGbcaUiState.Instance.NotifySkinOrOverlayChanged(); }));
         p.Children.Add(CreateCheck("Ночное затемнение 3D-корпуса", s.SkinNightDimming, v => { s.SkinNightDimming = v; StormGbcaUiState.Instance.NotifySkinOrOverlayChanged(); }));
 
-        var openStudioBtn = new AuroraVolumetricButton { IsHero = true, Height = 38, Width = 310, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
+        var openStudioBtn = new AuroraVolumetricButton { IsHero = true, Height = 38, Padding = new Thickness(18, 0), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
         openStudioBtn.Content = new TextBlock { Text = "Открыть студию 3D-корпусов с предпросмотром", FontSize = 12, FontWeight = FontWeight.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         openStudioBtn.Click += (_, _) => StormGbcaUiState.Instance.SetNavSection(NavSectionKind.SkinsAndOverlays);
         p.Children.Add(openStudioBtn);
@@ -626,7 +937,8 @@ public class SettingsView : Grid
         var s = StormGbcaUiState.Instance.Settings;
         p.Children.Add(CreateSectionTitle("Назначение клавиш клавиатуры (нажмите значок клавиши для переназначения)"));
 
-        var grid = new UniformGrid { Columns = 2 };
+        var grid = new UniformGrid { Columns = _isWideInputCols ? 2 : 1 };
+        _inputBindingsGrid = grid;
         (string Key, string Label)[] bindings =
         [
             ("Up", "Крестовина: Вверх"),
@@ -640,7 +952,9 @@ public class SettingsView : Grid
             ("Start", "Кнопка Start"),
             ("Select", "Кнопка Select"),
             ("FastForward", "Ускорение (Fast-Forward)"),
-            ("Rewind", "Перемотка назад (Rewind)")
+            ("Rewind", "Перемотка назад (Rewind)"),
+            ("QuickSave", GbcaLoc.T("MenuQuickSave")),
+            ("QuickLoad", GbcaLoc.T("MenuQuickLoad"))
         ];
 
         foreach (var b in bindings)
@@ -659,9 +973,16 @@ public class SettingsView : Grid
                 Cursor = new Cursor(StandardCursorType.Hand)
             };
             var rg = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-            rg.Children.Add(new TextBlock { Text = b.Label, FontSize = 11.5, Foreground = StormThemeBrushes.BodyText, VerticalAlignment = VerticalAlignment.Center });
+            rg.Children.Add(new TextBlock
+            {
+                Text = b.Label,
+                FontSize = 11.5,
+                Foreground = StormThemeBrushes.BodyText,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 8, 0)
+            });
 
-            // Glossy 3D Physical Key Badge
             var keyCap = Create3DPhysicalKeyBadge(listening ? "Нажмите клавишу..." : currentKey, listening);
             rg.Children.Add(keyCap);
             Grid.SetColumn(keyCap, 1);
@@ -683,7 +1004,8 @@ public class SettingsView : Grid
         {
             Text = $"Статус XInput: {(StormGbcaUiState.Instance.Emulator.Gamepad.IsSupported ? "Драйвер XInput активен (подключите геймпад Xbox / совместимый)" : "XInput недоступен")}",
             FontSize = 11.5,
-            Foreground = StormThemeBrushes.SecondaryText
+            Foreground = StormThemeBrushes.SecondaryText,
+            TextWrapping = TextWrapping.Wrap
         });
         p.Children.Add(CreateCheck("Передавать вибрацию картриджа (Rumble) на геймпад XInput", s.RumbleToXInput, v => s.RumbleToXInput = v));
         p.Children.Add(CreateCheck("Использовать системное время ПК для часов реального времени (RTC)", s.UseHostRtc, v => s.UseHostRtc = v));
@@ -693,6 +1015,26 @@ public class SettingsView : Grid
     private static Border Create3DPhysicalKeyBadge(string keyName, bool highlighted)
     {
         var accent = StormThemeBrushes.AccentPrimaryColor;
+        bool isDark = StormThemeBrushes.IsDark;
+
+        Color topColor = highlighted
+            ? accent
+            : (isDark ? Color.Parse("#334155") : Color.Parse("#F8FAFC"));
+        Color bottomColor = highlighted
+            ? Color.FromArgb(200, accent.R, accent.G, accent.B)
+            : (isDark ? Color.Parse("#1E293B") : Color.Parse("#E2E8F0"));
+        IBrush borderBrush = highlighted
+            ? new SolidColorBrush(Colors.White)
+            : (isDark
+                ? new SolidColorBrush(Color.FromArgb(140, 255, 255, 255))
+                : new SolidColorBrush(Color.Parse("#94A3B8")));
+        IBrush textBrush = (highlighted || isDark)
+            ? Brushes.White
+            : new SolidColorBrush(Color.Parse("#0F172A"));
+        Color shadowColor = isDark
+            ? Color.FromArgb(120, 0, 0, 0)
+            : Color.FromArgb(45, 15, 23, 42);
+
         return new Border
         {
             MinWidth = 68,
@@ -705,20 +1047,20 @@ public class SettingsView : Grid
                 EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
                 GradientStops =
                 {
-                    new GradientStop(highlighted ? accent : Color.Parse("#334155"), 0.0),
-                    new GradientStop(highlighted ? Color.FromArgb(200, accent.R, accent.G, accent.B) : Color.Parse("#1E293B"), 1.0)
+                    new GradientStop(topColor, 0.0),
+                    new GradientStop(bottomColor, 1.0)
                 }
             },
-            BorderBrush = new SolidColorBrush(highlighted ? Colors.White : Color.FromArgb(140, 255, 255, 255)),
+            BorderBrush = borderBrush,
             BorderThickness = new Thickness(1, 1, 1, 3),
-            BoxShadow = new BoxShadows(new BoxShadow { OffsetX = 0, OffsetY = 2, Blur = 5, Color = Color.FromArgb(120, 0, 0, 0) }),
+            BoxShadow = new BoxShadows(new BoxShadow { OffsetX = 0, OffsetY = 2, Blur = 5, Color = shadowColor }),
             Child = new TextBlock
             {
                 Text = keyName,
                 FontSize = 11,
                 FontWeight = FontWeight.Bold,
                 FontFamily = new FontFamily("Consolas, Cascadia Mono, monospace"),
-                Foreground = Brushes.White,
+                Foreground = textBrush,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             }
@@ -760,7 +1102,8 @@ public class SettingsView : Grid
             Text = ra.IsLoggedIn ? $"Подключен: {ra.Username}" : "Аккаунт RetroAchievements не подключен",
             FontSize = 13.5,
             FontWeight = FontWeight.Bold,
-            Foreground = ra.IsLoggedIn ? new SolidColorBrush(Color.Parse("#34D399")) : StormThemeBrushes.PrimaryText
+            Foreground = ra.IsLoggedIn ? GetSuccessTextBrush() : StormThemeBrushes.PrimaryText,
+            TextWrapping = TextWrapping.Wrap
         };
         var statusSub = new TextBlock
         {
@@ -768,7 +1111,8 @@ public class SettingsView : Grid
                 ? $"Hardcore: {ra.Points} pts  |  Softcore: {ra.SoftcorePoints} pts{(ra.Rank > 0 ? $"  |  Рейтинг: #{ra.Rank}" : "")}"
                 : "Введите логин и пароль RetroAchievements для синхронизации очков и трофеев",
             FontSize = 11.5,
-            Foreground = StormThemeBrushes.SecondaryText
+            Foreground = StormThemeBrushes.SecondaryText,
+            TextWrapping = TextWrapping.Wrap
         };
         statusCol.Children.Add(statusTitle);
         statusCol.Children.Add(statusSub);
@@ -777,14 +1121,22 @@ public class SettingsView : Grid
 
         p.Children.Add(CreateTextRow("Логин (Username):", s.RetroAchievementsUsername, t => s.RetroAchievementsUsername = t));
 
-        var passGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,260"), Margin = new Thickness(0, 4) };
-        passGrid.Children.Add(new TextBlock { Text = "Пароль (не сохраняется):", FontSize = 11.5, Foreground = StormThemeBrushes.BodyText, VerticalAlignment = VerticalAlignment.Center });
-        var passBox = new TextBox { PlaceholderText = "Введите пароль RetroAchievements", PasswordChar = '*', Height = 32 };
+        var passGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,210"), Margin = new Thickness(0, 4) };
+        passGrid.Children.Add(new TextBlock
+        {
+            Text = "Пароль (не сохраняется):",
+            FontSize = 11.5,
+            Foreground = StormThemeBrushes.BodyText,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 12, 0)
+        });
+        var passBox = new TextBox { PlaceholderText = "Введите пароль RetroAchievements", PasswordChar = '*', Height = 32, MinWidth = 0 };
         passGrid.Children.Add(passBox);
         Grid.SetColumn(passBox, 1);
         p.Children.Add(passGrid);
 
-        var statusTxt = new TextBlock { Text = ra.LastStatusMessage, FontSize = 11.5, Foreground = StormThemeBrushes.AccentSecondary };
+        var statusTxt = new TextBlock { Text = ra.LastStatusMessage, FontSize = 11.5, Foreground = StormThemeBrushes.AccentSecondary, TextWrapping = TextWrapping.Wrap };
         var btnRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 4) };
 
         var loginBtn = new AuroraVolumetricButton { IsHero = true, Height = 34, Padding = new Thickness(16, 0) };
@@ -802,6 +1154,7 @@ public class SettingsView : Grid
                     s.RetroAchievementsPoints = ra.Points;
                     s.RetroAchievementsSoftcorePoints = ra.SoftcorePoints;
                     s.RetroAchievementsRank = ra.Rank;
+                    StormGbcaUiState.Instance.Library.ConfigureCoverSources(s.ShowLibretroCovers, s.ShowRaCovers, s.RetroAchievementsUsername, s.RetroAchievementsToken);
                     CommitSave(true);
                     LoadTab(_activeTabIndex);
                 }
@@ -816,7 +1169,7 @@ public class SettingsView : Grid
         if (ra.IsLoggedIn)
         {
             var logoutBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(14, 0) };
-            logoutBtn.Content = new TextBlock { Text = "Выйти из аккаунта", FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Color.Parse("#F87171")), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            logoutBtn.Content = new TextBlock { Text = "Выйти из аккаунта", FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = GetDangerTextBrush(), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             logoutBtn.Click += (_, _) =>
             {
                 ra.Logout();
@@ -825,6 +1178,7 @@ public class SettingsView : Grid
                 s.RetroAchievementsPoints = 0;
                 s.RetroAchievementsSoftcorePoints = 0;
                 s.RetroAchievementsRank = 0;
+                StormGbcaUiState.Instance.Library.ConfigureCoverSources(s.ShowLibretroCovers, s.ShowRaCovers, string.Empty, string.Empty);
                 CommitSave(true);
                 LoadTab(_activeTabIndex);
             };
@@ -843,8 +1197,8 @@ public class SettingsView : Grid
         p.Children.Add(CreateCheck("Leaderboards & Indicators", s.RetroAchievementsLeaderboards, v => s.RetroAchievementsLeaderboards = v));
         p.Children.Add(CreateCheck("Progress & Challenge Indicators", s.RetroAchievementsProgressIndicators, v => { s.RetroAchievementsProgressIndicators = v; s.RetroAchievementsChallengeIndicators = v; }));
 
-        var testBtn = new AuroraVolumetricButton { Height = 34, Width = 220, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
-        testBtn.Content = new TextBlock { Text = GbcaLoc.T("RaTestConn"), FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var testBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(16, 0), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
+        testBtn.Content = new TextBlock { Text = GbcaLoc.T("RaTestConn"), FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         testBtn.Click += async (_, _) =>
         {
             statusTxt.Text = "Testing RetroAchievements server...";
@@ -888,8 +1242,8 @@ public class SettingsView : Grid
                 HorizontalContentAlignment = HorizontalAlignment.Center
             };
             var st = new StackPanel { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Center };
-            st.Children.Add(new TextBlock { Text = t.Title, FontSize = 11, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center });
-            st.Children.Add(new TextBlock { Text = t.Sub, FontSize = 9.5, Foreground = StormThemeBrushes.SecondaryText, HorizontalAlignment = HorizontalAlignment.Center });
+            st.Children.Add(new TextBlock { Text = t.Title, FontSize = 11, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+            st.Children.Add(new TextBlock { Text = t.Sub, FontSize = 9.5, Foreground = StormThemeBrushes.SecondaryText, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
             btn.Content = st;
             btn.Click += (_, _) =>
             {
@@ -928,7 +1282,7 @@ public class SettingsView : Grid
                 AuroraThemeManager.Instance.ApplyTheme(AuroraThemeManager.Instance.CurrentTheme.Id, kind);
                 s.AccentName = kind.ToString();
                 CommitSave();
-                LoadTab(_activeTabIndex);
+                RefreshTabLabelsAndContent(force: true);
             };
             accentsWrap.Children.Add(swatchBtn);
         }
@@ -957,7 +1311,7 @@ public class SettingsView : Grid
                 AuroraThemeManager.Instance.ApplyTheme(AuroraThemeManager.Instance.CurrentTheme.Id, null, preset);
                 s.TypographyName = preset.ToString();
                 CommitSave();
-                LoadTab(_activeTabIndex);
+                RefreshTabLabelsAndContent(force: true);
             };
             fontsGrid.Children.Add(fBtn);
         }
@@ -975,8 +1329,8 @@ public class SettingsView : Grid
             }));
         p.Children.Add(CreateCheck("Автоматически проверять обновления при запуске", s.AutoCheckUpdates, v => s.AutoCheckUpdates = v));
 
-        var updBtn = new AuroraVolumetricButton { Height = 34, Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
-        updBtn.Content = new TextBlock { Text = "Проверить обновления сейчас", FontSize = 12, FontWeight = FontWeight.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var updBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(16, 0), HorizontalAlignment = HorizontalAlignment.Left };
+        updBtn.Content = new TextBlock { Text = "Проверить обновления сейчас", FontSize = 12, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         updBtn.Click += (_, _) => StormGbcaUiState.Instance.RequestUpdateCheck(true);
         p.Children.Add(updBtn);
     }
@@ -987,7 +1341,8 @@ public class SettingsView : Grid
         FontSize = 11,
         FontWeight = FontWeight.Bold,
         Foreground = StormThemeBrushes.Accent,
-        Margin = new Thickness(0, 6, 0, 2)
+        Margin = new Thickness(0, 6, 0, 2),
+        TextWrapping = TextWrapping.Wrap
     };
 
     private Control CreateCheck(string label, bool initial, Action<bool> onChange)
@@ -1004,31 +1359,49 @@ public class SettingsView : Grid
     private Grid CreateSlider(string label, double min, double max, double initial, string unit, Action<double> onChange)
     {
         var g = new Grid { Margin = new Thickness(0, 4), RowDefinitions = new RowDefinitions("Auto,Auto") };
-        var lbl = new TextBlock { Text = $"{label} {initial:0.##} {unit}", FontSize = 11, Foreground = StormThemeBrushes.BodyText };
+        var lbl = new TextBlock { Text = $"{label} {initial:0.##} {unit}", FontSize = 11, Foreground = StormThemeBrushes.BodyText, TextWrapping = TextWrapping.Wrap };
         g.Children.Add(lbl);
         var slider = new AuroraVolumetricSlider { Minimum = min, Maximum = max, Value = Math.Clamp(initial, min, max), Height = 24 };
         slider.ValueChanged += (_, val) =>
         {
             lbl.Text = $"{label} {val:0.##} {unit}";
             onChange(val);
-            CommitSave();
+            ScheduleDebouncedSave();
         };
         g.Children.Add(slider);
         Grid.SetRow(slider, 1);
         return g;
     }
 
-    private Grid CreateCombo(string label, string[] options, int selectedIndex, Action<int> onSelect)
+    private Grid CreateCombo(string label, string[] options, int selectedIndex, Action<int> onSelect, bool reloadAfter = false)
     {
-        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,260"), Margin = new Thickness(0, 4) };
-        g.Children.Add(new TextBlock { Text = label, FontSize = 11.5, Foreground = StormThemeBrushes.BodyText, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 12, 0) });
-        var combo = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = options, SelectedIndex = Math.Clamp(selectedIndex, 0, Math.Max(0, options.Length - 1)) };
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,210"), Margin = new Thickness(0, 4) };
+        g.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = 11.5,
+            Foreground = StormThemeBrushes.BodyText,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 12, 0)
+        });
+        var combo = new ComboBox
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinWidth = 0,
+            ItemsSource = options,
+            SelectedIndex = Math.Clamp(selectedIndex, 0, Math.Max(0, options.Length - 1))
+        };
         combo.SelectionChanged += (_, _) =>
         {
             if (combo.SelectedIndex >= 0)
             {
                 onSelect(combo.SelectedIndex);
                 CommitSave();
+                if (reloadAfter)
+                {
+                    LoadTab(_activeTabIndex);
+                }
             }
         };
         g.Children.Add(combo);
@@ -1038,28 +1411,52 @@ public class SettingsView : Grid
 
     private Grid CreateTextRow(string label, string initial, Action<string> onChange)
     {
-        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,260"), Margin = new Thickness(0, 4) };
-        g.Children.Add(new TextBlock { Text = label, FontSize = 11.5, Foreground = StormThemeBrushes.BodyText, VerticalAlignment = VerticalAlignment.Center });
-        var tb = new TextBox { Text = initial, Height = 30 };
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,210"), Margin = new Thickness(0, 4) };
+        g.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = 11.5,
+            Foreground = StormThemeBrushes.BodyText,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 12, 0)
+        });
+        var tb = new TextBox { Text = initial, Height = 30, MinWidth = 0 };
         tb.TextChanged += (_, _) =>
         {
             onChange(tb.Text ?? string.Empty);
-            CommitSave();
+            ScheduleDebouncedSave();
         };
         g.Children.Add(tb);
         Grid.SetColumn(tb, 1);
         return g;
     }
 
-    private Grid CreatePathRow(string label, string initial, string[] patterns, Action<string> onChange)
+    private Grid CreatePathRow(string label, string initial, string[] patterns, Action<string> onTextChange, Action<string> onPicked)
     {
-        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,220,Auto"), Margin = new Thickness(0, 4) };
-        g.Children.Add(new TextBlock { Text = label, FontSize = 11.5, Foreground = StormThemeBrushes.BodyText, VerticalAlignment = VerticalAlignment.Center });
-        var tb = new TextBox { Text = initial, Height = 30 };
-        tb.TextChanged += (_, _) => onChange(tb.Text ?? string.Empty);
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,180,Auto"), Margin = new Thickness(0, 4) };
+        g.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = 11.5,
+            Foreground = StormThemeBrushes.BodyText,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 12, 0)
+        });
+        var tb = new TextBox { Text = initial, Height = 30, MinWidth = 0 };
+        tb.TextChanged += (_, _) => onTextChange(tb.Text ?? string.Empty);
         g.Children.Add(tb);
         Grid.SetColumn(tb, 1);
-        var btn = new Button { Content = "Обзор", Height = 30, Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(10, 0), Cursor = new Cursor(StandardCursorType.Hand) };
+        var btn = new Button
+        {
+            Content = GbcaLoc.T("BtnBrowse"),
+            Foreground = StormThemeBrushes.PrimaryText,
+            Height = 30,
+            Margin = new Thickness(6, 0, 0, 0),
+            Padding = new Thickness(10, 0),
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
         btn.Click += async (_, _) =>
         {
             var top = TopLevel.GetTopLevel(this);
@@ -1074,7 +1471,7 @@ public class SettingsView : Grid
             if (!string.IsNullOrWhiteSpace(path))
             {
                 tb.Text = path;
-                onChange(path);
+                onPicked(path);
             }
         };
         g.Children.Add(btn);

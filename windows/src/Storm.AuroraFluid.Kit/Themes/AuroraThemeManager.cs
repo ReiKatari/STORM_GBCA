@@ -95,11 +95,11 @@ public sealed class AuroraThemeManager
             BackgroundColor: Color.Parse("#F8FAFC"),
             HeaderColor: Color.Parse("#EDF2F7"),
             CardColor: Color.Parse("#FFFFFF"),
-            BorderColor: Color.Parse("#E2E8F0"),
+            BorderColor: Color.Parse("#CBD5E1"),
             DefaultAccentColor: Color.Parse("#0284C7"),
             DefaultAccentSecondaryColor: Color.Parse("#0EA5E9"),
-            TextPrimaryColor: Color.Parse("#000000"),
-            TextSecondaryColor: Color.Parse("#0F172A"),
+            TextPrimaryColor: Color.Parse("#0F172A"),
+            TextSecondaryColor: Color.Parse("#334155"),
             GlowColor: Color.Parse("#0284C7"),
             IsDark: false
         );
@@ -256,6 +256,8 @@ public sealed class AuroraThemeManager
         var theme = CurrentTheme;
         var (accentPrimary, accentSecondary) = ResolveAccentColors(theme, CurrentAccentOverride);
 
+        app.RequestedThemeVariant = theme.IsDark ? Avalonia.Styling.ThemeVariant.Dark : Avalonia.Styling.ThemeVariant.Light;
+
         // Core Brushes
         res["StormBgBrush"] = theme.BackgroundBrush;
         res["StormHeaderBrush"] = theme.HeaderBrush;
@@ -270,11 +272,52 @@ public sealed class AuroraThemeManager
         res["StormAccentGlowBrush"] = new SolidColorBrush(Color.FromArgb(90, accentPrimary.R, accentPrimary.G, accentPrimary.B));
 
         // Typography Colors (Enforcing Law 10: 0% black text in dark themes)
-        var primaryText = theme.IsDark ? Color.Parse("#FFFFFF") : Color.Parse("#000000");
-        var secondaryText = theme.IsDark ? Color.Parse("#F1F5F9") : Color.Parse("#0F172A");
+        var primaryText = theme.IsDark ? Color.Parse("#FFFFFF") : Color.Parse("#0F172A");
+        var secondaryText = theme.IsDark ? Color.Parse("#F1F5F9") : Color.Parse("#334155");
 
         res["StormTextPrimaryBrush"] = new SolidColorBrush(primaryText);
         res["StormTextSecondaryBrush"] = new SolidColorBrush(secondaryText);
+
+        // FluentTheme Control Resource Overrides for 100% Contrast in STORM DAY & Dark Themes
+        var controlBorderColor = theme.IsDark ? theme.BorderColor : Color.Parse("#CBD5E1");
+        var inputBgColor = theme.IsDark ? Color.FromArgb(245, theme.HeaderColor.R, theme.HeaderColor.G, theme.HeaderColor.B) : Color.Parse("#FFFFFF");
+        var inputHoverColor = theme.IsDark ? theme.CardColor : Color.Parse("#F1F5F9");
+        var inputFocusedColor = theme.IsDark ? theme.CardColor : Color.Parse("#FFFFFF");
+        var popupBgColor = theme.IsDark ? theme.CardColor : Color.Parse("#FFFFFF");
+        var hoverBgColor = theme.IsDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(20, 0, 0, 0);
+
+        res["ComboBoxBackground"] = new SolidColorBrush(inputBgColor);
+        res["ComboBoxBackgroundPointerOver"] = new SolidColorBrush(inputHoverColor);
+        res["ComboBoxBackgroundPressed"] = new SolidColorBrush(theme.IsDark ? theme.CardColor : Color.Parse("#E2E8F0"));
+        res["ComboBoxForeground"] = new SolidColorBrush(primaryText);
+        res["ComboBoxBorderBrush"] = new SolidColorBrush(controlBorderColor);
+        res["ComboBoxDropDownBackground"] = new SolidColorBrush(popupBgColor);
+        res["ComboBoxDropDownBorderBrush"] = new SolidColorBrush(controlBorderColor);
+        res["ComboBoxItemForeground"] = new SolidColorBrush(primaryText);
+        res["ComboBoxItemBackgroundPointerOver"] = new SolidColorBrush(hoverBgColor);
+
+        res["TextControlBackground"] = new SolidColorBrush(inputBgColor);
+        res["TextControlBackgroundPointerOver"] = new SolidColorBrush(inputHoverColor);
+        res["TextControlBackgroundFocused"] = new SolidColorBrush(inputFocusedColor);
+        res["TextControlForeground"] = new SolidColorBrush(primaryText);
+        res["TextControlForegroundFocused"] = new SolidColorBrush(primaryText);
+        res["TextControlPlaceholderForeground"] = new SolidColorBrush(secondaryText);
+        res["TextControlBorderBrush"] = new SolidColorBrush(controlBorderColor);
+        res["TextControlBorderBrushFocused"] = new SolidColorBrush(accentPrimary);
+
+        res["MenuFlyoutPresenterBackground"] = new SolidColorBrush(popupBgColor);
+        res["MenuFlyoutPresenterBorderBrush"] = new SolidColorBrush(controlBorderColor);
+        res["MenuFlyoutItemForeground"] = new SolidColorBrush(primaryText);
+        res["MenuFlyoutItemForegroundPointerOver"] = new SolidColorBrush(primaryText);
+        res["MenuFlyoutItemBackgroundPointerOver"] = new SolidColorBrush(hoverBgColor);
+
+        res["ToolTipBackground"] = new SolidColorBrush(popupBgColor);
+        res["ToolTipForeground"] = new SolidColorBrush(primaryText);
+        res["ToolTipBorderBrush"] = new SolidColorBrush(controlBorderColor);
+
+        res["SystemControlForegroundBaseHighBrush"] = new SolidColorBrush(primaryText);
+        res["SystemControlForegroundBaseMediumBrush"] = new SolidColorBrush(secondaryText);
+        res["SystemControlBackgroundChromeMediumLowBrush"] = new SolidColorBrush(popupBgColor);
 
         // Gradients
         var heroGradient = new LinearGradientBrush

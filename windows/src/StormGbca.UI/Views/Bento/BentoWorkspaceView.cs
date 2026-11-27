@@ -3,14 +3,17 @@
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Storm.AuroraFluid.Kit.Icons;
 using Storm.AuroraFluid.Kit.Services;
 using Storm.AuroraFluid.Kit.Themes;
 using StormGbca.Core.Library;
+using StormGbca.Core.Configuration;
 using StormGbca.UI.Common;
 
 namespace StormGbca.UI.Views.Bento;
@@ -19,14 +22,18 @@ public class BentoWorkspaceView : Grid
 {
     private readonly WrapPanel _chipsPanel;
     private readonly WrapPanel _romsWrapPanel;
-    private readonly ScrollViewer _cardsScrollViewer;
+    private readonly ScrollViewer _workspaceScroll;
     private readonly CollectorTableView _collectorTable;
+    private readonly Border _viewToggleBtn;
+    private readonly TextBlock _viewToggleLabel;
+    private readonly Border _scanBtn;
+    private readonly TextBlock _scanLabel;
     private readonly List<(GbcaPlatformFilter Filter, Color Accent, Border Chip, TextBlock Label)> _chips = [];
 
     public BentoWorkspaceView()
     {
         Margin = new Thickness(16, 0, 16, 0);
-        RowDefinitions = new RowDefinitions("Auto,Auto,*");
+        RowDefinitions = new RowDefinitions("Auto,*");
 
         var controlsBar = new Grid
         {
@@ -43,16 +50,16 @@ public class BentoWorkspaceView : Grid
         controlsBar.Children.Add(_chipsPanel);
 
         var rightStack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        var viewToggle = CreateActionButton(AuroraIconKind.LibraryGrid, "Вид таблицы", () =>
+        (_viewToggleBtn, _viewToggleLabel) = CreateActionButton(AuroraIconKind.LibraryGrid, "Таблица", () =>
         {
             var next = StormGbcaUiState.Instance.ActiveViewMode == GbcaViewMode.BentoCards
                 ? GbcaViewMode.CollectorTable
                 : GbcaViewMode.BentoCards;
             StormGbcaUiState.Instance.SetViewMode(next);
         });
-        var scanBtn = CreateActionButton(AuroraIconKind.FolderVault, "Добавить папку", async () => await PickAndScanFolderAsync());
-        rightStack.Children.Add(viewToggle);
-        rightStack.Children.Add(scanBtn);
+        (_scanBtn, _scanLabel) = CreateActionButton(AuroraIconKind.FolderVault, "Добавить папку", async () => await PickAndScanFolderAsync());
+        rightStack.Children.Add(_viewToggleBtn);
+        rightStack.Children.Add(_scanBtn);
         controlsBar.Children.Add(rightStack);
         Grid.SetColumn(rightStack, 1);
 
@@ -70,11 +77,30 @@ public class BentoWorkspaceView : Grid
         topBento.Children.Add(hwCard);
         Grid.SetColumn(hwCard, 1);
 
+        _romsWrapPanel = new WrapPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
+        _collectorTable = new CollectorTableView { IsVisible = false, MinHeight = 340 };
+
+        var workspaceStack = new StackPanel { Spacing = 4 };
+        workspaceStack.Children.Add(topBento);
+        workspaceStack.Children.Add(_romsWrapPanel);
+        workspaceStack.Children.Add(_collectorTable);
+
+        _workspaceScroll = new ScrollViewer
+        {
+            Padding = new Thickness(0, 0, 12, 12),
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = workspaceStack
+        };
+        Children.Add(_workspaceScroll);
+        Grid.SetRow(_workspaceScroll, 1);
+
         PropertyChanged += (_, ch) =>
         {
             if (ch.Property == BoundsProperty && Bounds.Width > 0)
             {
-                if (Bounds.Width < 800)
+                bool stacked = Bounds.Width < 880;
+                if (stacked)
                 {
                     topBento.ColumnDefinitions = new ColumnDefinitions("*");
                     topBento.RowDefinitions = new RowDefinitions("Auto,Auto");
@@ -90,38 +116,26 @@ public class BentoWorkspaceView : Grid
                     Grid.SetRow(hwCard, 0);
                     heroCard.Margin = new Thickness(0, 0, 8, 8);
                 }
+                double reserve = stacked ? 68 : 250;
+                _collectorTable.Height = Math.Max(340, Bounds.Height - reserve);
             }
         };
 
-        Children.Add(topBento);
-        Grid.SetRow(topBento, 1);
-
-        _cardsScrollViewer = new ScrollViewer
-        {
-            Padding = new Thickness(0, 0, 16, 12),
-            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
-        };
-        _romsWrapPanel = new WrapPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
-        _cardsScrollViewer.Content = _romsWrapPanel;
-
-        _collectorTable = new CollectorTableView { IsVisible = false };
-
-        var container = new Grid();
-        container.Children.Add(_cardsScrollViewer);
-        container.Children.Add(_collectorTable);
-        Children.Add(container);
-        Grid.SetRow(container, 2);
-
+        StormGbcaUiState.Instance.Library.LibraryChanged += () => Dispatcher.UIThread.Post(RefreshGrid);
         StormGbcaUiState.Instance.FilterChanged += RefreshGrid;
+        StormGbcaUiState.Instance.SettingsSaved += RefreshGrid;
+        StormGbcaUiState.Instance.EmulationStopped += RefreshGrid;
         StormGbcaUiState.Instance.StateChanged += RefreshGrid;
+        StormGbcaUiState.Instance.RomSelected += UpdateSelectionVisual;
         StormThemeBrushes.BindTheme(this, () =>
         {
             UpdateChipStyles();
+            UpdateActionButtonBrushes();
             RefreshGrid();
         });
 
         UpdateChipStyles();
+        UpdateActionButtonBrushes();
         RefreshGrid();
     }
 
@@ -169,7 +183,7 @@ public class BentoWorkspaceView : Grid
         }
     }
 
-    private Border CreateActionButton(AuroraIconKind icon, string label, Action onClick)
+    private static (Border Button, TextBlock Label) CreateActionButton(AuroraIconKind icon, string label, Action onClick)
     {
         var btn = new Border
         {
@@ -183,14 +197,42 @@ public class BentoWorkspaceView : Grid
         };
         var stack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
         stack.Children.Add(new AuroraVectorIcon { Kind = icon, Size = 14, VerticalAlignment = VerticalAlignment.Center });
-        stack.Children.Add(new TextBlock { Text = label, FontSize = 11.5, FontWeight = FontWeight.Medium, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center });
+        var tb = new TextBlock { Text = label, FontSize = 11.5, FontWeight = FontWeight.Medium, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center };
+        stack.Children.Add(tb);
         btn.Child = stack;
         btn.PointerPressed += (_, _) =>
         {
             AuroraTactileFeedbackService.Instance.PlayClick();
             onClick();
         };
-        return btn;
+        return (btn, tb);
+    }
+
+    private void UpdateActionButtonBrushes()
+    {
+        _viewToggleBtn.Background = StormThemeBrushes.RowSurface;
+        _viewToggleBtn.BorderBrush = StormThemeBrushes.SubtleBorder;
+        _viewToggleLabel.Foreground = StormThemeBrushes.PrimaryText;
+        _scanBtn.Background = StormThemeBrushes.RowSurface;
+        _scanBtn.BorderBrush = StormThemeBrushes.SubtleBorder;
+        _scanLabel.Foreground = StormThemeBrushes.PrimaryText;
+    }
+
+    private void UpdateSelectionVisual(GbcaRomRecord? selected)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => UpdateSelectionVisual(selected));
+            return;
+        }
+        foreach (var child in _romsWrapPanel.Children)
+        {
+            if (child is BentoRomCard card)
+            {
+                bool isSel = selected != null && string.Equals(selected.FilePath, card.Rom.FilePath, StringComparison.OrdinalIgnoreCase);
+                card.UpdateSelectedState(isSel);
+            }
+        }
     }
 
     private async Task PickAndScanFolderAsync()
@@ -222,9 +264,15 @@ public class BentoWorkspaceView : Grid
 
     private void RefreshGrid()
     {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(RefreshGrid);
+            return;
+        }
         UpdateChipStyles();
         bool isTable = StormGbcaUiState.Instance.ActiveViewMode == GbcaViewMode.CollectorTable;
-        _cardsScrollViewer.IsVisible = !isTable;
+        _viewToggleLabel.Text = isTable ? "Сетка" : "Таблица";
+        _romsWrapPanel.IsVisible = !isTable;
         _collectorTable.IsVisible = isTable;
 
         if (!isTable)

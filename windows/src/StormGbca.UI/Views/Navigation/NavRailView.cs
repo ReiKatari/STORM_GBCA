@@ -145,6 +145,8 @@ public class NavRailView : Border
 
 public class NavDockView : Border
 {
+    private readonly List<(NavSectionKind Kind, Border Container)> _items = [];
+
     public NavDockView()
     {
         HorizontalAlignment = HorizontalAlignment.Center;
@@ -162,14 +164,17 @@ public class NavDockView : Border
         AddDockBtn(row, NavSectionKind.Settings, AuroraIconKind.SettingsCore, "Настройки");
         Child = row;
 
+        StormGbcaUiState.Instance.NavSectionChanged += _ => UpdateActiveStyles();
         StormThemeBrushes.BindTheme(this, () =>
         {
             Background = StormThemeBrushes.GlassPanel;
             BorderBrush = StormThemeBrushes.StrongBorder;
+            UpdateActiveStyles();
         });
+        UpdateActiveStyles();
     }
 
-    private static void AddDockBtn(StackPanel row, NavSectionKind kind, AuroraIconKind icon, string tooltip)
+    private void AddDockBtn(StackPanel row, NavSectionKind kind, AuroraIconKind icon, string tooltip)
     {
         var btn = new Border
         {
@@ -181,11 +186,59 @@ public class NavDockView : Border
             Child = new AuroraVectorIcon { Kind = icon, Size = 20, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
         };
         ToolTip.SetTip(btn, tooltip);
+        btn.PointerEntered += (_, _) =>
+        {
+            if (StormGbcaUiState.Instance.ActiveNavSection != kind)
+            {
+                btn.Background = StormThemeBrushes.RowSurface;
+                AuroraTactileFeedbackService.Instance.PlayHoverTick();
+            }
+        };
+        btn.PointerExited += (_, _) =>
+        {
+            if (StormGbcaUiState.Instance.ActiveNavSection != kind)
+            {
+                btn.Background = Brushes.Transparent;
+            }
+        };
         btn.PointerPressed += (_, _) =>
         {
             AuroraTactileFeedbackService.Instance.PlayClick();
             StormGbcaUiState.Instance.SetNavSection(kind);
         };
         row.Children.Add(btn);
+        _items.Add((kind, btn));
+    }
+
+    private void UpdateActiveStyles()
+    {
+        var active = StormGbcaUiState.Instance.ActiveNavSection;
+        var theme = AuroraThemeManager.Instance.CurrentTheme;
+        var (primary, sec) = AuroraThemeManager.ResolveAccentColors(theme, AuroraThemeManager.Instance.CurrentAccentOverride);
+
+        foreach (var (kind, container) in _items)
+        {
+            if (kind == active)
+            {
+                container.Background = new LinearGradientBrush
+                {
+                    StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                    EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+                    GradientStops =
+                    {
+                        new GradientStop(Color.FromArgb(70, primary.R, primary.G, primary.B), 0.0),
+                        new GradientStop(Color.FromArgb(30, sec.R, sec.G, sec.B), 1.0)
+                    }
+                };
+                container.BorderBrush = new SolidColorBrush(Color.FromArgb(140, primary.R, primary.G, primary.B));
+                container.BorderThickness = new Thickness(1);
+            }
+            else
+            {
+                container.Background = Brushes.Transparent;
+                container.BorderBrush = Brushes.Transparent;
+                container.BorderThickness = new Thickness(0);
+            }
+        }
     }
 }

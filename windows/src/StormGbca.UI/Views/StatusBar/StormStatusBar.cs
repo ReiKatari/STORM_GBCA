@@ -8,6 +8,9 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Storm.AuroraFluid.Kit.Icons;
 using Storm.AuroraFluid.Kit.Services;
+using StormGbca.Core.Engine;
+using StormGbca.Core.Library;
+using StormGbca.Core.Configuration;
 using StormGbca.UI.Common;
 
 namespace StormGbca.UI.Views.StatusBar;
@@ -19,6 +22,8 @@ public class StormStatusBar : Border
     private readonly TextBlock _statusText;
     private readonly TextBlock _clockText;
     private readonly DispatcherTimer _timer;
+    private long _lastMetricsPostTickMs;
+    private long _notificationUntilTickMs;
 
     public StormStatusBar()
     {
@@ -80,10 +85,34 @@ public class StormStatusBar : Border
             {
                 Dispatcher.UIThread.Post(() =>
                 {
+                    _notificationUntilTickMs = Environment.TickCount64 + 4000;
                     _statusText.Text = msg;
-                    DispatcherTimer.RunOnce(() => _statusText.Text = "mGBA + SameBoy готовы", TimeSpan.FromSeconds(4));
+                    DispatcherTimer.RunOnce(() =>
+                    {
+                        if (Environment.TickCount64 >= _notificationUntilTickMs)
+                        {
+                            ResetIdleStatusText();
+                        }
+                    }, TimeSpan.FromSeconds(4));
                 });
             }
+        };
+
+        AttachedToVisualTree += (_, _) =>
+        {
+            StormGbcaUiState.Instance.Emulator.FrameCompleted -= OnFrameCompleted;
+            StormGbcaUiState.Instance.Emulator.FrameCompleted += OnFrameCompleted;
+            StormGbcaUiState.Instance.EmulationStarted -= OnEmulationStarted;
+            StormGbcaUiState.Instance.EmulationStarted += OnEmulationStarted;
+            StormGbcaUiState.Instance.EmulationStopped -= OnEmulationStopped;
+            StormGbcaUiState.Instance.EmulationStopped += OnEmulationStopped;
+        };
+
+        DetachedFromVisualTree += (_, _) =>
+        {
+            StormGbcaUiState.Instance.Emulator.FrameCompleted -= OnFrameCompleted;
+            StormGbcaUiState.Instance.EmulationStarted -= OnEmulationStarted;
+            StormGbcaUiState.Instance.EmulationStopped -= OnEmulationStopped;
         };
 
         StormThemeBrushes.BindTheme(this, () =>
@@ -91,12 +120,55 @@ public class StormStatusBar : Border
             Background = StormThemeBrushes.ChromeSurface;
             BorderBrush = StormThemeBrushes.SubtleBorder;
             _countText.Foreground = StormThemeBrushes.BodyText;
-            _audioText.Foreground = StormThemeBrushes.Accent;
-            _statusText.Foreground = StormThemeBrushes.AccentSecondary;
+            _audioText.Foreground = StormThemeBrushes.IsDark
+                ? StormThemeBrushes.Accent
+                : new SolidColorBrush(Color.Parse("#0369A1"));
+            _statusText.Foreground = StormThemeBrushes.IsDark
+                ? StormThemeBrushes.AccentSecondary
+                : StormThemeBrushes.PrimaryText;
             _clockText.Foreground = StormThemeBrushes.SecondaryText;
         });
 
         UpdateCount();
+    }
+
+    private void OnEmulationStarted(GbcaRomRecord _)
+    {
+        Dispatcher.UIThread.Post(ResetIdleStatusText);
+    }
+
+    private void OnEmulationStopped()
+    {
+        Dispatcher.UIThread.Post(ResetIdleStatusText);
+    }
+
+    private void OnFrameCompleted(GbcaFrameMetrics metrics)
+    {
+        if (Environment.TickCount64 < _notificationUntilTickMs) return;
+        long now = Environment.TickCount64;
+        long prev = Interlocked.Read(ref _lastMetricsPostTickMs);
+        if (now - prev < 240) return;
+        if (Interlocked.CompareExchange(ref _lastMetricsPostTickMs, now, prev) != prev) return;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!StormGbcaUiState.Instance.IsEmulationActive || Environment.TickCount64 < _notificationUntilTickMs) return;
+            _statusText.Text = $"{metrics.ActiveCore} | {metrics.MeasuredFps:0.0} FPS | {metrics.FrameTimeMs:0.1} мс";
+        });
+    }
+
+    private void ResetIdleStatusText()
+    {
+        if (StormGbcaUiState.Instance.IsEmulationActive)
+        {
+            var m = StormGbcaUiState.Instance.LastMetrics;
+            if (!string.IsNullOrWhiteSpace(m.ActiveCore))
+            {
+                _statusText.Text = $"{m.ActiveCore} | {m.MeasuredFps:0.0} FPS | {m.FrameTimeMs:0.1} мс";
+                return;
+            }
+        }
+        _statusText.Text = "mGBA + SameBoy готовы";
     }
 
     private void UpdateCount()

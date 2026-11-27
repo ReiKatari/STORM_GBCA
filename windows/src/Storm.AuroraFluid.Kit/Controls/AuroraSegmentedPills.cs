@@ -28,6 +28,7 @@ public class AuroraSegmentedPills : Control
     public event EventHandler<int>? SelectionChanged;
 
     private int _hoveredIndex = -1;
+    private readonly Action<AuroraThemeDefinition> _themeChangedHandler;
 
     static AuroraSegmentedPills()
     {
@@ -36,7 +37,22 @@ public class AuroraSegmentedPills : Control
 
     public AuroraSegmentedPills()
     {
+        _themeChangedHandler = _ => InvalidateVisual();
         Cursor = new Cursor(StandardCursorType.Hand);
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        AuroraThemeManager.Instance.ThemeChanged -= _themeChangedHandler;
+        AuroraThemeManager.Instance.ThemeChanged += _themeChangedHandler;
+        InvalidateVisual();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        AuroraThemeManager.Instance.ThemeChanged -= _themeChangedHandler;
+        base.OnDetachedFromVisualTree(e);
     }
 
     protected override Size MeasureOverride(Size availableSize)
@@ -98,8 +114,10 @@ public class AuroraSegmentedPills : Control
         var containerRect = new Rect(0, 0, bounds.Width, bounds.Height);
 
         // 1. Recessed Container Fill
-        var containerBrush = new SolidColorBrush(Color.FromArgb(180, 16, 18, 26));
-        var containerBorderPen = new Pen(new SolidColorBrush(theme.BorderColor), 1.0);
+        var containerBrush = new SolidColorBrush(theme.IsDark
+            ? Color.FromArgb(180, 16, 18, 26)
+            : Color.Parse("#E2E8F0"));
+        var containerBorderPen = new Pen(new SolidColorBrush(theme.IsDark ? theme.BorderColor : Color.Parse("#CBD5E1")), 1.0);
         context.DrawRectangle(containerBrush, containerBorderPen, containerRect, cr, cr);
 
         double itemWidth = bounds.Width / Items.Count;
@@ -133,9 +151,11 @@ public class AuroraSegmentedPills : Control
             bool isSelected = (i == SelectedIndex);
             bool isHovered = (i == _hoveredIndex && !isSelected);
 
-            var textBrush = isSelected
-                ? (theme.IsDark ? Brushes.White : Brushes.White)
-                : (isHovered ? theme.TextPrimaryBrush : theme.TextSecondaryBrush);
+            IBrush textBrush = isSelected
+                ? Brushes.White
+                : (theme.IsDark
+                    ? (isHovered ? theme.TextPrimaryBrush : theme.TextSecondaryBrush)
+                    : new SolidColorBrush(isHovered ? Color.Parse("#0F172A") : Color.Parse("#334155")));
 
             var formattedText = new FormattedText(
                 Items[i],

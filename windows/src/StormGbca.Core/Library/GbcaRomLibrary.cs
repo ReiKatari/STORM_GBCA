@@ -2,6 +2,8 @@
 // Licensed under the Apache License, Version 2.0.
 
 using System.Globalization;
+using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -45,6 +47,10 @@ public sealed partial class GbcaRomLibrary
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(14) };
     private readonly Dictionary<string, List<string>> _indexCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _indexLock = new(1, 1);
+    private volatile bool _showLibretroCovers;
+    private volatile bool _showRaCovers;
+    private string _raUsername = string.Empty;
+    private string _raToken = string.Empty;
 
     public event Action? LibraryChanged;
     public event Action<GbcaRomRecord>? CoverArtUpdated;
@@ -60,8 +66,27 @@ public sealed partial class GbcaRomLibrary
     public GbcaRomLibrary()
     {
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.4.0 (Windows)");
+        try
+        {
+            var initial = GbcaSettingsStore.Load();
+            ConfigureCoverSources(initial.ShowLibretroCovers, initial.ShowRaCovers, initial.RetroAchievementsUsername, initial.RetroAchievementsToken);
+        }
+        catch
+        {
+        }
         LoadCache();
     }
+
+    public void ConfigureCoverSources(bool showLibretroCovers, bool showRaCovers, string? raUsername = null, string? raToken = null)
+    {
+        _showLibretroCovers = showLibretroCovers;
+        _showRaCovers = showRaCovers;
+        if (raUsername != null) _raUsername = raUsername;
+        if (raToken != null) _raToken = raToken;
+    }
+
+    public Task RescanAsync(IEnumerable<string>? userFolders = null, CancellationToken ct = default)
+        => ScanDirectoriesAsync(userFolders, ct);
 
     private void LoadCache()
     {
@@ -176,14 +201,97 @@ public sealed partial class GbcaRomLibrary
         LibraryChanged?.Invoke();
     }
 
+    public static bool TryExtractRomFromZip(string zipPath, out byte[] romBytes, out string innerEntryName)
+    {
+        romBytes = [];
+        innerEntryName = string.Empty;
+        const long maxRomBytes = 64L * 1024 * 1024;
+
+        if (string.IsNullOrWhiteSpace(zipPath) || !File.Exists(zipPath)) return false;
+
+        try
+        {
+            using var archive = ZipFile.OpenRead(zipPath);
+            ZipArchiveEntry? match = null;
+            foreach (var entry in archive.Entries)
+            {
+                if (string.IsNullOrEmpty(entry.Name) || entry.Length <= 0 || entry.Length > maxRomBytes) continue;
+                string ext = Path.GetExtension(entry.Name).ToLowerInvariant();
+                if (ext is ".gba" or ".gbc" or ".gb" or ".sgb")
+                {
+                    match = entry;
+                    break;
+                }
+            }
+
+            if (match == null) return false;
+
+            using var stream = match.Open();
+            using var ms = new MemoryStream((int)Math.Min(match.Length, maxRomBytes));
+            byte[] buf = new byte[81920];
+            long total = 0;
+            int read;
+            while ((read = stream.Read(buf, 0, buf.Length)) > 0)
+            {
+                total += read;
+                if (total > maxRomBytes) return false;
+                ms.Write(buf, 0, read);
+            }
+
+            if (ms.Length == 0) return false;
+            romBytes = ms.ToArray();
+            innerEntryName = Path.GetFileName(match.Name);
+            return true;
+        }
+        catch
+        {
+            romBytes = [];
+            innerEntryName = string.Empty;
+            return false;
+        }
+    }
+
     public unsafe GbcaRomRecord? InspectRomFile(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath)) return null;
-        if (!NativeCoreBindings.IsAvailable) return null;
 
+        bool isZip = string.Equals(Path.GetExtension(filePath), ".zip", StringComparison.OrdinalIgnoreCase);
         StormGbcaRomInfo info = default;
-        int rc = NativeCoreBindings.storm_gbca_inspect_rom_file(filePath, &info);
-        if (rc != 0 || info.platform == (int)StormPlatform.None) return null;
+        string raHashFromZip = string.Empty;
+
+        if (isZip)
+        {
+            if (!TryExtractRomFromZip(filePath, out byte[] romBytes, out string innerName)) return null;
+
+            bool ok = false;
+            if (NativeCoreBindings.IsAvailable)
+            {
+                fixed (byte* p = romBytes)
+                {
+                    int rc = NativeCoreBindings.storm_gbca_inspect_rom_buffer(p, (nuint)romBytes.Length, innerName, &info);
+                    ok = rc == 0 && info.platform != (int)StormPlatform.None;
+                    if (ok)
+                    {
+                        byte* hbuf = stackalloc byte[33];
+                        if (NativeCoreBindings.storm_gbca_compute_ra_hash_buffer(p, (nuint)romBytes.Length, info.platform, hbuf) == 0)
+                        {
+                            raHashFromZip = StormGbcaRomInfo.ReadFixedUtf8(hbuf, 33);
+                        }
+                    }
+                }
+            }
+
+            if (!ok && !TryInspectHeaderFallback(romBytes, innerName, out info))
+            {
+                return null;
+            }
+        }
+        else
+        {
+            if (!NativeCoreBindings.IsAvailable) return null;
+            int rc = NativeCoreBindings.storm_gbca_inspect_rom_file(filePath, &info);
+            if (rc != 0 || info.platform == (int)StormPlatform.None) return null;
+        }
 
         var rec = new GbcaRomRecord
         {
@@ -199,6 +307,7 @@ public sealed partial class GbcaRomLibrary
             RomSize = info.rom_size,
             HardwareFlags = (StormHwFlags)info.hw_flags,
             ActiveCoreHint = info.GetActiveCore(),
+            RaHash = raHashFromZip,
         };
 
         string upperName = rec.FileName.ToUpperInvariant();
@@ -220,6 +329,116 @@ public sealed partial class GbcaRomLibrary
         }
 
         return rec;
+    }
+
+    private static unsafe bool TryInspectHeaderFallback(byte[] data, string innerName, out StormGbcaRomInfo info)
+    {
+        info = default;
+        if (data.Length == 0) return false;
+
+        string ext = Path.GetExtension(innerName).ToLowerInvariant();
+        StormPlatform plat = ext switch
+        {
+            ".gba" => StormPlatform.Gba,
+            ".gbc" => StormPlatform.Gbc,
+            ".sgb" => StormPlatform.Sgb,
+            ".gb" => StormPlatform.Gb,
+            _ => StormPlatform.None,
+        };
+
+        if (plat == StormPlatform.None)
+        {
+            if (data.Length >= 0xC0 && data[0xB2] == 0x96 && data[3] == 0xEA)
+            {
+                plat = StormPlatform.Gba;
+            }
+            else if (data.Length >= 0x150)
+            {
+                if ((data[0x143] & 0x80) != 0) plat = StormPlatform.Gbc;
+                else if (data[0x146] == 0x03 && data[0x14B] == 0x33) plat = StormPlatform.Sgb;
+                else plat = StormPlatform.Gb;
+            }
+        }
+        if (plat == StormPlatform.None) return false;
+
+        info.platform = (int)plat;
+        info.rom_size = (uint)data.Length;
+        info.crc32 = ComputeCrc32(data);
+
+        byte[] md5 = MD5.HashData(data);
+        string md5Hex = Convert.ToHexStringLower(md5);
+        byte[] md5Ascii = Encoding.ASCII.GetBytes(md5Hex);
+        fixed (byte* md5Dst = info.md5)
+        {
+            int len = Math.Min(md5Ascii.Length, 32);
+            md5Ascii.AsSpan(0, len).CopyTo(new Span<byte>(md5Dst, len));
+        }
+
+        if (plat == StormPlatform.Gba && data.Length >= 0xC0)
+        {
+            fixed (byte* tDst = info.title)
+            {
+                for (int i = 0; i < 12; i++)
+                {
+                    byte b = data[0xA0 + i];
+                    tDst[i] = (b >= 0x20 && b < 0x7F) ? b : (byte)0;
+                }
+            }
+            fixed (byte* cDst = info.game_code)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    byte b = data[0xAC + i];
+                    cDst[i] = (b >= 0x20 && b < 0x7F) ? b : (byte)0;
+                }
+            }
+            string region = (char)data[0xAF] switch
+            {
+                'J' => "Japan",
+                'E' => "USA",
+                'P' or 'D' or 'F' or 'I' or 'S' => "Europe",
+                _ => "World"
+            };
+            byte[] regBytes = Encoding.UTF8.GetBytes(region);
+            fixed (byte* rDst = info.region)
+            {
+                regBytes.AsSpan(0, Math.Min(regBytes.Length, 15)).CopyTo(new Span<byte>(rDst, 15));
+            }
+        }
+        else if (data.Length >= 0x150)
+        {
+            int titleLen = (data[0x143] & 0x80) != 0 ? 11 : 15;
+            fixed (byte* tDst = info.title)
+            {
+                for (int i = 0; i < titleLen; i++)
+                {
+                    byte b = data[0x134 + i];
+                    if (b == 0) break;
+                    tDst[i] = (b >= 0x20 && b < 0x7F) ? b : (byte)0;
+                }
+            }
+            byte[] regBytes = Encoding.UTF8.GetBytes(data[0x14A] == 0 ? "Japan" : "World");
+            fixed (byte* rDst = info.region)
+            {
+                regBytes.AsSpan(0, Math.Min(regBytes.Length, 15)).CopyTo(new Span<byte>(rDst, 15));
+            }
+        }
+
+        return true;
+    }
+
+    private static uint ComputeCrc32(ReadOnlySpan<byte> data)
+    {
+        uint crc = 0xFFFFFFFFu;
+        foreach (byte b in data)
+        {
+            crc ^= b;
+            for (int k = 0; k < 8; k++)
+            {
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : (crc >> 1);
+            }
+        }
+        return crc ^ 0xFFFFFFFFu;
     }
 
     public GbcaRomRecord? ImportSingleFile(string filePath)
@@ -361,8 +580,17 @@ public sealed partial class GbcaRomLibrary
     /// <summary>
     /// Downloads all missing covers in parallel (up to 4 concurrent workers) when enabled by user.
     /// </summary>
-    public async Task PreloadAllMissingCoversAsync(CancellationToken ct = default)
+    public Task PreloadAllMissingCoversAsync(CancellationToken ct = default)
+        => PreloadAllMissingCoversAsync(null, ct);
+
+    public async Task PreloadAllMissingCoversAsync(GbcaAppSettings? settings, CancellationToken ct = default)
     {
+        if (settings != null)
+        {
+            ConfigureCoverSources(settings.ShowLibretroCovers, settings.ShowRaCovers, settings.RetroAchievementsUsername, settings.RetroAchievementsToken);
+        }
+        if (!_showLibretroCovers && !_showRaCovers) return;
+
         List<GbcaRomRecord> pending;
         lock (_syncLock)
         {
@@ -376,7 +604,7 @@ public sealed partial class GbcaRomLibrary
             await sem.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                await EnsureCoverArtAsync(rom, ct).ConfigureAwait(false);
+                await EnsureCoverArtAsync(rom, settings, ct).ConfigureAwait(false);
             }
             catch
             {
@@ -391,10 +619,19 @@ public sealed partial class GbcaRomLibrary
 
     /// <summary>
     /// Downloads and locally caches official boxart using bundled 9,132-title Libretro index
-    /// (raw.githubusercontent.com primary + cdn.jsdelivr.net mirror fallback).
+    /// (raw.githubusercontent.com primary + cdn.jsdelivr.net mirror fallback) and/or RetroAchievements.
+    /// Strictly performs zero downloads when both ShowLibretroCovers and ShowRaCovers are false.
     /// </summary>
-    public async Task<string?> EnsureCoverArtAsync(GbcaRomRecord rom, CancellationToken ct = default)
+    public Task<string?> EnsureCoverArtAsync(GbcaRomRecord rom, CancellationToken ct = default)
+        => EnsureCoverArtAsync(rom, null, ct);
+
+    public async Task<string?> EnsureCoverArtAsync(GbcaRomRecord rom, GbcaAppSettings? settings, CancellationToken ct = default)
     {
+        bool useLibretro = settings?.ShowLibretroCovers ?? _showLibretroCovers;
+        bool useRa = settings?.ShowRaCovers ?? _showRaCovers;
+        string raUser = settings?.RetroAchievementsUsername ?? _raUsername;
+        string raToken = settings?.RetroAchievementsToken ?? _raToken;
+
         string localPath = GetExpectedCoverCachePath(rom);
         if (File.Exists(localPath) && new FileInfo(localPath).Length > 512)
         {
@@ -402,35 +639,72 @@ public sealed partial class GbcaRomLibrary
             return localPath;
         }
 
+        if (!useLibretro && !useRa)
+        {
+            return null;
+        }
+
         Directory.CreateDirectory(StormGbcaPaths.CoversDirectory);
 
-        var systemsToTry = rom.Platform switch
+        if (useLibretro)
         {
-            StormPlatform.Gb or StormPlatform.Sgb => new[] { "gb", "gbc" },
-            StormPlatform.Gbc => new[] { "gbc", "gb" },
-            _ => new[] { "gba" },
-        };
-
-        string rawName = Path.GetFileNameWithoutExtension(rom.FileName);
-        string baseClean = s_parensTagRegex.Replace(rawName, string.Empty).Replace('_', ' ').Trim();
-
-        foreach (string sysKey in systemsToTry)
-        {
-            var indexEntries = await GetOrLoadIndexAsync(sysKey, ct).ConfigureAwait(false);
-            string? matchedPng = FindBestIndexMatch(indexEntries, rawName, baseClean, rom.Title, rom.Region);
-            if (!string.IsNullOrWhiteSpace(matchedPng))
+            var systemsToTry = rom.Platform switch
             {
-                foreach (string url in BuildLibretroImageUrls(sysKey, matchedPng, "Named_Boxarts"))
+                StormPlatform.Gb or StormPlatform.Sgb => new[] { "gb", "gbc" },
+                StormPlatform.Gbc => new[] { "gbc", "gb" },
+                _ => new[] { "gba" },
+            };
+
+            string rawName = Path.GetFileNameWithoutExtension(rom.FileName);
+            string baseClean = s_parensTagRegex.Replace(rawName, string.Empty).Replace('_', ' ').Trim();
+
+            foreach (string sysKey in systemsToTry)
+            {
+                var indexEntries = await GetOrLoadIndexAsync(sysKey, ct).ConfigureAwait(false);
+                string? matchedPng = FindBestIndexMatch(indexEntries, rawName, baseClean, rom.Title, rom.Region);
+                if (!string.IsNullOrWhiteSpace(matchedPng))
                 {
-                    if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
+                    foreach (string url in BuildLibretroImageUrls(sysKey, matchedPng, "Named_Boxarts"))
                     {
-                        rom.CoverLocalPath = localPath;
-                        SaveCache();
-                        CoverArtUpdated?.Invoke(rom);
-                        return localPath;
+                        if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
+                        {
+                            rom.CoverLocalPath = localPath;
+                            SaveCache();
+                            CoverArtUpdated?.Invoke(rom);
+                            return localPath;
+                        }
+                    }
+                    foreach (string url in BuildLibretroImageUrls(sysKey, matchedPng, "Named_Titles"))
+                    {
+                        if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
+                        {
+                            rom.CoverLocalPath = localPath;
+                            SaveCache();
+                            CoverArtUpdated?.Invoke(rom);
+                            return localPath;
+                        }
                     }
                 }
-                foreach (string url in BuildLibretroImageUrls(sysKey, matchedPng, "Named_Titles"))
+            }
+
+            // Direct fallback probing
+            string primarySys = systemsToTry[0];
+            var candidates = new List<string>();
+            if (!string.IsNullOrWhiteSpace(rawName)) candidates.Add(rawName);
+            if (!string.IsNullOrWhiteSpace(baseClean))
+            {
+                candidates.Add($"{baseClean} (USA, Europe)");
+                candidates.Add($"{baseClean} (USA)");
+                candidates.Add($"{baseClean} (Europe)");
+                candidates.Add($"{baseClean} (World)");
+                candidates.Add($"{baseClean} (Japan)");
+            }
+
+            foreach (string nameCandidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (ct.IsCancellationRequested) break;
+                string sanitized = SanitizeLibretroFileName(nameCandidate) + ".png";
+                foreach (string url in BuildLibretroImageUrls(primarySys, sanitized))
                 {
                     if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
                     {
@@ -443,36 +717,102 @@ public sealed partial class GbcaRomLibrary
             }
         }
 
-        // Direct fallback probing
-        string primarySys = systemsToTry[0];
-        var candidates = new List<string>();
-        if (!string.IsNullOrWhiteSpace(rawName)) candidates.Add(rawName);
-        if (!string.IsNullOrWhiteSpace(baseClean))
+        if (useRa && await TryFetchRaCoverAsync(rom, localPath, raUser, raToken, ct).ConfigureAwait(false))
         {
-            candidates.Add($"{baseClean} (USA, Europe)");
-            candidates.Add($"{baseClean} (USA)");
-            candidates.Add($"{baseClean} (Europe)");
-            candidates.Add($"{baseClean} (World)");
-            candidates.Add($"{baseClean} (Japan)");
-        }
-
-        foreach (string nameCandidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            if (ct.IsCancellationRequested) break;
-            string sanitized = SanitizeLibretroFileName(nameCandidate) + ".png";
-            foreach (string url in BuildLibretroImageUrls(primarySys, sanitized))
-            {
-                if (await TryDownloadCoverAsync(url, localPath, ct).ConfigureAwait(false))
-                {
-                    rom.CoverLocalPath = localPath;
-                    SaveCache();
-                    CoverArtUpdated?.Invoke(rom);
-                    return localPath;
-                }
-            }
+            rom.CoverLocalPath = localPath;
+            SaveCache();
+            CoverArtUpdated?.Invoke(rom);
+            return localPath;
         }
 
         return null;
+    }
+
+    private async Task<bool> TryFetchRaCoverAsync(GbcaRomRecord rom, string localPath, string raUser, string raToken, CancellationToken ct)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(rom.RaHash))
+            {
+                rom.RaHash = ComputeRaHashSafe(rom);
+            }
+
+            if (rom.RaGameId <= 0 && !string.IsNullOrWhiteSpace(rom.RaHash))
+            {
+                string idUrl = $"https://retroachievements.org/dorequest.php?r=gameid&m={Uri.EscapeDataString(rom.RaHash)}";
+                using var idResp = await _httpClient.GetAsync(idUrl, ct).ConfigureAwait(false);
+                if (idResp.IsSuccessStatusCode)
+                {
+                    string idJson = await idResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    using var idDoc = JsonDocument.Parse(idJson);
+                    if (idDoc.RootElement.TryGetProperty("GameID", out var gidEl) && gidEl.TryGetInt32(out int gid) && gid > 0)
+                    {
+                        rom.RaGameId = gid;
+                    }
+                }
+            }
+
+            if (rom.RaGameId <= 0 || string.IsNullOrWhiteSpace(raUser) || string.IsNullOrWhiteSpace(raToken))
+            {
+                return false;
+            }
+
+            string patchUrl = $"https://retroachievements.org/dorequest.php?r=patch&u={Uri.EscapeDataString(raUser)}&t={Uri.EscapeDataString(raToken)}&g={rom.RaGameId}";
+            using var pResp = await _httpClient.GetAsync(patchUrl, ct).ConfigureAwait(false);
+            if (!pResp.IsSuccessStatusCode) return false;
+            string pJson = await pResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            using var pDoc = JsonDocument.Parse(pJson);
+            if (!pDoc.RootElement.TryGetProperty("PatchData", out var patchData)) return false;
+
+            string boxArt = patchData.TryGetProperty("ImageBoxArt", out var baEl) ? (baEl.GetString() ?? string.Empty) : string.Empty;
+            string icon = patchData.TryGetProperty("ImageIcon", out var icEl) ? (icEl.GetString() ?? string.Empty) : string.Empty;
+
+            foreach (string relPath in new[] { boxArt, icon })
+            {
+                if (string.IsNullOrWhiteSpace(relPath)) continue;
+                string fullUrl = relPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    ? relPath
+                    : $"https://media.retroachievements.org{relPath}";
+                if (await TryDownloadCoverAsync(fullUrl, localPath, ct).ConfigureAwait(false))
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+        }
+        return false;
+    }
+
+    private static unsafe string ComputeRaHashSafe(GbcaRomRecord rom)
+    {
+        if (!NativeCoreBindings.IsAvailable || string.IsNullOrWhiteSpace(rom.FilePath) || !File.Exists(rom.FilePath))
+        {
+            return string.Empty;
+        }
+
+        byte* buf = stackalloc byte[33];
+        if (string.Equals(Path.GetExtension(rom.FilePath), ".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            if (TryExtractRomFromZip(rom.FilePath, out byte[] romBytes, out _))
+            {
+                fixed (byte* p = romBytes)
+                {
+                    if (NativeCoreBindings.storm_gbca_compute_ra_hash_buffer(p, (nuint)romBytes.Length, (int)rom.Platform, buf) == 0)
+                    {
+                        return StormGbcaRomInfo.ReadFixedUtf8(buf, 33);
+                    }
+                }
+            }
+            return string.Empty;
+        }
+
+        if (NativeCoreBindings.storm_gbca_compute_ra_hash(rom.FilePath, (int)rom.Platform, buf) == 0)
+        {
+            return StormGbcaRomInfo.ReadFixedUtf8(buf, 33);
+        }
+        return string.Empty;
     }
 
     private static string RepoNameForKey(string sysKey) => sysKey switch

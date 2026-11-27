@@ -12,6 +12,7 @@ using Storm.AuroraFluid.Kit.Icons;
 using Storm.AuroraFluid.Kit.Services;
 using StormGbca.Core.Configuration;
 using StormGbca.Core.Library;
+using StormGbca.Core.Localization;
 using StormGbca.Core.Native;
 using StormGbca.Core.Paths;
 using StormGbca.UI.Common;
@@ -23,6 +24,9 @@ public class RomInspectorPane : Border
 {
     private readonly Image _coverImage;
     private readonly Border _coverFrame;
+    private readonly TextBlock _headerTitle;
+    private readonly TextBlock _slotsHeader;
+    private readonly TextBlock _profileHeader;
     private readonly TextBlock _titleText;
     private readonly TextBlock _metaText;
     private readonly WrapPanel _badgesRow;
@@ -30,6 +34,9 @@ public class RomInspectorPane : Border
     private readonly TextBlock _overlayVal;
     private readonly TextBlock _coreVal;
     private readonly UniformGrid _slotsGrid;
+    private readonly List<Border> _dividers = [];
+    private readonly List<TextBlock> _metaLabels = [];
+    private readonly List<(Button Btn, TextBlock Label)> _tabButtons = [];
     private readonly Action<GbcaRomRecord, int>? _onOpenModalTab;
     private GbcaRomRecord? _currentRom;
 
@@ -49,21 +56,22 @@ public class RomInspectorPane : Border
 
         var stack = new StackPanel { Spacing = 10 };
 
-        stack.Children.Add(new TextBlock
+        _headerTitle = new TextBlock
         {
             Text = "ИНСПЕКТОР КАРТРИДЖА",
             FontSize = 10,
             FontWeight = FontWeight.Bold,
             Foreground = StormThemeBrushes.Accent,
             HorizontalAlignment = HorizontalAlignment.Center
-        });
+        };
+        stack.Children.Add(_headerTitle);
 
         _coverFrame = new Border
         {
-            Width = 156,
-            Height = 156,
+            Width = 148,
+            Height = 148,
             CornerRadius = new CornerRadius(12),
-            Background = new SolidColorBrush(Color.FromArgb(55, 0, 0, 0)),
+            Background = StormThemeBrushes.RowSurface,
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Center,
             ClipToBounds = true,
@@ -96,7 +104,9 @@ public class RomInspectorPane : Border
         {
             Text = "CRC32: -",
             FontSize = 11,
-            HorizontalAlignment = HorizontalAlignment.Center
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center
         };
         stack.Children.Add(_metaText);
 
@@ -111,27 +121,33 @@ public class RomInspectorPane : Border
         };
         stack.Children.Add(playBtn);
 
-        stack.Children.Add(new Border { Height = 1, Background = StormThemeBrushes.SubtleBorder, Margin = new Thickness(0, 2) });
+        var div1 = new Border { Height = 1, Background = StormThemeBrushes.SubtleBorder, Margin = new Thickness(0, 2) };
+        _dividers.Add(div1);
+        stack.Children.Add(div1);
 
-        stack.Children.Add(new TextBlock
+        _slotsHeader = new TextBlock
         {
             Text = "БЫСТРЫЕ СЛОТЫ СОХРАНЕНИЯ (1..4)",
             FontSize = 10,
             FontWeight = FontWeight.Bold,
             Foreground = StormThemeBrushes.SecondaryText
-        });
+        };
+        stack.Children.Add(_slotsHeader);
         _slotsGrid = new UniformGrid { Columns = 2, Rows = 2 };
         stack.Children.Add(_slotsGrid);
 
-        stack.Children.Add(new Border { Height = 1, Background = StormThemeBrushes.SubtleBorder, Margin = new Thickness(0, 2) });
+        var div2 = new Border { Height = 1, Background = StormThemeBrushes.SubtleBorder, Margin = new Thickness(0, 2) };
+        _dividers.Add(div2);
+        stack.Children.Add(div2);
 
-        stack.Children.Add(new TextBlock
+        _profileHeader = new TextBlock
         {
             Text = "ПРОФИЛЬ СИСТЕМЫ",
             FontSize = 10,
             FontWeight = FontWeight.Bold,
             Foreground = StormThemeBrushes.SecondaryText
-        });
+        };
+        stack.Children.Add(_profileHeader);
         stack.Children.Add(CreateMetaRow("Активное ядро:", out _coreVal));
         stack.Children.Add(CreateMetaRow("3D-корпус:", out _skinVal));
         stack.Children.Add(CreateMetaRow("Оверлей:", out _overlayVal));
@@ -146,8 +162,8 @@ public class RomInspectorPane : Border
         Child = scroll;
 
         StormGbcaUiState.Instance.RomSelected += UpdatePane;
-        StormGbcaUiState.Instance.SettingsSaved += () => UpdatePane(_currentRom);
-        StormGbcaUiState.Instance.SkinOrOverlayChanged += () => UpdatePane(_currentRom);
+        StormGbcaUiState.Instance.SettingsSaved += () => Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdatePane(_currentRom));
+        StormGbcaUiState.Instance.SkinOrOverlayChanged += () => Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdatePane(_currentRom));
         StormGbcaUiState.Instance.Library.CoverArtUpdated += updated =>
         {
             if (_currentRom != null && string.Equals(updated.FilePath, _currentRom.FilePath, StringComparison.OrdinalIgnoreCase))
@@ -160,9 +176,24 @@ public class RomInspectorPane : Border
         {
             Background = StormThemeBrushes.GlassPanel;
             BorderBrush = StormThemeBrushes.SubtleBorder;
+            _headerTitle.Foreground = StormThemeBrushes.Accent;
+            _slotsHeader.Foreground = StormThemeBrushes.SecondaryText;
+            _profileHeader.Foreground = StormThemeBrushes.SecondaryText;
+            _coverFrame.Background = StormThemeBrushes.RowSurface;
             _coverFrame.BorderBrush = StormThemeBrushes.StrongBorder;
             _titleText.Foreground = StormThemeBrushes.PrimaryText;
             _metaText.Foreground = StormThemeBrushes.SecondaryText;
+            foreach (var d in _dividers) d.Background = StormThemeBrushes.SubtleBorder;
+            foreach (var lbl in _metaLabels) lbl.Foreground = StormThemeBrushes.SecondaryText;
+            _coreVal.Foreground = StormThemeBrushes.BodyText;
+            _skinVal.Foreground = StormThemeBrushes.BodyText;
+            _overlayVal.Foreground = StormThemeBrushes.BodyText;
+            foreach (var (btn, tb) in _tabButtons)
+            {
+                btn.Background = StormThemeBrushes.RowSurface;
+                btn.BorderBrush = StormThemeBrushes.SubtleBorder;
+                tb.Foreground = StormThemeBrushes.BodyText;
+            }
             UpdatePane(_currentRom);
         });
         UpdatePane(StormGbcaUiState.Instance.SelectedRom);
@@ -183,21 +214,25 @@ public class RomInspectorPane : Border
         };
         var s = new StackPanel { Spacing = 3, HorizontalAlignment = HorizontalAlignment.Center };
         s.Children.Add(new AuroraVectorIcon { Kind = icon, Size = 14, HorizontalAlignment = HorizontalAlignment.Center });
-        s.Children.Add(new TextBlock { Text = title, FontSize = 10, FontWeight = FontWeight.Medium, Foreground = StormThemeBrushes.BodyText, HorizontalAlignment = HorizontalAlignment.Center });
+        var tb = new TextBlock { Text = title, FontSize = 10, FontWeight = FontWeight.Medium, Foreground = StormThemeBrushes.BodyText, HorizontalAlignment = HorizontalAlignment.Center };
+        s.Children.Add(tb);
         btn.Content = s;
         btn.Click += (_, _) =>
         {
             AuroraTactileFeedbackService.Instance.PlayClick();
             if (_currentRom != null) _onOpenModalTab?.Invoke(_currentRom, tabIdx);
         };
+        _tabButtons.Add((btn, tb));
         return btn;
     }
 
-    private static Grid CreateMetaRow(string label, out TextBlock valText)
+    private Grid CreateMetaRow(string label, out TextBlock valText)
     {
-        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(0, 2) };
-        g.Children.Add(new TextBlock { Text = label, FontSize = 11, Foreground = StormThemeBrushes.SecondaryText });
-        valText = new TextBlock { Text = "-", FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.BodyText, HorizontalAlignment = HorizontalAlignment.Right };
+        var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 8, Margin = new Thickness(0, 2) };
+        var lbl = new TextBlock { Text = label, FontSize = 11, Foreground = StormThemeBrushes.SecondaryText };
+        _metaLabels.Add(lbl);
+        g.Children.Add(lbl);
+        valText = new TextBlock { Text = "-", FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.BodyText, HorizontalAlignment = HorizontalAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
         g.Children.Add(valText);
         Grid.SetColumn(valText, 1);
         return g;
@@ -210,6 +245,7 @@ public class RomInspectorPane : Border
         _slotsGrid.Children.Clear();
 
         var s = StormGbcaUiState.Instance.Settings;
+        bool showCover = s.ShowLibretroCovers || s.ShowRaCovers;
         var plat = rom?.Platform ?? StormPlatform.Gba;
 
         _coreVal.Text = plat switch
@@ -233,20 +269,36 @@ public class RomInspectorPane : Border
 
         if (rom == null)
         {
-            _titleText.Text = "STORM GBCA 1.4.0";
+            _titleText.Text = $"STORM GBCA {GbcaLoc.AppVersion}";
             _metaText.Text = "Выберите игру в списке";
             _coverImage.Source = null;
+            _coverFrame.IsVisible = false;
             return;
         }
 
-        _badgesRow.Children.Add(BentoRomCard.CreateTagBadge(rom.PlatformShortName, StormGbcaUiState.GetPlatformBadgeColor(rom.Platform), true));
-        _badgesRow.Children.Add(BentoRomCard.CreateTagBadge(rom.RegionBadgeCode, Color.Parse("#38BDF8"), false));
-        BentoRomCard.AddHardwareBadges(_badgesRow, rom.HardwareFlags);
+        if (s.ShowPlatformBadge)
+        {
+            _badgesRow.Children.Add(BentoRomCard.CreateTagBadge(rom.PlatformShortName, StormGbcaUiState.GetPlatformBadgeColor(rom.Platform), true));
+        }
+        if (s.ShowRegionBadge)
+        {
+            _badgesRow.Children.Add(BentoRomCard.CreateTagBadge(rom.RegionBadgeCode, Color.Parse("#38BDF8"), false));
+        }
+        if (s.ShowHardwareBadges)
+        {
+            BentoRomCard.AddHardwareBadges(_badgesRow, rom.HardwareFlags);
+        }
+        if (s.ShowRaBadge)
+        {
+            _badgesRow.Children.Add(BentoRomCard.CreateTagBadge("RA", Color.Parse("#F59E0B"), true));
+        }
+        _badgesRow.IsVisible = _badgesRow.Children.Count > 0;
 
         _titleText.Text = rom.GetDisplayTitle();
         string ext = Path.GetExtension(rom.FileName).ToUpperInvariant(); if (string.IsNullOrWhiteSpace(ext)) ext = "-";
         _metaText.Text = $"{ext} | {BentoRomCard.FormatRomSize(rom.RomSize)} | CRC32: {rom.Crc32Hex}";
-        _coverImage.Source = BitmapHelper.LoadBitmapCached(rom.CoverLocalPath);
+        _coverImage.Source = showCover ? BitmapHelper.LoadBitmapCached(rom.CoverLocalPath) : null;
+        _coverFrame.IsVisible = showCover;
     }
 
     private Control CreateSlotTile(int slotIdx)

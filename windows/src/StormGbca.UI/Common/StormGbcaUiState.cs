@@ -43,12 +43,19 @@ public sealed class StormGbcaUiState
     public GbcaViewMode ActiveViewMode { get; private set; } = GbcaViewMode.BentoCards;
     public string SearchQuery { get; private set; } = string.Empty;
 
+    private readonly object _metricsLock = new();
+    private GbcaFrameMetrics _lastMetrics;
+
     public GbcaRomRecord? SelectedRom { get; private set; }
     public bool IsEmulationActive { get; private set; }
     public bool IsPaused { get; private set; }
     public bool IsHiddenToTray { get; private set; }
     public bool IsFullscreen { get; private set; }
-    public GbcaFrameMetrics LastMetrics { get; set; }
+    public GbcaFrameMetrics LastMetrics
+    {
+        get { lock (_metricsLock) return _lastMetrics; }
+        set { lock (_metricsLock) _lastMetrics = value; }
+    }
 
     public event Action? StateChanged;
     public event Action<GbcaRomRecord?>? RomSelected;
@@ -92,6 +99,7 @@ public sealed class StormGbcaUiState
             StateChanged?.Invoke();
         };
 
+        Emulator.FrameCompleted += metrics => LastMetrics = metrics;
         Emulator.StatusMessage += msg => NotifyStatus(msg);
     }
 
@@ -130,7 +138,6 @@ public sealed class StormGbcaUiState
     {
         SelectedRom = rom;
         RomSelected?.Invoke(rom);
-        StateChanged?.Invoke();
         if (rom != null && Settings.ShowLibretroCovers && string.IsNullOrWhiteSpace(rom.CoverLocalPath))
         {
             _ = Library.EnsureCoverArtAsync(rom);

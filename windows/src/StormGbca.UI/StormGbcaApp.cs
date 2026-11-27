@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Themes.Fluent;
+using Avalonia.Threading;
 using Storm.AuroraFluid.Kit.Icons;
 using Storm.AuroraFluid.Kit.Platform;
 using Storm.AuroraFluid.Kit.Services;
@@ -101,6 +102,41 @@ public class StormGbcaApp : Application
             trayMenu.Items.Add(exitItem);
             trayIcon.Menu = trayMenu;
 
+            void RefreshTrayMenu()
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    var state = StormGbcaUiState.Instance;
+                    bool active = state.IsEmulationActive;
+                    bool paused = state.IsPaused;
+
+                    if (active && state.SelectedRom != null)
+                    {
+                        statusItem.Header = paused
+                            ? $"{state.SelectedRom.Title} ({GbcaLoc.T("MenuPause")})"
+                            : state.SelectedRom.Title;
+                    }
+                    else
+                    {
+                        statusItem.Header = GbcaLoc.T("TrayReady");
+                    }
+
+                    openItem.Header = GbcaLoc.T("TrayOpenWindow");
+                    resumeItem.Header = GbcaLoc.T("TrayContinue");
+                    resumeItem.IsEnabled = !active || paused || state.SelectedRom != null;
+                    pauseItem.Header = GbcaLoc.T("TrayPause");
+                    pauseItem.IsEnabled = active && !paused;
+                    settingsItem.Header = GbcaLoc.T("TraySettings");
+                    exitItem.Header = GbcaLoc.T("TrayExit");
+                });
+            }
+
+            GbcaLoc.LanguageChanged += _ => RefreshTrayMenu();
+            uiState.EmulationStarted += _ => RefreshTrayMenu();
+            uiState.EmulationStopped += RefreshTrayMenu;
+            uiState.StateChanged += RefreshTrayMenu;
+            RefreshTrayMenu();
+
             TrayIcon.SetIcons(this, new TrayIcons { trayIcon });
             AuroraTrayManager.Instance.AttachToWindow(
                 mainWindow,
@@ -121,6 +157,7 @@ public class StormGbcaApp : Application
                 }
                 else
                 {
+                    StormGbcaUiState.Instance.StopEmulation();
                     StormGbcaUiState.Instance.Emulator.Dispose();
                 }
             };

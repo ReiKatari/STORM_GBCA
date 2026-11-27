@@ -24,12 +24,15 @@ public class CommandPaletteModal : AuroraGlassCard
 
     public CommandPaletteModal()
     {
-        Width = 560;
-        MaxHeight = 450;
+        MaxWidth = 560;
+        MaxHeight = 460;
+        Margin = new Thickness(24, 18);
+        HorizontalAlignment = HorizontalAlignment.Stretch;
+        VerticalAlignment = VerticalAlignment.Center;
         Padding = new Thickness(16);
         SpotlightEnabled = true;
 
-        var mainStack = new StackPanel { Spacing = 10 };
+        var mainGrid = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 10 };
         _searchBox = new AuroraSearchBox
         {
             PlaceholderText = "Введите команду или название игры...",
@@ -37,15 +40,17 @@ public class CommandPaletteModal : AuroraGlassCard
             Height = 40
         };
         _searchBox.TextChanged += (_, _) => FilterActions(_searchBox.Text ?? string.Empty);
-        mainStack.Children.Add(_searchBox);
+        mainGrid.Children.Add(_searchBox);
 
-        var scroll = new ScrollViewer { Height = 330, Padding = new Thickness(0, 0, 6, 0) };
+        var scroll = new ScrollViewer { Padding = new Thickness(0, 0, 6, 0) };
         _resultsStack = new StackPanel { Spacing = 4 };
         scroll.Content = _resultsStack;
-        mainStack.Children.Add(scroll);
-        Content = mainStack;
+        mainGrid.Children.Add(scroll);
+        Grid.SetRow(scroll, 1);
+        Content = mainGrid;
 
         RegisterActions();
+        StormThemeBrushes.BindTheme(this, () => FilterActions(_searchBox.Text ?? string.Empty));
         FilterActions(string.Empty);
     }
 

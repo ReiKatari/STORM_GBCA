@@ -96,7 +96,7 @@ public static class AuroraIconCatalog
         );
         s_entries[AuroraIconKind.SettingsCore] = new AuroraIconEntry(
             AuroraIconKind.SettingsCore,
-            "M 12 8 A 4 4 0 1 0 16 12 A 4 4 0 0 0 12 8 M 12 1 A 2 2 0 0 1 14 3 V 4.1 A 8 8 0 0 1 16.9 5.3 L 17.7 4.5 A 2 2 0 0 1 20.5 4.5 L 20.5 4.5 A 2 2 0 0 1 20.5 7.3 L 19.7 8.1 A 8 8 0 0 1 20.9 11 H 22 A 2 2 0 0 1 24 13 V 13 A 2 2 0 0 1 22 15 H 20.9 A 8 8 0 0 1 19.7 17.9 L 20.5 18.7 A 2 2 0 0 1 20.5 21.5 L 20.5 21.5 A 2 2 0 0 1 17.7 21.5 L 16.9 20.7 A 8 8 0 0 1 14 21.9 V 23 A 2 2 0 0 1 12 25",
+            "M 19.14 12.94 C 19.18 12.64 19.2 12.33 19.2 12 C 19.2 11.68 19.18 11.36 19.13 11.06 L 21.16 9.48 C 21.34 9.34 21.39 9.07 21.28 8.87 L 19.36 5.55 C 19.24 5.33 18.99 5.26 18.77 5.33 L 16.38 6.29 C 15.88 5.91 15.35 5.59 14.76 5.35 L 14.4 2.81 C 14.36 2.57 14.16 2.4 13.92 2.4 H 10.08 C 9.84 2.4 9.65 2.57 9.61 2.81 L 9.25 5.35 C 8.66 5.59 8.12 5.92 7.63 6.29 L 5.24 5.33 C 5.02 5.25 4.77 5.33 4.65 5.55 L 2.74 8.87 C 2.62 9.08 2.66 9.34 2.86 9.48 L 4.89 11.06 C 4.84 11.36 4.8 11.69 4.8 12 C 4.8 12.31 4.82 12.64 4.87 12.94 L 2.84 14.52 C 2.66 14.66 2.61 14.93 2.72 15.13 L 4.64 18.45 C 4.76 18.67 5.01 18.74 5.23 18.67 L 7.62 17.71 C 8.12 18.09 8.65 18.41 9.24 18.65 L 9.6 21.19 C 9.65 21.43 9.84 21.6 10.08 21.6 H 13.92 C 14.16 21.6 14.36 21.43 14.39 21.19 L 14.75 18.65 C 15.34 18.41 15.88 18.09 16.37 17.71 L 18.76 18.67 C 18.98 18.75 19.23 18.67 19.35 18.45 L 21.27 15.13 C 21.39 14.91 21.34 14.66 21.15 14.52 L 19.14 12.94 Z M 12 15.6 C 10.02 15.6 8.4 13.98 8.4 12 C 8.4 10.02 10.02 8.4 12 8.4 C 13.98 8.4 15.6 10.02 15.6 12 C 15.6 13.98 13.98 15.6 12 15.6 Z",
             "M 12 10 A 2 2 0 1 0 14 12 A 2 2 0 0 0 12 10 Z",
             Color.Parse("#64748B"),
             Color.Parse("#94A3B8"),
@@ -472,32 +472,32 @@ public static class AuroraIconCatalog
         );
         s_entries[AuroraIconKind.WindowMinimize] = new AuroraIconEntry(
             AuroraIconKind.WindowMinimize,
-            "M 4 18 H 20",
-            "M 4 19 H 20",
+            "M 5 12 H 19",
+            "",
             Color.Parse("#94A3B8"),
             Color.Parse("#CBD5E1"),
             Color.Parse("#F1F5F9")
         );
         s_entries[AuroraIconKind.WindowMaximize] = new AuroraIconEntry(
             AuroraIconKind.WindowMaximize,
-            "M 4 4 H 20 V 20 H 4 Z",
-            "M 6 6 H 18 V 18 H 6 Z",
+            "M 5 5 H 19 V 19 H 5 Z",
+            " ",
             Color.Parse("#94A3B8"),
             Color.Parse("#CBD5E1"),
             Color.Parse("#F1F5F9")
         );
         s_entries[AuroraIconKind.WindowRestore] = new AuroraIconEntry(
             AuroraIconKind.WindowRestore,
-            "M 8 4 H 20 V 16 H 8 Z",
-            "M 4 8 H 16 V 20 H 4 Z",
+            "M 7 5 H 19 V 17 H 16",
+            "M 5 8 H 16 V 19 H 5 Z",
             Color.Parse("#94A3B8"),
             Color.Parse("#CBD5E1"),
             Color.Parse("#F1F5F9")
         );
         s_entries[AuroraIconKind.WindowClose] = new AuroraIconEntry(
             AuroraIconKind.WindowClose,
-            "M 5 5 L 19 19",
-            "M 19 5 L 5 19",
+            "M 5.5 5.5 L 18.5 18.5",
+            "M 18.5 5.5 L 5.5 18.5",
             Color.Parse("#E81123"),
             Color.Parse("#F87171"),
             Color.Parse("#FECACA")

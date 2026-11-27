@@ -7,6 +7,7 @@ using Avalonia.Platform;
 using SkiaSharp;
 using StormGbca.Core.Configuration;
 using StormGbca.Core.Native;
+using StormGbca.UI.Common;
 
 namespace StormGbca.UI.Views.Emulation;
 
@@ -118,8 +119,10 @@ public static class GbcaConsoleSkinRenderer
     {
         if (IsSkinNone(platform, settings)) return true;
         var sr = settings.GetOverlayProfileForPlatform(platform).ScreenRect;
-        if (sr == null || !sr.HideSkinInFullscreen) return false;
-        if (sr.ScreenPreset is 1 or 2) return true;
+        if (sr == null) return false;
+        if (sr.ScreenPreset == 2) return true;
+        if (!sr.HideSkinInFullscreen) return false;
+        if (StormGbcaUiState.Instance.IsFullscreen) return true;
         if (sr.UseCustom && (sr.WidthFraction >= 0.94f || sr.HeightFraction >= 0.92f)) return true;
         return false;
     }

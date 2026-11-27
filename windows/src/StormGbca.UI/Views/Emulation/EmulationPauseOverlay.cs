@@ -32,6 +32,7 @@ public class EmulationPauseOverlay : Border
     private readonly WrapPanel _tabBar;
     private readonly TextBlock _bannerGameTitle;
     private readonly TextBlock _bannerTelemetry;
+    private readonly List<Border> _bottomPills = [];
     private int _activeTab;
     private DateTime _sessionOpenedUtc = DateTime.UtcNow;
 
@@ -47,24 +48,24 @@ public class EmulationPauseOverlay : Border
         Background = new SolidColorBrush(Color.FromArgb(215, 8, 10, 18));
         HorizontalAlignment = HorizontalAlignment.Stretch;
         VerticalAlignment = VerticalAlignment.Stretch;
+        Padding = new Thickness(24, 16);
 
         var card = new AuroraGlassCard
         {
-            Width = 760,
-            MaxHeight = 620,
-            Padding = new Thickness(22, 18),
-            HorizontalAlignment = HorizontalAlignment.Center,
+            MaxWidth = 760,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(20, 16),
             SpotlightEnabled = true
         };
 
         var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto") };
 
         // STORM DS-Style Top Game Banner with PAUSED Badge + Live Telemetry
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 0, 0, 10) };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12, Margin = new Thickness(0, 0, 0, 10) };
         var titleStack = new StackPanel { Spacing = 4 };
-        var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        _bannerGameTitle = new TextBlock { Text = "STORM GBCA", FontSize = 16, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center };
+        var titleRow = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        _bannerGameTitle = new TextBlock { Text = "STORM GBCA", FontSize = 16, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 2), TextWrapping = TextWrapping.Wrap };
         var pausedBadge = new Border
         {
             CornerRadius = new CornerRadius(6),
@@ -76,11 +77,11 @@ public class EmulationPauseOverlay : Border
         titleRow.Children.Add(_bannerGameTitle);
         titleRow.Children.Add(pausedBadge);
         titleStack.Children.Add(titleRow);
-        _bannerTelemetry = new TextBlock { Text = "ESC - Resume", FontSize = 11.5, Foreground = StormThemeBrushes.SecondaryText };
+        _bannerTelemetry = new TextBlock { Text = "ESC - Resume", FontSize = 11.5, Foreground = StormThemeBrushes.SecondaryText, TextWrapping = TextWrapping.Wrap };
         titleStack.Children.Add(_bannerTelemetry);
         header.Children.Add(titleStack);
 
-        var resumeBtn = new AuroraVolumetricButton { IsHero = true, Height = 36, Width = 155 };
+        var resumeBtn = new AuroraVolumetricButton { IsHero = true, Height = 36, MinWidth = 136, Padding = new Thickness(14, 0) };
         resumeBtn.Content = new TextBlock { Text = "Продолжить", FontSize = 12.5, FontWeight = FontWeight.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         resumeBtn.Click += (_, _) => ResumeRequested?.Invoke();
         header.Children.Add(resumeBtn);
@@ -99,28 +100,53 @@ public class EmulationPauseOverlay : Border
         root.Children.Add(_tabBar);
         Grid.SetRow(_tabBar, 1);
 
-        var scroll = new ScrollViewer { MaxHeight = 390, Padding = new Thickness(0, 0, 10, 0) };
+        var scroll = new ScrollViewer
+        {
+            Padding = new Thickness(0, 0, 10, 0),
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        };
         _bodyPanel = new StackPanel { Spacing = 10 };
         scroll.Content = _bodyPanel;
         root.Children.Add(scroll);
         Grid.SetRow(scroll, 2);
 
-        // Bottom bar
-        var bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), Margin = new Thickness(0, 12, 0, 0), ColumnSpacing = 8 };
+        // Bottom bar (WrapPanel-safe)
+        var bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 12, 0, 0), ColumnSpacing = 8 };
+        var leftBottom = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         var rwBtn = CreateActionPill("Перемотка назад", Color.Parse("#38BDF8"), () => RewindRequested?.Invoke());
+        rwBtn.Margin = new Thickness(0, 0, 8, 4);
         var rstBtn = CreateActionPill("Перезапуск", Color.Parse("#F59E0B"), () => ResetRequested?.Invoke());
+        rstBtn.Margin = new Thickness(0, 0, 8, 4);
+        leftBottom.Children.Add(rwBtn);
+        leftBottom.Children.Add(rstBtn);
+        bottom.Children.Add(leftBottom);
+
         var exitBtn = CreateActionPill("Выйти в библиотеку", Color.Parse("#EF4444"), () => StopRequested?.Invoke());
-        bottom.Children.Add(rwBtn);
-        bottom.Children.Add(rstBtn);
-        Grid.SetColumn(rstBtn, 1);
+        exitBtn.Margin = new Thickness(0, 0, 0, 4);
         bottom.Children.Add(exitBtn);
-        Grid.SetColumn(exitBtn, 3);
+        Grid.SetColumn(exitBtn, 1);
+
+        _bottomPills.Add(rwBtn);
+        _bottomPills.Add(rstBtn);
+        _bottomPills.Add(exitBtn);
 
         root.Children.Add(bottom);
         Grid.SetRow(bottom, 3);
 
         card.Content = root;
         Child = card;
+
+        StormThemeBrushes.BindTheme(this, () =>
+        {
+            _bannerGameTitle.Foreground = StormThemeBrushes.PrimaryText;
+            _bannerTelemetry.Foreground = StormThemeBrushes.SecondaryText;
+            foreach (var p in _bottomPills)
+            {
+                if (p.Child is TextBlock tb) tb.Foreground = StormThemeBrushes.PrimaryText;
+            }
+            RefreshTab();
+        });
         RefreshTab();
     }
 
@@ -460,8 +486,8 @@ public class EmulationPauseOverlay : Border
             StormGbcaUiState.Instance.SaveSettings();
         }));
 
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 6, 0, 0) };
-        row.Children.Add(CreateActionPill("Применить патч IPS/UPS/BPS...", Color.Parse("#8B5CF6"), async () =>
+        var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+        var patchPill = CreateActionPill("Применить патч IPS/UPS/BPS...", Color.Parse("#8B5CF6"), async () =>
         {
             var top = TopLevel.GetTopLevel(this);
             if (top?.StorageProvider == null) return;
@@ -473,12 +499,17 @@ public class EmulationPauseOverlay : Border
             });
             string? path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
             if (!string.IsNullOrWhiteSpace(path)) emu.ApplyPatchFile(path);
-        }));
-        row.Children.Add(CreateActionPill("Менеджер читов", Color.Parse("#10B981"), () =>
+        });
+        patchPill.Margin = new Thickness(0, 0, 8, 6);
+        row.Children.Add(patchPill);
+
+        var cheatPill = CreateActionPill("Менеджер читов", Color.Parse("#10B981"), () =>
         {
             var rom = StormGbcaUiState.Instance.SelectedRom;
             if (rom != null) StormGbcaUiState.Instance.RequestRomModal(rom, 1);
-        }));
+        });
+        cheatPill.Margin = new Thickness(0, 0, 8, 6);
+        row.Children.Add(cheatPill);
         _bodyPanel.Children.Add(row);
     }
 
@@ -518,19 +549,25 @@ public class EmulationPauseOverlay : Border
         Grid.SetColumn(writeBox, 1);
         _bodyPanel.Children.Add(inputs);
 
-        var row1 = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        row1.Children.Add(CreateActionPill("Новый поиск", Color.Parse("#10B981"), () =>
+        var row1 = new WrapPanel { Orientation = Orientation.Horizontal };
+        void AddSearchPill(string text, Color col, Action act)
+        {
+            var p = CreateActionPill(text, col, act);
+            p.Margin = new Thickness(0, 0, 6, 6);
+            row1.Children.Add(p);
+        }
+        AddSearchPill("Новый поиск", Color.Parse("#10B981"), () =>
         {
             int n = emu.MemSearchReset(_ramRegion, _ramValSize);
             _ramHits = n <= 64 ? emu.MemSearchGetResults(48) : [];
             _ramStatus = $"Снимок создан: {n} адресов";
             RefreshTab();
-        }));
-        row1.Children.Add(CreateActionPill("Равно", Color.Parse("#38BDF8"), () => RunRamFilter(StormSearchCmp.Eq)));
-        row1.Children.Add(CreateActionPill("Больше", Color.Parse("#38BDF8"), () => RunRamFilter(StormSearchCmp.Gt)));
-        row1.Children.Add(CreateActionPill("Меньше", Color.Parse("#38BDF8"), () => RunRamFilter(StormSearchCmp.Lt)));
-        row1.Children.Add(CreateActionPill("Увеличилось", Color.Parse("#A855F7"), () => RunRamFilter(StormSearchCmp.Increased)));
-        row1.Children.Add(CreateActionPill("Уменьшилось", Color.Parse("#F59E0B"), () => RunRamFilter(StormSearchCmp.Decreased)));
+        });
+        AddSearchPill("Равно", Color.Parse("#38BDF8"), () => RunRamFilter(StormSearchCmp.Eq));
+        AddSearchPill("Больше", Color.Parse("#38BDF8"), () => RunRamFilter(StormSearchCmp.Gt));
+        AddSearchPill("Меньше", Color.Parse("#38BDF8"), () => RunRamFilter(StormSearchCmp.Lt));
+        AddSearchPill("Увеличилось", Color.Parse("#A855F7"), () => RunRamFilter(StormSearchCmp.Increased));
+        AddSearchPill("Уменьшилось", Color.Parse("#F59E0B"), () => RunRamFilter(StormSearchCmp.Decreased));
         _bodyPanel.Children.Add(row1);
 
         foreach (var hit in _ramHits.Take(24))
@@ -591,11 +628,11 @@ public class EmulationPauseOverlay : Border
             Height = 26,
             Padding = new Thickness(8, 2),
             CornerRadius = new CornerRadius(6),
-            Background = new SolidColorBrush(Color.FromArgb(45, accent.R, accent.G, accent.B)),
+            Background = new SolidColorBrush(Color.FromArgb(StormThemeBrushes.IsDark ? (byte)45 : (byte)32, accent.R, accent.G, accent.B)),
             BorderBrush = new SolidColorBrush(accent),
             BorderThickness = new Thickness(1),
             Cursor = new Cursor(StandardCursorType.Hand),
-            Child = new TextBlock { Text = text, FontSize = 10, FontWeight = FontWeight.Bold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center }
+            Child = new TextBlock { Text = text, FontSize = 10, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center }
         };
         b.PointerPressed += (_, _) =>
         {
@@ -612,11 +649,11 @@ public class EmulationPauseOverlay : Border
             Height = 32,
             Padding = new Thickness(12, 4),
             CornerRadius = new CornerRadius(8),
-            Background = new SolidColorBrush(Color.FromArgb(45, accent.R, accent.G, accent.B)),
+            Background = new SolidColorBrush(Color.FromArgb(StormThemeBrushes.IsDark ? (byte)45 : (byte)32, accent.R, accent.G, accent.B)),
             BorderBrush = new SolidColorBrush(accent),
             BorderThickness = new Thickness(1),
             Cursor = new Cursor(StandardCursorType.Hand),
-            Child = new TextBlock { Text = text, FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center }
+            Child = new TextBlock { Text = text, FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center }
         };
         b.PointerPressed += (_, _) =>
         {

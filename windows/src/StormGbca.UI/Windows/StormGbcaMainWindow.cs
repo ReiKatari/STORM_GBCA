@@ -4,6 +4,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Platform;
 using Storm.AuroraFluid.Kit.Controls;
 using Storm.AuroraFluid.Kit.Platform;
 using Storm.AuroraFluid.Kit.Themes;
@@ -18,6 +20,7 @@ public class StormGbcaMainWindow : Window
 {
     private readonly AuroraScaledLayoutControl _scaledHost;
     private readonly StormGbcaMainView _mainView;
+    private readonly CustomTitleBar _titleBar;
     private double _lastWorkWidth = 1920;
     private double _lastWorkHeight = 1040;
     private WindowState _preFullscreenState = WindowState.Normal;
@@ -26,12 +29,13 @@ public class StormGbcaMainWindow : Window
     {
         var cfg = StormGbcaUiState.Instance.Settings;
         Title = $"STORM GBCA {GbcaLoc.AppVersion}";
-        MinWidth = 780;
-        MinHeight = 540;
-        Width = Math.Clamp(cfg.WindowWidth > 0 ? cfg.WindowWidth : 1320, MinWidth, 3840);
+        MinWidth = 1020;
+        MinHeight = 640;
+        Width = Math.Clamp(cfg.WindowWidth > 0 ? cfg.WindowWidth : 1360, MinWidth, 3840);
         Height = Math.Clamp(cfg.WindowHeight > 0 ? cfg.WindowHeight : 840, MinHeight, 2160);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
+        WindowDecorations = WindowDecorations.BorderOnly;
         ExtendClientAreaToDecorationsHint = true;
         ExtendClientAreaTitleBarHeightHint = 42;
 
@@ -45,8 +49,8 @@ public class StormGbcaMainWindow : Window
         AuroraThemeManager.Instance.ThemeChanged += _ => UpdateThemeBackground();
 
         var rootShell = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
-        var titleBar = new CustomTitleBar(this);
-        rootShell.Children.Add(titleBar);
+        _titleBar = new CustomTitleBar(this);
+        rootShell.Children.Add(_titleBar);
 
         _mainView = new StormGbcaMainView(this, includeTitleBar: false);
         _scaledHost = new AuroraScaledLayoutControl { Child = _mainView };
@@ -56,11 +60,28 @@ public class StormGbcaMainWindow : Window
 
         StormGbcaUiState.Instance.UiScaleChanged += ApplyUiScale;
         StormGbcaUiState.Instance.FullscreenToggled += ToggleFullscreen;
-        StormGbcaUiState.Instance.FullscreenChanged += fs => titleBar.IsVisible = !fs;
+        StormGbcaUiState.Instance.FullscreenChanged += fs => _titleBar.IsVisible = !fs;
+
+        PropertyChanged += (_, change) =>
+        {
+            if (change.Property == WindowStateProperty)
+            {
+                UpdateWindowStateChrome();
+            }
+        };
+
+        AddHandler(KeyDownEvent, OnWindowTunnelKeyDown, RoutingStrategies.Tunnel);
 
         Opened += OnWindowOpened;
         Closing += OnWindowClosing;
         KeyDown += OnWindowKeyDown;
+    }
+
+    private void UpdateWindowStateChrome()
+    {
+        bool isMaximized = WindowState == WindowState.Maximized;
+        Padding = isMaximized ? OffScreenMargin : new Thickness(0);
+        _titleBar.UpdateMaximizeIcon(isMaximized);
     }
 
     private void OnWindowOpened(object? sender, EventArgs e)
@@ -85,12 +106,13 @@ public class StormGbcaMainWindow : Window
             }
             else
             {
-                double maxW = Math.Max(MinWidth, _lastWorkWidth * 0.94);
-                double maxH = Math.Max(MinHeight, _lastWorkHeight * 0.92);
+                double maxW = Math.Max(MinWidth, _lastWorkWidth);
+                double maxH = Math.Max(MinHeight, _lastWorkHeight);
                 if (Width > maxW) Width = maxW;
                 if (Height > maxH) Height = maxH;
             }
         }
+        UpdateWindowStateChrome();
         ApplyUiScale();
     }
 
@@ -107,6 +129,20 @@ public class StormGbcaMainWindow : Window
             cfg.WindowHeight = Math.Round(Bounds.Height);
         }
         StormGbcaUiState.Instance.SaveSettings();
+
+        if (AuroraTrayManager.Instance.IsExitRequestedFromTray)
+        {
+            StormGbcaUiState.Instance.StopEmulation();
+            StormGbcaUiState.Instance.Emulator.Dispose();
+        }
+    }
+
+    private void OnWindowTunnelKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && _mainView.TryDismissOpenModal())
+        {
+            e.Handled = true;
+        }
     }
 
     private void ApplyUiScale()
@@ -135,7 +171,7 @@ public class StormGbcaMainWindow : Window
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.F11)
+        if (e.Key == Key.F11 || (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Alt)))
         {
             ToggleFullscreen();
             e.Handled = true;

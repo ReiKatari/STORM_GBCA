@@ -135,6 +135,12 @@ public static class StormGbcaPaths
     private static string ResolveRootDirectory()
     {
         string baseDirectory = AppContext.BaseDirectory;
+        string dotPortableMarker = Path.Combine(baseDirectory, ".portable");
+        if (File.Exists(dotPortableMarker))
+        {
+            return Path.Combine(baseDirectory, "data");
+        }
+
         string portableMarker = Path.Combine(baseDirectory, PortableMarkerFileName);
         if (File.Exists(portableMarker))
         {

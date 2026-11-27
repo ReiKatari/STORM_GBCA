@@ -310,6 +310,7 @@ public sealed class GbcaRomRecord
     public StormHwFlags HardwareFlags { get; set; } = StormHwFlags.None;
     public string ActiveCoreHint { get; set; } = string.Empty;
     public string RaHash { get; set; } = string.Empty;
+    public int RaGameId { get; set; }
     public string? CoverLocalPath { get; set; }
     public bool IsFavorite { get; set; }
     public int PlayCount { get; set; }

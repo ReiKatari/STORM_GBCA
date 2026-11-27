@@ -30,6 +30,7 @@ public class SingleScreenSessionView : Grid
     private readonly TextBlock _statsText;
     private readonly TextBlock _ffText;
     private readonly TextBlock _skinLabel;
+    private readonly List<TextBlock> _collapsibleHudLabels = [];
     private readonly Grid _stageHost;
     private readonly Image _chassisImage;
     private readonly Image _lcdImage;
@@ -42,6 +43,7 @@ public class SingleScreenSessionView : Grid
     private int _lcdW;
     private int _lcdH;
     private byte[] _frameStaging = [];
+    private Rect _lastViewportRect;
 
     private StormPlatform _lastSkinPlatform = StormPlatform.None;
     private string _lastSkinKey = string.Empty;
@@ -59,24 +61,59 @@ public class SingleScreenSessionView : Grid
         Focusable = true;
         RowDefinitions = new RowDefinitions("Auto,*");
 
-        // Top HUD Bar
+        // Top HUD Bar (responsive WrapPanel + collapsible labels below 1060px)
         _hudBar = new Border
         {
-            Height = 38,
+            MinHeight = 38,
             Background = new SolidColorBrush(Color.FromArgb(230, 12, 16, 28)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(55, 255, 255, 255)),
             BorderThickness = new Thickness(0, 0, 0, 1),
             Padding = new Thickness(10, 4)
         };
-        var hudGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        var hudGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 10 };
 
-        var leftBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        var actionsWrap = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         var skinBtn = CreateHudPill(AuroraIconKind.ShaderPrism, "Корпус 3D", Color.Parse("#8BAC0F"), CyclePlatformSkin);
         _skinLabel = skinBtn.Label;
-        leftBar.Children.Add(skinBtn.Btn);
-        leftBar.Children.Add(CreateHudPill(AuroraIconKind.DualScreenLayout, "Оверлей кнопок", Color.Parse("#7B42F6"), ToggleControlsDeck).Btn);
-        leftBar.Children.Add(CreateHudPill(AuroraIconKind.RewindVortex, "Перемотка", Color.Parse("#38BDF8"), PerformRewind).Btn);
-        hudGrid.Children.Add(leftBar);
+        actionsWrap.Children.Add(skinBtn.Btn);
+
+        var ovBtn = CreateHudPill(AuroraIconKind.DualScreenLayout, "Оверлей кнопок", Color.Parse("#7B42F6"), ToggleControlsDeck);
+        _collapsibleHudLabels.Add(ovBtn.Label);
+        actionsWrap.Children.Add(ovBtn.Btn);
+
+        var rwBtn = CreateHudPill(AuroraIconKind.RewindVortex, "Перемотка", Color.Parse("#38BDF8"), PerformRewind);
+        _collapsibleHudLabels.Add(rwBtn.Label);
+        actionsWrap.Children.Add(rwBtn.Btn);
+
+        var ffPair = CreateHudPill(AuroraIconKind.FastForwardBolt, "Ускорение (1x)", Color.Parse("#F59E0B"), ToggleFastForward);
+        _ffText = ffPair.Label;
+        actionsWrap.Children.Add(ffPair.Btn);
+
+        var fsBtn = CreateHudPill(AuroraIconKind.FullScreenExpand, "Полный экран (F11)", Color.Parse("#06B6D4"), () => StormGbcaUiState.Instance.RequestToggleFullscreen());
+        _collapsibleHudLabels.Add(fsBtn.Label);
+        actionsWrap.Children.Add(fsBtn.Btn);
+
+        var svBtn = CreateHudPill(AuroraIconKind.SaveSlotRibbon, "Сохранить (F5)", Color.Parse("#10B981"), () => PerformQuickSave(_activeSlot));
+        _collapsibleHudLabels.Add(svBtn.Label);
+        actionsWrap.Children.Add(svBtn.Btn);
+
+        var ldBtn = CreateHudPill(AuroraIconKind.LoadSlotArrow, "Загрузить (F8)", Color.Parse("#38BDF8"), () => PerformQuickLoad(_activeSlot));
+        _collapsibleHudLabels.Add(ldBtn.Label);
+        actionsWrap.Children.Add(ldBtn.Btn);
+
+        var ssBtn = CreateHudPill(AuroraIconKind.ScreenshotCamera, "Снимок экрана (F12)", Color.Parse("#EC4899"), TakeScreenshot);
+        _collapsibleHudLabels.Add(ssBtn.Label);
+        actionsWrap.Children.Add(ssBtn.Btn);
+
+        var psBtn = CreateHudPill(AuroraIconKind.PauseTwin, "Пауза (Esc)", Color.Parse("#F59E0B"), TogglePauseMenu);
+        _collapsibleHudLabels.Add(psBtn.Label);
+        actionsWrap.Children.Add(psBtn.Btn);
+
+        var exBtn = CreateHudPill(AuroraIconKind.StopOctagon, "Выход", Color.Parse("#EF4444"), () => StormGbcaUiState.Instance.StopEmulation());
+        _collapsibleHudLabels.Add(exBtn.Label);
+        actionsWrap.Children.Add(exBtn.Btn);
+
+        hudGrid.Children.Add(actionsWrap);
 
         _statsText = new TextBlock
         {
@@ -84,27 +121,23 @@ public class SingleScreenSessionView : Grid
             FontSize = 11,
             FontWeight = FontWeight.SemiBold,
             Foreground = new SolidColorBrush(Color.Parse("#CBD5E1")),
-            HorizontalAlignment = HorizontalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center
         };
         hudGrid.Children.Add(_statsText);
         Grid.SetColumn(_statsText, 1);
 
-        var rightBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
-        var ffPair = CreateHudPill(AuroraIconKind.FastForwardBolt, "Ускорение (1x)", Color.Parse("#F59E0B"), ToggleFastForward);
-        _ffText = ffPair.Label;
-        rightBar.Children.Add(ffPair.Btn);
-        rightBar.Children.Add(CreateHudPill(AuroraIconKind.FullScreenExpand, "Полный экран (F11)", Color.Parse("#06B6D4"), () => StormGbcaUiState.Instance.RequestToggleFullscreen()).Btn);
-        rightBar.Children.Add(CreateHudPill(AuroraIconKind.SaveSlotRibbon, "Сохранить (F5)", Color.Parse("#10B981"), () => PerformQuickSave(_activeSlot)).Btn);
-        rightBar.Children.Add(CreateHudPill(AuroraIconKind.LoadSlotArrow, "Загрузить (F8)", Color.Parse("#38BDF8"), () => PerformQuickLoad(_activeSlot)).Btn);
-        rightBar.Children.Add(CreateHudPill(AuroraIconKind.ScreenshotCamera, "Снимок экрана (F12)", Color.Parse("#EC4899"), TakeScreenshot).Btn);
-        rightBar.Children.Add(CreateHudPill(AuroraIconKind.PauseTwin, "Пауза (Esc)", Color.Parse("#F59E0B"), TogglePauseMenu).Btn);
-        rightBar.Children.Add(CreateHudPill(AuroraIconKind.StopOctagon, "Выход", Color.Parse("#EF4444"), () => StormGbcaUiState.Instance.StopEmulation()).Btn);
-        hudGrid.Children.Add(rightBar);
-        Grid.SetColumn(rightBar, 2);
-
         _hudBar.Child = hudGrid;
         Children.Add(_hudBar);
+
+        PropertyChanged += (_, ch) =>
+        {
+            if (ch.Property == BoundsProperty && Bounds.Width > 0)
+            {
+                bool compact = Bounds.Width < 1060;
+                foreach (var lbl in _collapsibleHudLabels) lbl.IsVisible = !compact;
+            }
+        };
 
         // Stage Viewport
         _stageHost = new Grid { ClipToBounds = true, Background = new SolidColorBrush(Color.Parse("#070911")) };
@@ -153,7 +186,11 @@ public class SingleScreenSessionView : Grid
         StormGbcaUiState.Instance.EmulationStarted += OnEmulationStarted;
         StormGbcaUiState.Instance.EmulationStopped += OnEmulationStopped;
         StormGbcaUiState.Instance.SkinOrOverlayChanged += () => InvalidateStageVisuals(force: true);
-        StormGbcaUiState.Instance.FullscreenChanged += fs => _hudBar.IsVisible = !fs;
+        StormGbcaUiState.Instance.FullscreenChanged += fs =>
+        {
+            _hudBar.IsVisible = !fs;
+            InvalidateStageVisuals(force: true);
+        };
 
         KeyDown += OnViewKeyDown;
         KeyUp += OnViewKeyUp;
@@ -246,15 +283,25 @@ public class SingleScreenSessionView : Grid
         _skinLabel.Text = palette.DisplayName == "None" ? "Без корпуса" : palette.DisplayName;
 
         var vp = GbcaConsoleSkinRenderer.ComputeScreenViewport(w, h, natW, natH, plat, settings);
-        _lcdImage.Width = vp.Width;
-        _lcdImage.Height = vp.Height;
-        _lcdImage.Margin = new Thickness(vp.X, vp.Y, 0, 0);
+        _lastViewportRect = vp;
         var activeProf = settings.GetOverlayProfileForPlatform(plat);
         int rot = activeProf.ScreenRect?.RotationDeg ?? 0;
-        _lcdImage.RenderTransformOrigin = RelativePoint.Center;
+        bool rotSwap = rot == 90 || rot == 270;
+        double imgW = rotSwap ? vp.Height : vp.Width;
+        double imgH = rotSwap ? vp.Width : vp.Height;
+        double imgX = vp.X + (vp.Width - imgW) * 0.5;
+        double imgY = vp.Y + (vp.Height - imgH) * 0.5;
+
+        _lcdImage.Width = imgW;
+        _lcdImage.Height = imgH;
+        _lcdImage.Margin = new Thickness(imgX, imgY, 0, 0);
+        _lcdImage.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
         _lcdImage.RenderTransform = rot != 0 ? new RotateTransform(rot) : null;
 
-        var interp = settings.VideoFilter is StormVideoFilter.Nearest or StormVideoFilter.LcdGrid or StormVideoFilter.RgbSubpixel
+        var effectiveFilter = activeProf.LcdFilter != StormVideoFilter.LcdGrid
+            ? activeProf.LcdFilter
+            : settings.VideoFilter;
+        var interp = effectiveFilter is StormVideoFilter.Nearest or StormVideoFilter.LcdGrid or StormVideoFilter.RgbSubpixel
             ? BitmapInterpolationMode.None
             : BitmapInterpolationMode.MediumQuality;
         RenderOptions.SetBitmapInterpolationMode(_lcdImage, interp);
@@ -289,7 +336,9 @@ public class SingleScreenSessionView : Grid
         var plat = StormGbcaUiState.Instance.Emulator.ActivePlatform;
         if (plat == StormPlatform.None) plat = StormPlatform.Gba;
         var prof = settings.GetOverlayProfileForPlatform(plat);
-        var vp = new Rect(_lcdImage.Margin.Left, _lcdImage.Margin.Top, _lcdImage.Width, _lcdImage.Height);
+        var vp = _lastViewportRect.Width > 0
+            ? _lastViewportRect
+            : new Rect(_lcdImage.Margin.Left, _lcdImage.Margin.Top, _lcdImage.Width, _lcdImage.Height);
         _overlayImage.Source = GbcaOverlayRenderer.RenderOverlayBitmap(w, h, vp, plat, prof, pressedMask);
     }
 
@@ -547,6 +596,7 @@ public class SingleScreenSessionView : Grid
         var btn = new Button
         {
             Height = 28,
+            Margin = new Thickness(0, 2, 6, 2),
             Padding = new Thickness(8, 2),
             Background = new SolidColorBrush(Color.FromArgb(40, accent.R, accent.G, accent.B)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(100, accent.R, accent.G, accent.B)),
@@ -555,6 +605,7 @@ public class SingleScreenSessionView : Grid
             Cursor = new Cursor(StandardCursorType.Hand),
             VerticalAlignment = VerticalAlignment.Center
         };
+        ToolTip.SetTip(btn, text);
         var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, VerticalAlignment = VerticalAlignment.Center };
         s.Children.Add(new AuroraVectorIcon { Kind = icon, Size = 13, VerticalAlignment = VerticalAlignment.Center });
         var tb = new TextBlock { Text = text, FontSize = 11, FontWeight = FontWeight.Medium, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };

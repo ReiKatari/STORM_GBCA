@@ -45,6 +45,7 @@ public class AuroraVolumetricSlider : Control
 
     private bool _isDragging;
     private int _lastTickValue = -1;
+    private readonly Action<AuroraThemeDefinition> _themeChangedHandler;
 
     static AuroraVolumetricSlider()
     {
@@ -53,7 +54,22 @@ public class AuroraVolumetricSlider : Control
 
     public AuroraVolumetricSlider()
     {
+        _themeChangedHandler = _ => InvalidateVisual();
         Cursor = new Cursor(StandardCursorType.Hand);
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        AuroraThemeManager.Instance.ThemeChanged -= _themeChangedHandler;
+        AuroraThemeManager.Instance.ThemeChanged += _themeChangedHandler;
+        InvalidateVisual();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        AuroraThemeManager.Instance.ThemeChanged -= _themeChangedHandler;
+        base.OnDetachedFromVisualTree(e);
     }
 
     protected override Size MeasureOverride(Size availableSize)
@@ -128,8 +144,8 @@ public class AuroraVolumetricSlider : Control
 
         // 1. Recessed Track Background
         var trackRect = new Rect(thumbRadius, trackY, usableWidth, trackHeight);
-        var trackBg = new SolidColorBrush(Color.FromArgb(160, 20, 22, 32));
-        var trackBorderPen = new Pen(new SolidColorBrush(theme.BorderColor), 1.0);
+        var trackBg = new SolidColorBrush(theme.IsDark ? Color.FromArgb(160, 20, 22, 32) : Color.Parse("#CBD5E1"));
+        var trackBorderPen = new Pen(new SolidColorBrush(theme.IsDark ? theme.BorderColor : Color.Parse("#94A3B8")), 1.0);
         context.DrawRectangle(trackBg, trackBorderPen, trackRect, 3.0f, 3.0f);
 
         // 2. Active Track Neon Fill

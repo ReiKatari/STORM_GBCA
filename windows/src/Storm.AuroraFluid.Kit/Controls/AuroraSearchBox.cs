@@ -2,6 +2,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Storm.AuroraFluid.Kit.Icons;
 using Storm.AuroraFluid.Kit.Themes;
@@ -9,11 +10,13 @@ using Storm.AuroraFluid.Kit.Themes;
 namespace Storm.AuroraFluid.Kit.Controls;
 
 /// <summary>
-/// High-tech search box with recessed 3D styling, integrated icon,
-/// hotkey hint pill (Ctrl+K), and instant clear capability.
+/// High-tech search box with theme-aware styling, integrated left search icon,
+/// right hotkey hint pill (Ctrl+K), and instant Escape clear capability.
 /// </summary>
 public class AuroraSearchBox : TextBox
 {
+    protected override Type StyleKeyOverride => typeof(TextBox);
+
     public static readonly StyledProperty<string> HotkeyHintProperty =
         AvaloniaProperty.Register<AuroraSearchBox, string>(nameof(HotkeyHint), "Ctrl+K");
 
@@ -23,12 +26,97 @@ public class AuroraSearchBox : TextBox
         set => SetValue(HotkeyHintProperty, value);
     }
 
+    private readonly Action<AuroraThemeDefinition> _themeChangedHandler;
+    private readonly AuroraVectorIcon _searchIcon;
+    private readonly Border _hotkeyPill;
+    private readonly TextBlock _hotkeyText;
+
     public AuroraSearchBox()
     {
+        _themeChangedHandler = _ => ApplyThemeColors();
+
         PlaceholderText = "Поиск по библиотеке...";
         CornerRadius = new CornerRadius(8);
-        Padding = new Thickness(36, 8, 70, 8);
-        CaretBrush = new SolidColorBrush(Color.Parse("#00F0FF"));
+        Padding = new Thickness(6, 7, 8, 7);
+        VerticalContentAlignment = VerticalAlignment.Center;
+
+        _searchIcon = new AuroraVectorIcon
+        {
+            Kind = AuroraIconKind.SearchSpotlight,
+            Size = 14,
+            Margin = new Thickness(10, 0, 2, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false
+        };
+        InnerLeftContent = _searchIcon;
+
+        _hotkeyText = new TextBlock
+        {
+            Text = HotkeyHint,
+            FontSize = 10,
+            FontWeight = FontWeight.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _hotkeyPill = new Border
+        {
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(6, 2),
+            Margin = new Thickness(2, 0, 8, 0),
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,
+            Child = _hotkeyText
+        };
+        InnerRightContent = _hotkeyPill;
+
+        PropertyChanged += (_, ch) =>
+        {
+            if (ch.Property == HotkeyHintProperty)
+            {
+                _hotkeyText.Text = HotkeyHint;
+            }
+            if (ch.Property == TextProperty || ch.Property == HotkeyHintProperty)
+            {
+                _hotkeyPill.IsVisible = string.IsNullOrEmpty(Text) && !string.IsNullOrEmpty(HotkeyHint);
+            }
+        };
+
+        ApplyThemeColors();
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        AuroraThemeManager.Instance.ThemeChanged -= _themeChangedHandler;
+        AuroraThemeManager.Instance.ThemeChanged += _themeChangedHandler;
+        ApplyThemeColors();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        AuroraThemeManager.Instance.ThemeChanged -= _themeChangedHandler;
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void ApplyThemeColors()
+    {
+        var theme = AuroraThemeManager.Instance.CurrentTheme;
+        var (accentPrimary, _) = AuroraThemeManager.ResolveAccentColors(theme, AuroraThemeManager.Instance.CurrentAccentOverride);
+
+        CaretBrush = new SolidColorBrush(theme.IsDark ? accentPrimary : Color.Parse("#0284C7"));
+        Foreground = theme.TextPrimaryBrush;
+        Background = new SolidColorBrush(theme.IsDark
+            ? Color.FromArgb(200, theme.HeaderColor.R, theme.HeaderColor.G, theme.HeaderColor.B)
+            : Color.Parse("#FFFFFF"));
+        BorderBrush = new SolidColorBrush(theme.IsDark ? theme.BorderColor : Color.Parse("#CBD5E1"));
+
+        var iconBrush = new SolidColorBrush(theme.IsDark ? theme.TextSecondaryColor : Color.Parse("#475569"));
+        _searchIcon.CustomColorOverride = iconBrush;
+
+        _hotkeyPill.Background = new SolidColorBrush(theme.IsDark ? Color.FromArgb(40, 255, 255, 255) : Color.Parse("#F1F5F9"));
+        _hotkeyPill.BorderBrush = new SolidColorBrush(theme.IsDark ? theme.BorderColor : Color.Parse("#CBD5E1"));
+        _hotkeyText.Foreground = new SolidColorBrush(theme.IsDark ? theme.TextSecondaryColor : Color.Parse("#334155"));
+        _hotkeyPill.IsVisible = string.IsNullOrEmpty(Text) && !string.IsNullOrEmpty(HotkeyHint);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -38,49 +126,6 @@ public class AuroraSearchBox : TextBox
         {
             Text = string.Empty;
             e.Handled = true;
-        }
-    }
-
-    public override void Render(DrawingContext context)
-    {
-        base.Render(context);
-
-        var bounds = Bounds;
-        if (bounds.Width <= 0 || bounds.Height <= 0) return;
-
-        var theme = AuroraThemeManager.Instance.CurrentTheme;
-
-        // 1. Prefix Search Icon (Left)
-        var searchEntry = AuroraIconCatalog.GetEntry(AuroraIconKind.SearchSpotlight);
-        var iconGeom = StreamGeometry.Parse(searchEntry.PrimaryPath);
-        using (context.PushTransform(Matrix.CreateTranslation(10, (bounds.Height - 16) / 2.0) * Matrix.CreateScale(16.0 / 24.0, 16.0 / 24.0)))
-        {
-            var iconBrush = new SolidColorBrush(theme.TextSecondaryColor);
-            context.DrawGeometry(iconBrush, null, iconGeom);
-        }
-
-        // 2. Suffix Hotkey Pill ("Ctrl+K") (Right)
-        if (string.IsNullOrEmpty(Text))
-        {
-            double pillW = 46.0;
-            double pillH = 18.0;
-            double pillX = bounds.Width - pillW - 10.0;
-            double pillY = (bounds.Height - pillH) / 2.0;
-
-            var pillRect = new Rect(pillX, pillY, pillW, pillH);
-            var pillBg = new SolidColorBrush(Color.FromArgb(90, 255, 255, 255));
-            var pillBorder = new Pen(new SolidColorBrush(theme.BorderColor), 0.8);
-            context.DrawRectangle(pillBg, pillBorder, pillRect, 4.0f, 4.0f);
-
-            var hintText = new FormattedText(
-                HotkeyHint,
-                System.Globalization.CultureInfo.CurrentUICulture,
-                FlowDirection.LeftToRight,
-                new Typeface(AuroraThemeManager.ResolveFontFamily(AuroraThemeManager.Instance.CurrentTypography)),
-                10.0,
-                theme.TextSecondaryBrush
-            );
-            context.DrawText(hintText, new Point(pillX + (pillW - hintText.Width) / 2.0, pillY + (pillH - hintText.Height) / 2.0));
         }
     }
 }

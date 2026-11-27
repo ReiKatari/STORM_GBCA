@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Storm.AuroraFluid.Kit.Themes;
 
 namespace Storm.AuroraFluid.Kit.Icons;
 
@@ -49,10 +50,31 @@ public class AuroraVectorIcon : Control
         set => SetValue(CustomColorOverrideProperty, value);
     }
 
+    private readonly Action<AuroraThemeDefinition> _themeChangedHandler;
+
     static AuroraVectorIcon()
     {
         AffectsRender<AuroraVectorIcon>(KindProperty, SizeProperty, GlowEnabledProperty, CustomColorOverrideProperty);
         AffectsMeasure<AuroraVectorIcon>(SizeProperty);
+    }
+
+    public AuroraVectorIcon()
+    {
+        _themeChangedHandler = _ => InvalidateVisual();
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        AuroraThemeManager.Instance.ThemeChanged -= _themeChangedHandler;
+        AuroraThemeManager.Instance.ThemeChanged += _themeChangedHandler;
+        InvalidateVisual();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        AuroraThemeManager.Instance.ThemeChanged -= _themeChangedHandler;
+        base.OnDetachedFromVisualTree(e);
     }
 
     protected override Size MeasureOverride(Size availableSize)
@@ -74,7 +96,6 @@ public class AuroraVectorIcon : Control
     {
         var entry = AuroraIconCatalog.GetEntry(Kind);
         var primaryGeom = GetOrCreateGeometry(entry.PrimaryPath);
-        var secondaryGeom = GetOrCreateGeometry(entry.SecondaryPath);
 
         var bounds = Bounds;
         if (bounds.Width <= 0 || bounds.Height <= 0) return;
@@ -84,6 +105,19 @@ public class AuroraVectorIcon : Control
 
         using (context.PushTransform(Matrix.CreateScale(scaleX, scaleY)))
         {
+            if (Kind is AuroraIconKind.WindowMinimize or AuroraIconKind.WindowMaximize or AuroraIconKind.WindowRestore or AuroraIconKind.WindowClose)
+            {
+                var theme = AuroraThemeManager.Instance.CurrentTheme;
+                var strokeBrush = CustomColorOverride ?? theme.TextPrimaryBrush;
+                var strokePen = new Pen(strokeBrush, 1.6, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Miter);
+                context.DrawGeometry(null, strokePen, primaryGeom);
+                if (!string.IsNullOrWhiteSpace(entry.SecondaryPath))
+                {
+                    context.DrawGeometry(null, strokePen, GetOrCreateGeometry(entry.SecondaryPath));
+                }
+                return;
+            }
+
             // Optional Ambient Glow
             if (GlowEnabled)
             {
@@ -120,12 +154,16 @@ public class AuroraVectorIcon : Control
             context.DrawGeometry(primaryBrush, specularPen, primaryGeom);
 
             // Secondary Layer Geometry (Accent Detail / High-Tech Core)
-            var secColor = entry.SecondaryColor;
-            IBrush secondaryBrush = CustomColorOverride != null
-                ? CustomColorOverride
-                : new SolidColorBrush(Color.FromArgb(230, secColor.R, secColor.G, secColor.B));
+            if (!string.IsNullOrWhiteSpace(entry.SecondaryPath))
+            {
+                var secondaryGeom = GetOrCreateGeometry(entry.SecondaryPath);
+                var secColor = entry.SecondaryColor;
+                IBrush secondaryBrush = CustomColorOverride != null
+                    ? CustomColorOverride
+                    : new SolidColorBrush(Color.FromArgb(230, secColor.R, secColor.G, secColor.B));
 
-            context.DrawGeometry(secondaryBrush, null, secondaryGeom);
+                context.DrawGeometry(secondaryBrush, null, secondaryGeom);
+            }
         }
     }
 }

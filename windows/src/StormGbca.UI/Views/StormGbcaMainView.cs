@@ -34,6 +34,7 @@ public class StormGbcaMainView : Grid
     private readonly Window? _hostWindow;
     private readonly CustomTitleBar? _titleBar;
     private readonly Grid _bodyHeaderGrid;
+    private readonly Grid _centerGrid;
     private readonly NavRailView _navRail;
     private readonly NavDockView _navDock;
     private readonly BentoWorkspaceView _bentoWorkspace;
@@ -46,6 +47,7 @@ public class StormGbcaMainView : Grid
     private readonly DropImportOverlay _dropOverlay;
     private readonly AuroraModalHost _modalHost;
 
+    private AuroraSearchBox? _searchBox;
     private Button? _fileMenuBtn;
     private Button? _emuMenuBtn;
     private Button? _skinsMenuBtn;
@@ -83,20 +85,20 @@ public class StormGbcaMainView : Grid
         _navRail = new NavRailView();
         workspaceGrid.Children.Add(_navRail);
 
-        var centerGrid = new Grid();
+        _centerGrid = new Grid();
         _bentoWorkspace = new BentoWorkspaceView();
         _skinsView = new GbcaSkinAndOverlayViews { IsVisible = false };
         _achievementsView = new AchievementsView { IsVisible = false };
         _settingsView = new SettingsView { IsVisible = false };
         _emulationView = new SingleScreenSessionView { IsVisible = false };
 
-        centerGrid.Children.Add(_bentoWorkspace);
-        centerGrid.Children.Add(_skinsView);
-        centerGrid.Children.Add(_achievementsView);
-        centerGrid.Children.Add(_settingsView);
-        centerGrid.Children.Add(_emulationView);
-        workspaceGrid.Children.Add(centerGrid);
-        Grid.SetColumn(centerGrid, 1);
+        _centerGrid.Children.Add(_bentoWorkspace);
+        _centerGrid.Children.Add(_skinsView);
+        _centerGrid.Children.Add(_achievementsView);
+        _centerGrid.Children.Add(_settingsView);
+        _centerGrid.Children.Add(_emulationView);
+        workspaceGrid.Children.Add(_centerGrid);
+        Grid.SetColumn(_centerGrid, 1);
 
         _inspectorPane = new RomInspectorPane((rom, tab) => ShowRomModal(rom, tab));
         workspaceGrid.Children.Add(_inspectorPane);
@@ -172,7 +174,7 @@ public class StormGbcaMainView : Grid
             Margin = new Thickness(16, 6, 16, 6),
             ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto")
         };
-        var brandStack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        var brandStack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, VerticalAlignment = VerticalAlignment.Center };
         _stormTitleText = new TextBlock { Text = "STORM", FontSize = 18, FontWeight = FontWeight.Black, Foreground = StormThemeBrushes.Accent, VerticalAlignment = VerticalAlignment.Center };
         _gbcaTitleText = new TextBlock { Text = "GBCA", FontSize = 18, FontWeight = FontWeight.Black, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center };
         _subTitleText = new TextBlock { Text = "- " + GbcaLoc.T("AppSubtitle"), FontSize = 12, Foreground = StormThemeBrushes.SecondaryText, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0) };
@@ -181,18 +183,18 @@ public class StormGbcaMainView : Grid
         brandStack.Children.Add(_subTitleText);
         headerBar.Children.Add(brandStack);
 
-        var searchBox = new AuroraSearchBox
+        _searchBox = new AuroraSearchBox
         {
-            PlaceholderText = "Поиск игр в библиотеке...",
+            PlaceholderText = GbcaLoc.T("SearchLibraryPlaceholder"),
             HotkeyHint = "Ctrl+K",
             MinWidth = 220,
             MaxWidth = 340,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center
         };
-        searchBox.TextChanged += (_, _) => StormGbcaUiState.Instance.SetSearchQuery(searchBox.Text ?? string.Empty);
-        headerBar.Children.Add(searchBox);
-        Grid.SetColumn(searchBox, 2);
+        _searchBox.TextChanged += (_, _) => StormGbcaUiState.Instance.SetSearchQuery(_searchBox.Text ?? string.Empty);
+        headerBar.Children.Add(_searchBox);
+        Grid.SetColumn(_searchBox, 2);
 
         headerBar.PropertyChanged += (_, ch) =>
         {
@@ -217,6 +219,10 @@ public class StormGbcaMainView : Grid
             _subTitleText.Foreground = StormThemeBrushes.SecondaryText;
             _subTitleText.Text = "- " + GbcaLoc.T("AppSubtitle");
         }
+        if (_searchBox != null)
+        {
+            _searchBox.PlaceholderText = GbcaLoc.T("SearchLibraryPlaceholder");
+        }
         SetMenuText(_fileMenuBtn, GbcaLoc.T("MenuFile"));
         SetMenuText(_emuMenuBtn, GbcaLoc.T("MenuEmulation"));
         SetMenuText(_skinsMenuBtn, GbcaLoc.T("MenuSkins"));
@@ -226,7 +232,10 @@ public class StormGbcaMainView : Grid
 
     private static void SetMenuText(Button? btn, string text)
     {
-        if (btn?.Content is TextBlock tb)
+        if (btn == null) return;
+        btn.Resources["ButtonBackgroundPointerOver"] = StormThemeBrushes.HoverSurface;
+        btn.Resources["ButtonBackgroundPressed"] = StormThemeBrushes.RowSurface;
+        if (btn.Content is TextBlock tb)
         {
             tb.Text = text;
             tb.Foreground = StormThemeBrushes.BodyText;
@@ -244,6 +253,9 @@ public class StormGbcaMainView : Grid
             Cursor = new Cursor(StandardCursorType.Hand),
             Content = new TextBlock { Text = text, FontSize = 11.5, FontWeight = FontWeight.Medium, Foreground = StormThemeBrushes.BodyText }
         };
+        btn.Resources["ButtonBackground"] = Brushes.Transparent;
+        btn.Resources["ButtonBackgroundPointerOver"] = StormThemeBrushes.HoverSurface;
+        btn.Resources["ButtonBackgroundPressed"] = StormThemeBrushes.RowSurface;
         btn.PointerEntered += (_, _) => btn.Background = StormThemeBrushes.HoverSurface;
         btn.PointerExited += (_, _) => btn.Background = Brushes.Transparent;
         btn.Click += (_, _) =>
@@ -315,7 +327,7 @@ public class StormGbcaMainView : Grid
         sp.Children.Add(new TextBlock { Text = GbcaLoc.T("AppSubtitle"), FontSize = 12.5, Foreground = StormThemeBrushes.PrimaryText, TextWrapping = TextWrapping.Wrap });
         sp.Children.Add(new TextBlock { Text = $"Ядра: mGBA + SameBoy | Версия storm_gbca_core: {NativeCoreBindings.GetVersionString()}", FontSize = 11.5, Foreground = StormThemeBrushes.SecondaryText, TextWrapping = TextWrapping.Wrap });
         var closeBtn = new AuroraVolumetricButton { Height = 32, Width = 140, HorizontalAlignment = HorizontalAlignment.Right };
-        closeBtn.Content = new TextBlock { Text = GbcaLoc.T("ActionClose"), Foreground = Brushes.White, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        closeBtn.Content = new TextBlock { Text = GbcaLoc.T("ActionClose"), FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         closeBtn.Click += (_, _) => _modalHost.Dismiss();
         sp.Children.Add(closeBtn);
         card.Content = sp;
@@ -485,7 +497,16 @@ public class StormGbcaMainView : Grid
         bool isDesktop = w >= 840;
         _navRail.IsVisible = !emulating && isDesktop;
         _navDock.IsVisible = !emulating && !isDesktop;
-        _inspectorPane.IsVisible = !emulating && w >= 1120;
+        _inspectorPane.IsVisible = !emulating && w >= 1240;
+        _centerGrid.Margin = _navDock.IsVisible ? new Thickness(0, 0, 0, 76) : new Thickness(0);
+    }
+
+    public bool TryDismissOpenModal()
+    {
+        if (!_modalHost.IsOpen) return false;
+        if (_modalHost.Content is StormUpdateModal upd) upd.RequestSafeClose();
+        else _modalHost.Dismiss();
+        return true;
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -502,10 +523,8 @@ public class StormGbcaMainView : Grid
             e.Handled = true;
             return;
         }
-        if (e.Key == Key.Escape && _modalHost.IsOpen)
+        if (e.Key == Key.Escape && TryDismissOpenModal())
         {
-            if (_modalHost.Content is StormUpdateModal upd) upd.RequestSafeClose();
-            else _modalHost.Dismiss();
             e.Handled = true;
         }
     }

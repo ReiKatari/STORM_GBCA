@@ -4,9 +4,11 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Net.Sockets;
 using StormGbca.Core.Audio;
 using StormGbca.Core.Configuration;
 using StormGbca.Core.Input;
+using StormGbca.Core.Library;
 using StormGbca.Core.Native;
 using StormGbca.Core.Paths;
 using StormGbca.Core.Subsystems;
@@ -169,7 +171,6 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         {
             NativeCoreBindings.storm_gbca_set_config(_ctx, &cfg);
             NativeCoreBindings.storm_gbca_set_upscale(_ctx, Math.Clamp(settings.ResolutionScale, 1, 4), (int)settings.UpscaleMode);
-            NativeCoreBindings.storm_gbca_set_optimization_profile(_ctx, (int)settings.OptimizationProfile);
             NativeCoreBindings.storm_gbca_set_performance(_ctx, Math.Clamp(settings.CpuOverclockPct, 50, 400), Math.Clamp(settings.FrameSkip, 0, 4));
             NativeCoreBindings.storm_gbca_set_solar_lux(_ctx, settings.SolarLuxLevel);
             NativeCoreBindings.storm_gbca_set_rtc(_ctx, settings.UseHostRtc ? 1 : 0, 0);
@@ -177,7 +178,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         }
 
         _audioOut.IsMuted = settings.AudioMuted;
-        _audioOut.Volume = Math.Clamp(settings.MasterVolume, 0f, 2.0f);
+        _audioOut.Volume = 1.0f;
         _fastForwardMult = Math.Clamp(settings.FastForwardMultiplier, 1f, 8f);
     }
 
@@ -192,17 +193,33 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
         ApplySettings(settings, raService.IsHardcoreMode);
 
-        int rc;
+        int rc = -1;
         StormGbcaRomInfo info = default;
+        bool isZip = string.Equals(Path.GetExtension(rom.FilePath), ".zip", StringComparison.OrdinalIgnoreCase);
+
         lock (_coreLock)
         {
-            rc = NativeCoreBindings.storm_gbca_load_rom_file(_ctx, rom.FilePath);
-            if (rc != 0)
+            if (isZip)
             {
-                byte[] raw = File.ReadAllBytes(rom.FilePath);
-                fixed (byte* p = raw)
+                if (!GbcaRomLibrary.TryExtractRomFromZip(rom.FilePath, out byte[] zipRomBytes, out string innerEntryName))
                 {
-                    rc = NativeCoreBindings.storm_gbca_load_rom_buffer(_ctx, p, (nuint)raw.Length, rom.FileName);
+                    return false;
+                }
+                fixed (byte* p = zipRomBytes)
+                {
+                    rc = NativeCoreBindings.storm_gbca_load_rom_buffer(_ctx, p, (nuint)zipRomBytes.Length, innerEntryName);
+                }
+            }
+            else
+            {
+                rc = NativeCoreBindings.storm_gbca_load_rom_file(_ctx, rom.FilePath);
+                if (rc != 0)
+                {
+                    byte[] raw = File.ReadAllBytes(rom.FilePath);
+                    fixed (byte* p = raw)
+                    {
+                        rc = NativeCoreBindings.storm_gbca_load_rom_buffer(_ctx, p, (nuint)raw.Length, rom.FileName);
+                    }
                 }
             }
             if (rc != 0) return false;
@@ -240,6 +257,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         _fastForwardActive = false;
         _stopRequested = false;
         _isRunning = true;
+        _audioOut.BeginHighResTimer();
 
         _runnerThread = new Thread(EmulationLoop)
         {
@@ -308,6 +326,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         _runnerThread = null;
         _gamepad.StopRumble();
         _audioOut.ResetQueue();
+        _audioOut.EndHighResTimer();
 
         lock (_coreLock)
         {
@@ -408,14 +427,33 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         if (slot < 0 || slot >= SavestateSlotCount || string.IsNullOrWhiteSpace(_activeRomKey)) return false;
         Directory.CreateDirectory(StormGbcaPaths.StatesDirectory);
         string path = StormGbcaPaths.GetSaveStateFilePath(_activeRomKey, slot);
+        bool ok;
         lock (_coreLock)
         {
             if (_ctx == nint.Zero || !_isRunning) return false;
-            bool ok = NativeCoreBindings.storm_gbca_save_state_file(_ctx, path) == 0;
+            ok = NativeCoreBindings.storm_gbca_save_state_file(_ctx, path) == 0;
             FlushSramLocked();
-            if (ok) StatusMessage?.Invoke($"Состояние сохранено в слот {slot + 1}");
-            return ok;
+            if (ok)
+            {
+                CopyFrameLocked();
+                try
+                {
+                    string thumbPath = StormGbcaPaths.GetSaveStateThumbnailPath(_activeRomKey, slot);
+                    lock (_frameLock)
+                    {
+                        if (_frameBgra.Length >= _frameWidth * _frameHeight * 4 && _frameWidth > 0 && _frameHeight > 0)
+                        {
+                            WriteBgraPng(thumbPath, _frameBgra, _frameWidth, _frameHeight);
+                        }
+                    }
+                }
+                catch
+                {
+                }
+            }
         }
+        if (ok) StatusMessage?.Invoke($"Состояние сохранено в слот {slot + 1}");
+        return ok;
     }
 
     public bool LoadState(int slot)
@@ -512,14 +550,20 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
                     NativeCoreBindings.storm_gbca_run_frame(_ctx);
                 }
 
-                // Drain audio & push to WinMM
+                // Drain audio & push to WinMM (discard ring cleanly during >2x fast-forward to prevent stall/crackle)
                 NativeCoreBindings.storm_gbca_set_audio_buffer_level(_ctx, _audioOut.GetQueueFillRatio());
                 fixed (short* aPtr = _audioScratch)
                 {
-                    int gotFrames = NativeCoreBindings.storm_gbca_read_audio(_ctx, aPtr, 4096);
-                    if (gotFrames > 0 && (!_fastForwardActive || steps <= 2))
+                    bool submitAudio = !_fastForwardActive || steps <= 2;
+                    while (true)
                     {
-                        _audioOut.SubmitSamples(_audioScratch.AsSpan(0, gotFrames * 2), gotFrames);
+                        int gotFrames = NativeCoreBindings.storm_gbca_read_audio(_ctx, aPtr, 4096);
+                        if (gotFrames <= 0) break;
+                        if (submitAudio)
+                        {
+                            _audioOut.SubmitSamples(_audioScratch.AsSpan(0, gotFrames * 2), gotFrames);
+                        }
+                        if (gotFrames < 4096) break;
                     }
                 }
 
@@ -593,8 +637,22 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
     // -----------------------------------------------------------------------
     // v1.2.0 Multiplayer / Link Cable / Wireless RFU / IR / Dolphin JoyBus / GB Printer
     // -----------------------------------------------------------------------
+    public Task<bool> StartLinkAsync(StormLinkMode mode, string hostIp, int port, int clockPort, string roomName)
+        => Task.Run(() => StartLink(mode, hostIp, port, clockPort, roomName));
+
     public bool StartLink(StormLinkMode mode, string hostIp, int port, int clockPort, string roomName)
     {
+        if (mode is StormLinkMode.LanClient or StormLinkMode.WirelessClient or StormLinkMode.IrClient or StormLinkMode.DolphinJoyBus)
+        {
+            string targetIp = string.IsNullOrWhiteSpace(hostIp) ? "127.0.0.1" : hostIp.Trim();
+            int targetPort = port is > 0 and < 65535 ? port : (mode == StormLinkMode.DolphinJoyBus ? 54970 : 54320);
+            if (!ProbeTcpEndpoint(targetIp, targetPort, 450))
+            {
+                StatusMessage?.Invoke($"Link timeout: {targetIp}:{targetPort}");
+                return false;
+            }
+        }
+
         lock (_coreLock)
         {
             if (_ctx == nint.Zero || !NativeCoreBindings.IsAvailable) return false;
@@ -611,6 +669,25 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
                 return true;
             }
             StatusMessage?.Invoke($"Link error ({rc}): {mode}");
+            return false;
+        }
+    }
+
+    private static bool ProbeTcpEndpoint(string hostIp, int port, int timeoutMs)
+    {
+        try
+        {
+            using var client = new TcpClient();
+            var ar = client.BeginConnect(hostIp, port, null, null);
+            if (!ar.AsyncWaitHandle.WaitOne(timeoutMs))
+            {
+                return false;
+            }
+            client.EndConnect(ar);
+            return true;
+        }
+        catch
+        {
             return false;
         }
     }
@@ -703,6 +780,42 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
     private static void WriteRgbaPng(string path, uint[] rgbaPixels, int w, int h)
     {
+        WritePngCore(path, w, h, (raw, y) =>
+        {
+            int rowOff = y * (1 + w * 4);
+            raw[rowOff] = 0; // filter None
+            for (int x = 0; x < w; x++)
+            {
+                uint px = rgbaPixels[y * w + x];
+                int o = rowOff + 1 + x * 4;
+                raw[o] = (byte)(px & 0xFF);
+                raw[o + 1] = (byte)((px >> 8) & 0xFF);
+                raw[o + 2] = (byte)((px >> 16) & 0xFF);
+                raw[o + 3] = (byte)((px >> 24) & 0xFF);
+            }
+        });
+    }
+
+    private static void WriteBgraPng(string path, byte[] bgraPixels, int w, int h)
+    {
+        WritePngCore(path, w, h, (raw, y) =>
+        {
+            int rowOff = y * (1 + w * 4);
+            raw[rowOff] = 0;
+            for (int x = 0; x < w; x++)
+            {
+                int srcOff = (y * w + x) * 4;
+                int o = rowOff + 1 + x * 4;
+                raw[o] = bgraPixels[srcOff + 2];     // R
+                raw[o + 1] = bgraPixels[srcOff + 1]; // G
+                raw[o + 2] = bgraPixels[srcOff];     // B
+                raw[o + 3] = bgraPixels[srcOff + 3]; // A
+            }
+        });
+    }
+
+    private static void WritePngCore(string path, int w, int h, Action<byte[], int> fillRow)
+    {
         using var fs = File.Create(path);
         fs.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
 
@@ -716,17 +829,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         byte[] raw = new byte[h * (1 + w * 4)];
         for (int y = 0; y < h; y++)
         {
-            int rowOff = y * (1 + w * 4);
-            raw[rowOff] = 0; // filter None
-            for (int x = 0; x < w; x++)
-            {
-                uint px = rgbaPixels[y * w + x];
-                int o = rowOff + 1 + x * 4;
-                raw[o] = (byte)(px & 0xFF);
-                raw[o + 1] = (byte)((px >> 8) & 0xFF);
-                raw[o + 2] = (byte)((px >> 16) & 0xFF);
-                raw[o + 3] = (byte)((px >> 24) & 0xFF);
-            }
+            fillRow(raw, y);
         }
         using var compMs = new MemoryStream();
         using (var zs = new ZLibStream(compMs, CompressionLevel.Fastest, leaveOpen: true))

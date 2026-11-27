@@ -15,7 +15,7 @@ public sealed unsafe partial class WinMmAudioOutput : IDisposable
     private const int Channels = 2;
     private const int BitsPerSample = 16;
     private const int PoolCount = 8;
-    private const int MaxFramesPerBuffer = 2048;
+    private const int MaxFramesPerBuffer = 8192;
     private const uint WHDR_DONE = 0x00000001;
     private const uint WHDR_PREPARED = 0x00000002;
     private const uint CALLBACK_NULL = 0x00000000;
@@ -69,12 +69,19 @@ public sealed unsafe partial class WinMmAudioOutput : IDisposable
     [LibraryImport("winmm.dll")]
     private static partial uint waveOutClose(nint hwo);
 
+    [LibraryImport("winmm.dll")]
+    private static partial uint timeBeginPeriod(uint uPeriod);
+
+    [LibraryImport("winmm.dll")]
+    private static partial uint timeEndPeriod(uint uPeriod);
+
     private readonly object _lock = new();
     private nint _hWaveOut;
     private readonly nint[] _headers = new nint[PoolCount];
     private readonly nint[] _pcmBuffers = new nint[PoolCount];
     private readonly bool[] _inFlight = new bool[PoolCount];
     private int _nextSlot;
+    private bool _timerPeriodActive;
     private bool _disposed;
 
     public bool IsMuted { get; set; }
@@ -114,10 +121,47 @@ public sealed unsafe partial class WinMmAudioOutput : IDisposable
                 hdr->dwBufferLength = (uint)bufBytes;
                 _headers[i] = (nint)hdr;
             }
+            BeginHighResTimer();
         }
         catch
         {
             CloseResources();
+        }
+    }
+
+    public void BeginHighResTimer()
+    {
+        if (!OperatingSystem.IsWindows() || _disposed) return;
+        lock (_lock)
+        {
+            if (_timerPeriodActive || _disposed) return;
+            try
+            {
+                if (timeBeginPeriod(1) == 0)
+                {
+                    _timerPeriodActive = true;
+                }
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    public void EndHighResTimer()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        lock (_lock)
+        {
+            if (!_timerPeriodActive) return;
+            try
+            {
+                timeEndPeriod(1);
+            }
+            catch
+            {
+            }
+            _timerPeriodActive = false;
         }
     }
 
@@ -188,21 +232,14 @@ public sealed unsafe partial class WinMmAudioOutput : IDisposable
             var hdr = (WAVEHDR*)_headers[chosen];
             var dst = new Span<short>((void*)_pcmBuffers[chosen], sampleCount);
 
-            float gain = IsMuted ? 0.0f : Math.Clamp(Volume, 0.0f, 2.0f);
-            if (gain <= 0.001f)
+            // Native core DSP already applies MasterVolume; avoid double/triple software scaling.
+            if (IsMuted)
             {
                 dst.Clear();
             }
-            else if (Math.Abs(gain - 1.0f) < 0.001f)
-            {
-                interleavedStereo[..sampleCount].CopyTo(dst);
-            }
             else
             {
-                for (int i = 0; i < sampleCount; i++)
-                {
-                    dst[i] = (short)Math.Clamp((int)(interleavedStereo[i] * gain), short.MinValue, short.MaxValue);
-                }
+                interleavedStereo[..sampleCount].CopyTo(dst);
             }
 
             hdr->lpData = _pcmBuffers[chosen];
@@ -247,6 +284,7 @@ public sealed unsafe partial class WinMmAudioOutput : IDisposable
 
     private void CloseResources()
     {
+        EndHighResTimer();
         lock (_lock)
         {
             if (_hWaveOut != nint.Zero)

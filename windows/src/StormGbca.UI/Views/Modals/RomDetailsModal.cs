@@ -20,8 +20,9 @@ namespace StormGbca.UI.Views.Modals;
 public class RomDetailsModal : AuroraGlassCard
 {
     private readonly GbcaRomRecord _rom;
-    private readonly StackPanel _tabBar;
+    private readonly WrapPanel _tabBar;
     private readonly ContentControl _tabContent;
+    private readonly TextBlock _headerTitle;
     private int _selectedTab;
 
     public event Action? CloseRequested;
@@ -30,27 +31,29 @@ public class RomDetailsModal : AuroraGlassCard
     {
         _rom = rom;
         _selectedTab = initialTab;
-        Width = 660;
-        Height = 520;
+        MaxWidth = 660;
+        MaxHeight = 560;
+        Margin = new Thickness(24, 18);
+        HorizontalAlignment = HorizontalAlignment.Stretch;
+        VerticalAlignment = VerticalAlignment.Center;
         Padding = new Thickness(20);
         SpotlightEnabled = true;
 
         var mainGrid = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*") };
 
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(0, 0, 0, 10) };
-        var titleStack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        titleStack.Children.Add(new AuroraVectorIcon { Kind = AuroraIconKind.RomCartridge, Size = 20, VerticalAlignment = VerticalAlignment.Center });
-        titleStack.Children.Add(new TextBlock
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8, Margin = new Thickness(0, 0, 0, 10) };
+        header.Children.Add(new AuroraVectorIcon { Kind = AuroraIconKind.RomCartridge, Size = 20, VerticalAlignment = VerticalAlignment.Center });
+        _headerTitle = new TextBlock
         {
             Text = $"{rom.GetDisplayTitle()} ({rom.PlatformShortName})",
             FontSize = 14,
             FontWeight = FontWeight.Bold,
             Foreground = StormThemeBrushes.Accent,
             VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 500
-        });
-        header.Children.Add(titleStack);
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        header.Children.Add(_headerTitle);
+        Grid.SetColumn(_headerTitle, 1);
 
         var closeBtn = new Button
         {
@@ -66,7 +69,7 @@ public class RomDetailsModal : AuroraGlassCard
         Grid.SetColumn(closeBtn, 2);
         mainGrid.Children.Add(header);
 
-        _tabBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 0, 0, 12) };
+        _tabBar = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
         AddTabHeader(0, AuroraIconKind.InfoCrystal, "Сведения о картридже");
         AddTabHeader(1, AuroraIconKind.CheatMatrix, "Читы");
         AddTabHeader(2, AuroraIconKind.SaveSlotRibbon, "Сохранения (10 слотов)");
@@ -78,6 +81,12 @@ public class RomDetailsModal : AuroraGlassCard
         Grid.SetRow(_tabContent, 2);
 
         Content = mainGrid;
+
+        StormThemeBrushes.BindTheme(this, () =>
+        {
+            _headerTitle.Foreground = StormThemeBrushes.Accent;
+            LoadTab(_selectedTab);
+        });
         LoadTab(_selectedTab);
     }
 
@@ -86,6 +95,7 @@ public class RomDetailsModal : AuroraGlassCard
         var btn = new Border
         {
             Height = 32,
+            Margin = new Thickness(0, 0, 6, 4),
             Padding = new Thickness(10, 4),
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
@@ -214,7 +224,7 @@ public class RomDetailsModal : AuroraGlassCard
         var nameBox = new TextBox { PlaceholderText = "Название чита", Height = 32 };
         var codeBox = new TextBox { PlaceholderText = "Код (GameShark, ActionReplay или GameGenie)", Height = 54, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
         var addBtn = new AuroraVolumetricButton { Height = 32, Width = 180, HorizontalAlignment = HorizontalAlignment.Left };
-        addBtn.Content = new TextBlock { Text = "Добавить чит-код", FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        addBtn.Content = new TextBlock { Text = "Добавить чит-код", FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         addBtn.Click += (_, _) =>
         {
             string n = (nameBox.Text ?? string.Empty).Trim();
@@ -242,6 +252,7 @@ public class RomDetailsModal : AuroraGlassCard
         {
             int slot = i;
             string slotPath = StormGbcaPaths.GetSaveStateFilePath(key, slot);
+            string thumbPath = StormGbcaPaths.GetSaveStateThumbnailPath(key, slot);
             bool exists = File.Exists(slotPath);
             var row = new Border
             {
@@ -251,17 +262,39 @@ public class RomDetailsModal : AuroraGlassCard
                 BorderBrush = StormThemeBrushes.SubtleBorder,
                 BorderThickness = new Thickness(1)
             };
-            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("90,*,Auto") };
-            g.Children.Add(new TextBlock { Text = $"Слот {slot + 1}", FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center });
+            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,78,*,Auto"), ColumnSpacing = 10 };
+
+            var thumbBox = new Border
+            {
+                Width = 64,
+                Height = 42,
+                CornerRadius = new CornerRadius(6),
+                Background = StormThemeBrushes.CardSurface,
+                BorderBrush = StormThemeBrushes.SubtleBorder,
+                BorderThickness = new Thickness(1),
+                ClipToBounds = true,
+                Child = new Image
+                {
+                    Stretch = Stretch.Uniform,
+                    Source = File.Exists(thumbPath) ? BitmapHelper.LoadBitmapCached(thumbPath) : null
+                }
+            };
+            g.Children.Add(thumbBox);
+
+            var slotLbl = new TextBlock { Text = $"Слот {slot + 1}", FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center };
+            g.Children.Add(slotLbl);
+            Grid.SetColumn(slotLbl, 1);
+
             var dt = new TextBlock
             {
                 Text = exists ? $"{new FileInfo(slotPath).Length / 1024.0:0.1} КБ | {File.GetLastWriteTime(slotPath):dd.MM.yyyy HH:mm}" : "Пустой слот",
                 FontSize = 11,
                 Foreground = StormThemeBrushes.SecondaryText,
-                VerticalAlignment = VerticalAlignment.Center
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis
             };
             g.Children.Add(dt);
-            Grid.SetColumn(dt, 1);
+            Grid.SetColumn(dt, 2);
 
             if (exists)
             {
@@ -269,10 +302,11 @@ public class RomDetailsModal : AuroraGlassCard
                 delBtn.Click += (_, _) =>
                 {
                     try { File.Delete(slotPath); } catch { }
+                    try { if (File.Exists(thumbPath)) File.Delete(thumbPath); } catch { }
                     LoadTab(2);
                 };
                 g.Children.Add(delBtn);
-                Grid.SetColumn(delBtn, 2);
+                Grid.SetColumn(delBtn, 3);
             }
             row.Child = g;
             stack.Children.Add(row);

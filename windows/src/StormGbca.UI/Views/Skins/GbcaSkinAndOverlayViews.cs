@@ -26,6 +26,8 @@ public class GbcaSkinAndOverlayViews : Grid
     private readonly StackPanel _tabsRow;
     private readonly StackPanel _bodyStack;
     private Image? _overlayLivePreview;
+    private Grid? _ovGrid;
+    private Border? _previewFrame;
     private int _selectedSystemTab; // 0 = GB, 1 = GBC, 2 = GBA
 
     public GbcaSkinAndOverlayViews()
@@ -34,10 +36,10 @@ public class GbcaSkinAndOverlayViews : Grid
         RowDefinitions = new RowDefinitions("Auto,*");
 
         var headerCard = new AuroraGlassCard { Padding = new Thickness(16, 12), Margin = new Thickness(0, 0, 0, 10), SpotlightEnabled = true };
-        var hGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var hGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12, RowSpacing = 8 };
         var titleCol = new StackPanel { Spacing = 3 };
-        titleCol.Children.Add(new TextBlock { Text = "СТУДИЯ 3D-КОРПУСОВ И ОВЕРЛЕЕВ ПО СИСТЕМАМ", FontSize = 14.5, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.Accent });
-        titleCol.Children.Add(new TextBlock { Text = "Настройте отдельный 3D-корпус, рамку оверлея, стиль кнопок и LCD-фильтр отдельно для GB, GBC и GBA.", FontSize = 11.5, Foreground = StormThemeBrushes.SecondaryText });
+        titleCol.Children.Add(new TextBlock { Text = "СТУДИЯ 3D-КОРПУСОВ И ОВЕРЛЕЕВ ПО СИСТЕМАМ", FontSize = 14.5, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.Accent, TextWrapping = TextWrapping.Wrap });
+        titleCol.Children.Add(new TextBlock { Text = "Настройте отдельный 3D-корпус, рамку оверлея, стиль кнопок и LCD-фильтр отдельно для GB, GBC и GBA.", FontSize = 11.5, Foreground = StormThemeBrushes.SecondaryText, TextWrapping = TextWrapping.Wrap });
         hGrid.Children.Add(titleCol);
 
         _tabsRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
@@ -60,8 +62,51 @@ public class GbcaSkinAndOverlayViews : Grid
         Children.Add(scroll);
         Grid.SetRow(scroll, 1);
 
+        PropertyChanged += (_, ch) =>
+        {
+            if (ch.Property == BoundsProperty && Bounds.Width > 0)
+            {
+                bool narrowHeader = Bounds.Width < 700;
+                if (narrowHeader)
+                {
+                    hGrid.ColumnDefinitions = new ColumnDefinitions("*");
+                    hGrid.RowDefinitions = new RowDefinitions("Auto,Auto");
+                    Grid.SetColumn(_tabsRow, 0);
+                    Grid.SetRow(_tabsRow, 1);
+                }
+                else
+                {
+                    hGrid.ColumnDefinitions = new ColumnDefinitions("*,Auto");
+                    hGrid.RowDefinitions = new RowDefinitions("Auto");
+                    Grid.SetColumn(_tabsRow, 1);
+                    Grid.SetRow(_tabsRow, 0);
+                }
+                ApplyOvGridLayout();
+            }
+        };
+
         StormThemeBrushes.BindTheme(this, RefreshBody);
         RefreshBody();
+    }
+
+    private void ApplyOvGridLayout()
+    {
+        if (_ovGrid == null || _previewFrame == null) return;
+        bool stackVert = Bounds.Width > 0 && Bounds.Width < 860;
+        if (stackVert)
+        {
+            _ovGrid.ColumnDefinitions = new ColumnDefinitions("*");
+            _ovGrid.RowDefinitions = new RowDefinitions("Auto,Auto");
+            Grid.SetColumn(_previewFrame, 0);
+            Grid.SetRow(_previewFrame, 1);
+        }
+        else
+        {
+            _ovGrid.ColumnDefinitions = new ColumnDefinitions("*,300");
+            _ovGrid.RowDefinitions = new RowDefinitions("Auto");
+            Grid.SetColumn(_previewFrame, 1);
+            Grid.SetRow(_previewFrame, 0);
+        }
     }
 
     private void AddSystemTab(int idx, string code, Color color)
@@ -177,7 +222,7 @@ public class GbcaSkinAndOverlayViews : Grid
         // 2. Per-System Overlay Profile & Live SkiaSharp Preview
         var prof = s.GetOverlayProfileForPlatform(plat);
         var overlayCard = new AuroraGlassCard { Padding = new Thickness(16), SpotlightEnabled = true };
-        var ovGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,300"), ColumnSpacing = 16 };
+        _ovGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,300"), ColumnSpacing = 16, RowSpacing = 12 };
 
         var controlsCol = new StackPanel { Spacing = 8 };
         controlsCol.Children.Add(new TextBlock
@@ -257,13 +302,13 @@ public class GbcaSkinAndOverlayViews : Grid
             UpdateOverlayPreview(plat, prof);
         }));
 
-        ovGrid.Children.Add(controlsCol);
+        _ovGrid.Children.Add(controlsCol);
 
         _overlayLivePreview = new Image { Width = 280, Height = 165, Stretch = Stretch.Uniform };
-        var previewFrame = new Border
+        _previewFrame = new Border
         {
             CornerRadius = new CornerRadius(12),
-            Background = new SolidColorBrush(Color.Parse("#0B0D16")),
+            Background = StormThemeBrushes.RowSurface,
             BorderBrush = StormThemeBrushes.StrongBorder,
             BorderThickness = new Thickness(1),
             Padding = new Thickness(10),
@@ -279,10 +324,11 @@ public class GbcaSkinAndOverlayViews : Grid
                 }
             }
         };
-        ovGrid.Children.Add(previewFrame);
-        Grid.SetColumn(previewFrame, 1);
+        _ovGrid.Children.Add(_previewFrame);
+        Grid.SetColumn(_previewFrame, 1);
+        ApplyOvGridLayout();
 
-        overlayCard.Content = ovGrid;
+        overlayCard.Content = _ovGrid;
         _bodyStack.Children.Add(overlayCard);
         UpdateOverlayPreview(plat, prof);
 
@@ -311,13 +357,13 @@ public class GbcaSkinAndOverlayViews : Grid
         foreach (var pr in screenPresets)
         {
             bool activePreset = !scr.UseCustom && scr.ScreenPreset == pr.Id;
-            var pBtn = new AuroraVolumetricButton { Height = 30, Margin = new Thickness(0, 0, 8, 6), Padding = new Thickness(12, 0) };
+            var pBtn = new AuroraVolumetricButton { IsHero = activePreset, Height = 30, Margin = new Thickness(0, 0, 8, 6), Padding = new Thickness(12, 0) };
             pBtn.Content = new TextBlock
             {
                 Text = pr.Label,
                 FontSize = 11,
                 FontWeight = activePreset ? FontWeight.Bold : FontWeight.SemiBold,
-                Foreground = activePreset ? StormThemeBrushes.Accent : Brushes.White,
+                Foreground = activePreset ? Brushes.White : StormThemeBrushes.PrimaryText,
                 VerticalAlignment = VerticalAlignment.Center
             };
             pBtn.Click += (_, _) =>
@@ -399,7 +445,7 @@ public class GbcaSkinAndOverlayViews : Grid
         }));
 
         var resetBtn = new AuroraVolumetricButton { Height = 32, Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
-        resetBtn.Content = new TextBlock { Text = "Сбросить геометрию экрана", FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        resetBtn.Content = new TextBlock { Text = "Сбросить геометрию экрана", FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         resetBtn.Click += (_, _) =>
         {
             prof.ScreenRect = new ScreenRectSettings();

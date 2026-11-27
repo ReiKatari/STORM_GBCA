@@ -179,6 +179,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "Повторить",
             ["UpdateSizeMbFmt"] = "{0:F1} МБ",
             ["UpdateSpeedMbFmt"] = "{0:F1} МБ/с",
+            ["RomFoldersTitle"] = "Папки с играми (библиотека ROM)",
+            ["RomFoldersDesc"] = "По умолчанию также сканируется встроенная папка roms и стандартные каталоги.",
+            ["BtnAddFolder"] = "+ Добавить папку",
+            ["BtnRemoveFolder"] = "Удалить",
+            ["RomFoldersEmpty"] = "Пользовательские папки с ROM ещё не добавлены.",
+            ["MpDolphinClockPort"] = "Порт синхронизации Dolphin (Clock Port):",
+            ["BtnBrowse"] = "Обзор",
         },
         ["en"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -289,6 +296,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "Retry",
             ["UpdateSizeMbFmt"] = "{0:F1} MB",
             ["UpdateSpeedMbFmt"] = "{0:F1} MB/s",
+            ["RomFoldersTitle"] = "ROM Folders (Game Library)",
+            ["RomFoldersDesc"] = "The built-in roms folder and standard directories are also scanned automatically.",
+            ["BtnAddFolder"] = "+ Add Folder",
+            ["BtnRemoveFolder"] = "Remove",
+            ["RomFoldersEmpty"] = "No custom ROM folders added yet.",
+            ["MpDolphinClockPort"] = "Dolphin Clock Port:",
+            ["BtnBrowse"] = "Browse",
         },
         ["de"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -399,6 +413,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "Wiederholen",
             ["UpdateSizeMbFmt"] = "{0:F1} MB",
             ["UpdateSpeedMbFmt"] = "{0:F1} MB/s",
+            ["RomFoldersTitle"] = "ROM-Ordner (Spielebibliothek)",
+            ["RomFoldersDesc"] = "Der integrierte roms-Ordner und Standardverzeichnisse werden ebenfalls automatisch gescannt.",
+            ["BtnAddFolder"] = "+ Ordner hinzufügen",
+            ["BtnRemoveFolder"] = "Entfernen",
+            ["RomFoldersEmpty"] = "Noch keine eigenen ROM-Ordner hinzugefügt.",
+            ["MpDolphinClockPort"] = "Dolphin Clock-Port:",
+            ["BtnBrowse"] = "Durchsuchen",
         },
         ["fr"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -509,6 +530,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "Réessayer",
             ["UpdateSizeMbFmt"] = "{0:F1} Mo",
             ["UpdateSpeedMbFmt"] = "{0:F1} Mo/s",
+            ["RomFoldersTitle"] = "Dossiers de ROM (Bibliothèque)",
+            ["RomFoldersDesc"] = "Le dossier roms intégré et les répertoires standard sont également analysés automatiquement.",
+            ["BtnAddFolder"] = "+ Ajouter un dossier",
+            ["BtnRemoveFolder"] = "Supprimer",
+            ["RomFoldersEmpty"] = "Aucun dossier de ROM personnalisé ajouté.",
+            ["MpDolphinClockPort"] = "Port horloge Dolphin (Clock Port) :",
+            ["BtnBrowse"] = "Parcourir",
         },
         ["es"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -619,6 +647,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "Reintentar",
             ["UpdateSizeMbFmt"] = "{0:F1} MB",
             ["UpdateSpeedMbFmt"] = "{0:F1} MB/s",
+            ["RomFoldersTitle"] = "Carpetas de ROMs (Biblioteca)",
+            ["RomFoldersDesc"] = "La carpeta roms integrada y los directorios estándar también se escanean automáticamente.",
+            ["BtnAddFolder"] = "+ Añadir carpeta",
+            ["BtnRemoveFolder"] = "Eliminar",
+            ["RomFoldersEmpty"] = "Aún no se han añadido carpetas de ROMs personalizadas.",
+            ["MpDolphinClockPort"] = "Puerto de reloj Dolphin (Clock Port):",
+            ["BtnBrowse"] = "Examinar",
         },
         ["it"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -729,6 +764,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "Riprova",
             ["UpdateSizeMbFmt"] = "{0:F1} MB",
             ["UpdateSpeedMbFmt"] = "{0:F1} MB/s",
+            ["RomFoldersTitle"] = "Cartelle ROM (Libreria giochi)",
+            ["RomFoldersDesc"] = "Anche la cartella roms integrata e le directory standard vengono scansionate automaticamente.",
+            ["BtnAddFolder"] = "+ Aggiungi cartella",
+            ["BtnRemoveFolder"] = "Rimuovi",
+            ["RomFoldersEmpty"] = "Nessuna cartella ROM personalizzata aggiunta.",
+            ["MpDolphinClockPort"] = "Porta clock Dolphin (Clock Port):",
+            ["BtnBrowse"] = "Sfoglia",
         },
         ["pt"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -839,6 +881,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "Tentar novamente",
             ["UpdateSizeMbFmt"] = "{0:F1} MB",
             ["UpdateSpeedMbFmt"] = "{0:F1} MB/s",
+            ["RomFoldersTitle"] = "Pastas de ROMs (Biblioteca)",
+            ["RomFoldersDesc"] = "A pasta roms integrada e os diretórios padrão também são verificados automaticamente.",
+            ["BtnAddFolder"] = "+ Adicionar pasta",
+            ["BtnRemoveFolder"] = "Remover",
+            ["RomFoldersEmpty"] = "Nenhuma pasta de ROMs personalizada adicionada.",
+            ["MpDolphinClockPort"] = "Porta de clock Dolphin (Clock Port):",
+            ["BtnBrowse"] = "Procurar",
         },
         ["ja"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -949,6 +998,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "再試行",
             ["UpdateSizeMbFmt"] = "{0:F1} MB",
             ["UpdateSpeedMbFmt"] = "{0:F1} MB/s",
+            ["RomFoldersTitle"] = "ROMフォルダ (ゲームライブラリ)",
+            ["RomFoldersDesc"] = "内蔵のromsフォルダおよび標準ディレクトリも自動的にスキャンされます。",
+            ["BtnAddFolder"] = "+ フォルダを追加",
+            ["BtnRemoveFolder"] = "削除",
+            ["RomFoldersEmpty"] = "カスタムROMフォルダはまだ追加されていません。",
+            ["MpDolphinClockPort"] = "Dolphin クロックポート (Clock Port):",
+            ["BtnBrowse"] = "参照",
         },
         ["zh"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -1059,6 +1115,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "重试",
             ["UpdateSizeMbFmt"] = "{0:F1} MB",
             ["UpdateSpeedMbFmt"] = "{0:F1} MB/s",
+            ["RomFoldersTitle"] = "ROM 文件夹 (游戏库)",
+            ["RomFoldersDesc"] = "内置 roms 文件夹和标准目录也会自动扫描。",
+            ["BtnAddFolder"] = "+ 添加文件夹",
+            ["BtnRemoveFolder"] = "移除",
+            ["RomFoldersEmpty"] = "尚未添加自定义 ROM 文件夹。",
+            ["MpDolphinClockPort"] = "Dolphin 时钟端口 (Clock Port):",
+            ["BtnBrowse"] = "浏览",
         },
         ["ko"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -1169,6 +1232,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "다시 시도",
             ["UpdateSizeMbFmt"] = "{0:F1} MB",
             ["UpdateSpeedMbFmt"] = "{0:F1} MB/s",
+            ["RomFoldersTitle"] = "ROM 폴더 (게임 라이브러리)",
+            ["RomFoldersDesc"] = "기본 내장 roms 폴더와 표준 디렉터리도 자동으로 스캔됩니다.",
+            ["BtnAddFolder"] = "+ 폴더 추가",
+            ["BtnRemoveFolder"] = "제거",
+            ["RomFoldersEmpty"] = "사용자 지정 ROM 폴더가 아직 추가되지 않았습니다.",
+            ["MpDolphinClockPort"] = "Dolphin 클록 포트 (Clock Port):",
+            ["BtnBrowse"] = "찾아보기",
         },
         ["hi"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -1279,6 +1349,13 @@ public static class GbcaLoc
             ["UpdateRetryBtn"] = "पुनः प्रयास करें",
             ["UpdateSizeMbFmt"] = "{0:F1} MB",
             ["UpdateSpeedMbFmt"] = "{0:F1} MB/s",
+            ["RomFoldersTitle"] = "ROM फ़ोल्डर (गेम लाइब्रेरी)",
+            ["RomFoldersDesc"] = "बिल्ट-इन roms फ़ोल्डर और मानक निर्देशिकाएं भी अपने आप स्कैन होती हैं।",
+            ["BtnAddFolder"] = "+ फ़ोल्डर जोड़ें",
+            ["BtnRemoveFolder"] = "हटाएं",
+            ["RomFoldersEmpty"] = "अभी तक कोई कस्टम ROM फ़ोल्डर नहीं जोड़ा गया है।",
+            ["MpDolphinClockPort"] = "Dolphin क्लॉक पोर्ट (Clock Port):",
+            ["BtnBrowse"] = "ब्राउज़ करें",
         },
     };
 }
