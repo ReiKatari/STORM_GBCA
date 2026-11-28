@@ -162,6 +162,35 @@ public enum StormLinkMode : int
     LocalLoopback = 9,
 }
 
+public enum StormRaEventType : int
+{
+    None = 0,
+    AchTriggered = 1,
+    AchPrimed = 2,
+    AchUnprimed = 3,
+    AchMeasured = 4,
+    LboardStarted = 5,
+    LboardUpdated = 6,
+    LboardCanceled = 7,
+    LboardTriggered = 8,
+    AchReset = 9,
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct StormGbcaRaEvent
+{
+    public int type;
+    public uint id;
+    public int value;
+    public int target;
+    public fixed byte formatted[64];
+
+    public readonly string GetFormatted()
+    {
+        fixed (byte* p = formatted) return StormGbcaRomInfo.ReadFixedUtf8(p, 64);
+    }
+}
+
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct StormGbcaLinkStatus
 {
@@ -584,4 +613,233 @@ public static unsafe class NativeCoreBindings
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern int storm_gbca_printer_poll_image(nint ctx, uint* dst_rgba, int max_pixels, int* out_w, int* out_h);
+
+    // -----------------------------------------------------------------------
+    // RetroAchievements Hardcore Compliance & Live rcheevos Runtime
+    // -----------------------------------------------------------------------
+    public const int StormErrHardcoreBlocked = -10;
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_set_hardcore_mode(nint ctx, int enabled);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_get_hardcore_mode(nint ctx);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void storm_gbca_ra_reset(nint ctx);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void storm_gbca_ra_clear_all(nint ctx);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_activate_achievement(nint ctx, uint id, [MarshalAs(UnmanagedType.LPUTF8Str)] string memaddr);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void storm_gbca_ra_deactivate_achievement(nint ctx, uint id);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_activate_leaderboard(nint ctx, uint id, [MarshalAs(UnmanagedType.LPUTF8Str)] string memaddr, [MarshalAs(UnmanagedType.LPUTF8Str)] string format);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void storm_gbca_ra_deactivate_leaderboard(nint ctx, uint id);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_activate_rich_presence(nint ctx, [MarshalAs(UnmanagedType.LPUTF8Str)] string script);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_poll_event(nint ctx, StormGbcaRaEvent* out_event);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_get_rich_presence(nint ctx, byte* out_buf, int buf_size);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_get_achievement_measured(nint ctx, uint id, uint* out_val, uint* out_target);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_get_achievement_state(nint ctx, uint id);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_serialize_progress(nint ctx, byte* dst, int capacity);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_deserialize_progress(nint ctx, byte* src, int size);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_build_login_request(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string username,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string password,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string api_token,
+        byte* out_url, int url_cap, byte* out_post, int post_cap);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_build_start_session_request(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string username,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string api_token,
+        uint game_id,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string game_hash,
+        int hardcore,
+        byte* out_url, int url_cap, byte* out_post, int post_cap);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_build_award_request(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string username,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string api_token,
+        uint achievement_id,
+        int hardcore,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string game_hash,
+        byte* out_url, int url_cap, byte* out_post, int post_cap);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_build_lboard_request(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string username,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string api_token,
+        uint lboard_id,
+        int score,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string game_hash,
+        byte* out_url, int url_cap, byte* out_post, int post_cap);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_ra_build_ping_request(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string username,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string api_token,
+        uint game_id,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string rich_presence,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string game_hash,
+        int hardcore,
+        byte* out_url, int url_cap, byte* out_post, int post_cap);
+
+    public static bool PollRaEvent(nint ctx, out StormGbcaRaEvent ev)
+    {
+        ev = default;
+        if (ctx == nint.Zero || !IsAvailable) return false;
+        StormGbcaRaEvent tmp = default;
+        if (storm_gbca_ra_poll_event(ctx, &tmp) != 0)
+        {
+            ev = tmp;
+            return true;
+        }
+        return false;
+    }
+
+    public static string GetRichPresence(nint ctx)
+    {
+        if (ctx == nint.Zero || !IsAvailable) return string.Empty;
+        byte* buf = stackalloc byte[512];
+        int len = storm_gbca_ra_get_rich_presence(ctx, buf, 512);
+        return len > 0 ? StormGbcaRomInfo.ReadFixedUtf8(buf, 512) : string.Empty;
+    }
+
+    public static byte[] SerializeRaProgress(nint ctx)
+    {
+        if (ctx == nint.Zero || !IsAvailable) return [];
+        int need = storm_gbca_ra_serialize_progress(ctx, null, 0);
+        if (need <= 0) return [];
+        byte[] buf = new byte[need];
+        fixed (byte* p = buf)
+        {
+            int written = storm_gbca_ra_serialize_progress(ctx, p, buf.Length);
+            if (written <= 0) return [];
+            if (written < buf.Length) Array.Resize(ref buf, written);
+            return buf;
+        }
+    }
+
+    public static bool DeserializeRaProgress(nint ctx, byte[] data)
+    {
+        if (ctx == nint.Zero || data == null || data.Length == 0 || !IsAvailable) return false;
+        fixed (byte* p = data)
+        {
+            return storm_gbca_ra_deserialize_progress(ctx, p, data.Length) == 0;
+        }
+    }
+
+    public static bool BuildLoginRequest(string username, string password, string apiToken, out string url, out string postBody)
+    {
+        url = string.Empty;
+        postBody = string.Empty;
+        if (!IsAvailable) return false;
+        byte[] uBuf = new byte[1024];
+        byte[] pBuf = new byte[2048];
+        fixed (byte* pu = uBuf)
+        fixed (byte* pp = pBuf)
+        {
+            if (storm_gbca_ra_build_login_request(username ?? string.Empty, password ?? string.Empty, apiToken ?? string.Empty, pu, uBuf.Length, pp, pBuf.Length) != 0)
+                return false;
+            url = StormGbcaRomInfo.ReadFixedUtf8(pu, uBuf.Length);
+            postBody = StormGbcaRomInfo.ReadFixedUtf8(pp, pBuf.Length);
+            return !string.IsNullOrWhiteSpace(url);
+        }
+    }
+
+    public static bool BuildStartSessionRequest(string username, string apiToken, uint gameId, string gameHash, bool hardcore, out string url, out string postBody)
+    {
+        url = string.Empty;
+        postBody = string.Empty;
+        if (!IsAvailable) return false;
+        byte[] uBuf = new byte[1024];
+        byte[] pBuf = new byte[2048];
+        fixed (byte* pu = uBuf)
+        fixed (byte* pp = pBuf)
+        {
+            if (storm_gbca_ra_build_start_session_request(username ?? string.Empty, apiToken ?? string.Empty, gameId, gameHash ?? string.Empty, hardcore ? 1 : 0, pu, uBuf.Length, pp, pBuf.Length) != 0)
+                return false;
+            url = StormGbcaRomInfo.ReadFixedUtf8(pu, uBuf.Length);
+            postBody = StormGbcaRomInfo.ReadFixedUtf8(pp, pBuf.Length);
+            return !string.IsNullOrWhiteSpace(url);
+        }
+    }
+
+    public static bool BuildAwardRequest(string username, string apiToken, uint achievementId, bool hardcore, string gameHash, out string url, out string postBody)
+    {
+        url = string.Empty;
+        postBody = string.Empty;
+        if (!IsAvailable) return false;
+        byte[] uBuf = new byte[1024];
+        byte[] pBuf = new byte[2048];
+        fixed (byte* pu = uBuf)
+        fixed (byte* pp = pBuf)
+        {
+            if (storm_gbca_ra_build_award_request(username ?? string.Empty, apiToken ?? string.Empty, achievementId, hardcore ? 1 : 0, gameHash ?? string.Empty, pu, uBuf.Length, pp, pBuf.Length) != 0)
+                return false;
+            url = StormGbcaRomInfo.ReadFixedUtf8(pu, uBuf.Length);
+            postBody = StormGbcaRomInfo.ReadFixedUtf8(pp, pBuf.Length);
+            return !string.IsNullOrWhiteSpace(url);
+        }
+    }
+
+    public static bool BuildLboardRequest(string username, string apiToken, uint lboardId, int score, string gameHash, out string url, out string postBody)
+    {
+        url = string.Empty;
+        postBody = string.Empty;
+        if (!IsAvailable) return false;
+        byte[] uBuf = new byte[1024];
+        byte[] pBuf = new byte[2048];
+        fixed (byte* pu = uBuf)
+        fixed (byte* pp = pBuf)
+        {
+            if (storm_gbca_ra_build_lboard_request(username ?? string.Empty, apiToken ?? string.Empty, lboardId, score, gameHash ?? string.Empty, pu, uBuf.Length, pp, pBuf.Length) != 0)
+                return false;
+            url = StormGbcaRomInfo.ReadFixedUtf8(pu, uBuf.Length);
+            postBody = StormGbcaRomInfo.ReadFixedUtf8(pp, pBuf.Length);
+            return !string.IsNullOrWhiteSpace(url);
+        }
+    }
+
+    public static bool BuildPingRequest(string username, string apiToken, uint gameId, string richPresence, string gameHash, bool hardcore, out string url, out string postBody)
+    {
+        url = string.Empty;
+        postBody = string.Empty;
+        if (!IsAvailable) return false;
+        byte[] uBuf = new byte[1024];
+        byte[] pBuf = new byte[4096];
+        fixed (byte* pu = uBuf)
+        fixed (byte* pp = pBuf)
+        {
+            if (storm_gbca_ra_build_ping_request(username ?? string.Empty, apiToken ?? string.Empty, gameId, richPresence ?? string.Empty, gameHash ?? string.Empty, hardcore ? 1 : 0, pu, uBuf.Length, pp, pBuf.Length) != 0)
+                return false;
+            url = StormGbcaRomInfo.ReadFixedUtf8(pu, uBuf.Length);
+            postBody = StormGbcaRomInfo.ReadFixedUtf8(pp, pBuf.Length);
+            return !string.IsNullOrWhiteSpace(url);
+        }
+    }
 }

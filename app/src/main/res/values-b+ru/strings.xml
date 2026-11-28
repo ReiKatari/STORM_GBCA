@@ -147,8 +147,8 @@
     <string name="ra_encore_sub">Повторное срабатывание уже открытых достижений в сессии</string>
     <string name="ra_unofficial">Неофициальные достижения</string>
     <string name="ra_unofficial_sub">Показывать тестовые и фанатские наборы достижений</string>
-    <string name="ra_offline_softcore">Офлайн-очередь Softcore</string>
-    <string name="ra_offline_softcore_sub">Сохранять достижения без сети и отправлять позже</string>
+    <string name="ra_offline_casual">Офлайн-очередь Casual</string>
+    <string name="ra_offline_casual_sub">Сохранять достижения без сети и отправлять позже</string>
     <string name="ra_challenge_ind">Индикаторы активных испытаний</string>
     <string name="ra_progress_ind">Индикаторы прогресса</string>
     <string name="ra_lb_ind">Индикаторы таблиц лидеров</string>
@@ -415,4 +415,24 @@
     <string name="ctrl_section_gb">Game Boy (GB)</string>
     <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
     <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
+    <string name="ra_mode_hardcore">Hardcore</string>
+    <string name="ra_mode_casual">Casual</string>
+    <string name="ra_banner_hardcore">RetroAchievements - Hardcore</string>
+    <string name="ra_banner_casual">RetroAchievements - Casual</string>
+    <string name="ra_hardcore_blocked_load_state">Загрузка сохранений заблокирована в режиме Hardcore</string>
+    <string name="ra_hardcore_blocked_rewind">Перемотка времени отключена в режиме Hardcore</string>
+    <string name="ra_hardcore_blocked_cheats">Чит-коды отключены в режиме Hardcore</string>
+    <string name="ra_hardcore_blocked_ram_finder">Поиск RAM отключен в режиме Hardcore</string>
+    <string name="ra_hardcore_blocked_patch">Применение патчей во время игры заблокировано в режиме Hardcore</string>
+    <string name="ra_hardcore_blocked_overclock">Разгон CPU зафиксирован на 100% в режиме Hardcore</string>
+    <string name="ra_switch_to_hardcore_title">Переключить в режим Hardcore?</string>
+    <string name="ra_switch_to_hardcore_msg">Переход в режим Hardcore во время игры выполнит полный перезапуск консоли и очистит активные читы и историю перемотки. Продолжить?</string>
+    <string name="ra_switched_casual_toast">Активирован режим Casual</string>
+    <string name="ra_switched_hardcore_toast">Режим Hardcore активен - консоль перезапущена</string>
+    <string name="ra_lb_submitted_fmt">Таблица лидеров отправлена: %1$s (%2$s)</string>
+    <string name="about_legal_section">Правовая информация</string>
+    <string name="about_privacy_policy">Политика конфиденциальности</string>
+    <string name="about_privacy_policy_sub">Открыть политику конфиденциальности STORM GBCA на GitHub</string>
+    <string name="about_third_party_licenses">Лицензии открытого ПО (FOSS)</string>
+    <string name="about_third_party_licenses_sub">mGBA, SameBoy, rcheevos, librashader, Oboe и другие лицензии</string>
 </resources>

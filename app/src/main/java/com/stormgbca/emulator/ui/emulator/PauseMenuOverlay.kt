@@ -109,6 +109,7 @@ import com.stormgbca.emulator.ui.common.WatermelonSwitch
 import com.stormgbca.emulator.ui.common.bouncingClickable
 import com.stormgbca.emulator.ui.library.formatPlayTime
 import com.stormgbca.emulator.ui.ra.GameAchievementsDialog
+import com.stormgbca.emulator.ui.ra.RaMeasuredProgress
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.WatermelonMono
 import com.stormgbca.emulator.ui.theme.watermelon
@@ -147,6 +148,7 @@ private data class PauseTileItem(
     val badge: String? = null,
     val extendedOnly: Boolean = false,
     val destructive: Boolean = false,
+    val lockedInHardcore: Boolean = false,
     val onClick: () -> Unit,
 )
 
@@ -165,6 +167,10 @@ fun PauseMenuOverlay(
     fastForwardActive: Boolean,
     rewindAvailableFrames: Int,
     raSession: RaGameSession?,
+    raHardcoreActive: Boolean = false,
+    raRichPresence: String = "",
+    raPrimedIds: Set<Int> = emptySet(),
+    raMeasuredMap: Map<Int, RaMeasuredProgress> = emptyMap(),
     linkStatus: LinkStatusInfo,
     onResume: () -> Unit,
     onQuickSave: (Int) -> Unit,
@@ -173,6 +179,8 @@ fun PauseMenuOverlay(
     onLoadSlot: (Int) -> Unit,
     onRewindStep: () -> Unit,
     onToggleFastForward: () -> Unit,
+    onToggleHardcoreMode: (Boolean) -> Unit = {},
+    onHardcoreBlocked: (String) -> Unit = {},
     onOpenSkinPicker: () -> Unit,
     onOpenOverlayPicker: () -> Unit,
     onOpenLayoutEditor: () -> Unit,
@@ -240,21 +248,44 @@ fun PauseMenuOverlay(
 
     val ffBadge = if (fastForwardActive) "${cfg.fastForwardMultiplier.toInt()}x" else null
     val linkBadge = if (linkStatus.mode != NativeCore.LINK_NONE && linkStatus.connected) "${linkStatus.playerCount}P" else null
-    val raBadge = raSession?.let { "${it.unlockedCount}/${it.totalCount}" }
-    val rwBadge = if (rewindAvailableFrames > 0) "${rewindAvailableFrames}f" else null
+    val raBadge = raSession?.let {
+        val unlocked = if (raHardcoreActive) it.hardcoreUnlockedCount else it.unlockedCount
+        "$unlocked/${it.totalCount}"
+    }
+    val rwBadge = if (raHardcoreActive) "HC" else if (rewindAvailableFrames > 0) "${rewindAvailableFrames}f" else null
 
     val allTiles = listOf(
         PauseTileItem("save_state", stringResource(R.string.pause_save_state), Icons.Filled.Download, "#$activeQuickSlot") {
             onQuickSave(activeQuickSlot); onResume()
         },
-        PauseTileItem("load_state", stringResource(R.string.pause_load_state), Icons.Filled.Upload, "#$activeQuickSlot") {
-            onQuickLoad(activeQuickSlot); onResume()
+        PauseTileItem(
+            key = "load_state",
+            label = stringResource(R.string.pause_load_state),
+            icon = Icons.Filled.Upload,
+            badge = if (raHardcoreActive) "HC" else "#$activeQuickSlot",
+            lockedInHardcore = raHardcoreActive,
+        ) {
+            if (raHardcoreActive) {
+                onHardcoreBlocked(context.getString(R.string.ra_hardcore_blocked_load_state))
+            } else {
+                onQuickLoad(activeQuickSlot); onResume()
+            }
         },
         PauseTileItem("fast_forward", stringResource(R.string.pause_fast_forward), Icons.Filled.FastForward, ffBadge) {
             onToggleFastForward()
         },
-        PauseTileItem("rewind", stringResource(R.string.pause_rewind), Icons.Filled.History, rwBadge) {
-            onRewindStep()
+        PauseTileItem(
+            key = "rewind",
+            label = stringResource(R.string.pause_rewind),
+            icon = Icons.Filled.History,
+            badge = rwBadge,
+            lockedInHardcore = raHardcoreActive,
+        ) {
+            if (raHardcoreActive) {
+                onHardcoreBlocked(context.getString(R.string.ra_hardcore_blocked_rewind))
+            } else {
+                onRewindStep()
+            }
         },
         PauseTileItem("multiplayer", stringResource(R.string.pause_multiplayer), Icons.Filled.Cable, linkBadge) {
             onOpenMultiplayer()
@@ -277,14 +308,46 @@ fun PauseMenuOverlay(
         PauseTileItem("audio", stringResource(R.string.pause_audio), Icons.Filled.GraphicEq, extendedOnly = true) {
             subDialog = PauseSubDialog.AUDIO_MIXER
         },
-        PauseTileItem("cheats", stringResource(R.string.pause_cheats), Icons.Filled.Tune) {
-            subDialog = PauseSubDialog.CHEATS
+        PauseTileItem(
+            key = "cheats",
+            label = stringResource(R.string.pause_cheats),
+            icon = Icons.Filled.Tune,
+            badge = if (raHardcoreActive) "HC" else null,
+            lockedInHardcore = raHardcoreActive,
+        ) {
+            if (raHardcoreActive) {
+                onHardcoreBlocked(context.getString(R.string.ra_hardcore_blocked_cheats))
+            } else {
+                subDialog = PauseSubDialog.CHEATS
+            }
         },
-        PauseTileItem("ram_finder", stringResource(R.string.pause_ram_finder), Icons.Filled.Search, extendedOnly = true) {
-            onOpenRamFinder()
+        PauseTileItem(
+            key = "ram_finder",
+            label = stringResource(R.string.pause_ram_finder),
+            icon = Icons.Filled.Search,
+            badge = if (raHardcoreActive) "HC" else null,
+            extendedOnly = true,
+            lockedInHardcore = raHardcoreActive,
+        ) {
+            if (raHardcoreActive) {
+                onHardcoreBlocked(context.getString(R.string.ra_hardcore_blocked_ram_finder))
+            } else {
+                onOpenRamFinder()
+            }
         },
-        PauseTileItem("patch", stringResource(R.string.pause_patch), Icons.Filled.Build, extendedOnly = true) {
-            onApplySoftPatch()
+        PauseTileItem(
+            key = "patch",
+            label = stringResource(R.string.pause_patch),
+            icon = Icons.Filled.Build,
+            badge = if (raHardcoreActive) "HC" else null,
+            extendedOnly = true,
+            lockedInHardcore = raHardcoreActive,
+        ) {
+            if (raHardcoreActive) {
+                onHardcoreBlocked(context.getString(R.string.ra_hardcore_blocked_patch))
+            } else {
+                onApplySoftPatch()
+            }
         },
         PauseTileItem("sensors", stringResource(R.string.pause_sensors), Icons.Filled.Sensors, extendedOnly = true) {
             subDialog = PauseSubDialog.SENSORS
@@ -409,6 +472,26 @@ fun PauseMenuOverlay(
                                         letterSpacing = 0.5.sp,
                                     )
                                 }
+                                if (raSession != null) {
+                                    Spacer(Modifier.width(5.dp))
+                                    val modeCol = if (raHardcoreActive) Color(0xFFFACC15) else Color(0xFF38BDF8)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(modeCol.copy(alpha = 0.18f))
+                                            .border(0.75.dp, modeCol.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                                            .clickable { onToggleHardcoreMode(!raHardcoreActive) }
+                                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                                    ) {
+                                        Text(
+                                            text = if (raHardcoreActive) "RA HARDCORE" else "RA CASUAL",
+                                            color = modeCol,
+                                            fontFamily = WatermelonMono,
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                }
                                 val pt = formatPlayTime(rom.totalPlaySeconds)
                                 if (pt.isNotEmpty()) {
                                     Text(pt, color = colors.text2, fontSize = 9.5.sp, modifier = Modifier.padding(start = 6.dp))
@@ -450,6 +533,18 @@ fun PauseMenuOverlay(
                                 Text(stringResource(R.string.pause_resume), color = colors.green, fontFamily = SpaceGrotesk, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
+                    }
+
+                    if (raRichPresence.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = raRichPresence,
+                            color = if (raHardcoreActive) Color(0xFFFACC15) else colors.green,
+                            fontFamily = WatermelonMono,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
 
                     // Portrait Telemetry Strip (Clock | Battery % | Session Duration)
@@ -682,6 +777,8 @@ fun PauseMenuOverlay(
         PauseSubDialog.SLOTS -> SaveSlotsDialog(
             rom = rom,
             activeSlot = activeQuickSlot,
+            raHardcoreActive = raHardcoreActive,
+            onHardcoreBlocked = onHardcoreBlocked,
             onSelectActive = { slot ->
                 activeQuickSlot = slot
                 GbcaPrefs.setActiveQuickSlot(slot)
@@ -708,6 +805,11 @@ fun PauseMenuOverlay(
         PauseSubDialog.ACHIEVEMENTS -> GameAchievementsDialog(
             gameTitleFallback = rom.displayTitle,
             session = raSession,
+            raHardcoreActive = raHardcoreActive,
+            richPresenceText = raRichPresence,
+            primedIds = raPrimedIds,
+            measuredMap = raMeasuredMap,
+            onToggleHardcoreMode = onToggleHardcoreMode,
             onOpenLogin = { subDialog = PauseSubDialog.NONE; onOpenRaAccount() },
             onDismiss = { subDialog = PauseSubDialog.NONE },
         )
@@ -736,28 +838,38 @@ private fun PauseTileCard(
     compactHeight: Boolean,
 ) {
     val colors = watermelon
-    val iconTint = if (tile.destructive) colors.red else colors.green
-    val borderCol = if (tile.destructive) colors.red.copy(alpha = 0.45f) else colors.line
+    val iconTint = when {
+        tile.lockedInHardcore -> colors.text2.copy(alpha = 0.45f)
+        tile.destructive -> colors.red
+        else -> colors.green
+    }
+    val borderCol = when {
+        tile.lockedInHardcore -> Color(0xFFFACC15).copy(alpha = 0.35f)
+        tile.destructive -> colors.red.copy(alpha = 0.45f)
+        else -> colors.line
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(if (compactHeight) 62.dp else 72.dp)
             .clip(RoundedCornerShape(13.dp))
-            .background(colors.surface)
+            .background(if (tile.lockedInHardcore) colors.surface.copy(alpha = 0.55f) else colors.surface)
             .border(1.dp, borderCol, RoundedCornerShape(13.dp))
             .bouncingClickable(onClick = tile.onClick)
             .padding(horizontal = 6.dp, vertical = 6.dp),
     ) {
         if (!tile.badge.isNullOrBlank()) {
+            val badgeBg = if (tile.lockedInHardcore) Color(0x33FACC15) else colors.greenDim
+            val badgeFg = if (tile.lockedInHardcore) Color(0xFFFACC15) else colors.green
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .clip(RoundedCornerShape(5.dp))
-                    .background(colors.greenDim)
+                    .background(badgeBg)
                     .padding(horizontal = 4.dp, vertical = 1.dp),
             ) {
-                Text(tile.badge, color = colors.green, fontFamily = WatermelonMono, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+                Text(tile.badge, color = badgeFg, fontFamily = WatermelonMono, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
             }
         }
         Column(
@@ -769,7 +881,11 @@ private fun PauseTileCard(
             Spacer(Modifier.height(4.dp))
             Text(
                 text = tile.label,
-                color = if (tile.destructive) colors.red else colors.text,
+                color = when {
+                    tile.lockedInHardcore -> colors.text2.copy(alpha = 0.55f)
+                    tile.destructive -> colors.red
+                    else -> colors.text
+                },
                 fontFamily = SpaceGrotesk,
                 fontSize = if (compactHeight) 10.5.sp else 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -858,6 +974,8 @@ private fun PauseCustomizerDialog(
 private fun SaveSlotsDialog(
     rom: RomEntry,
     activeSlot: Int,
+    raHardcoreActive: Boolean,
+    onHardcoreBlocked: (String) -> Unit,
     onSelectActive: (Int) -> Unit,
     onSaveSlot: (Int) -> Unit,
     onLoadSlot: (Int) -> Unit,
@@ -950,11 +1068,23 @@ private fun SaveSlotsDialog(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(colors.green)
-                                        .clickable { onLoadSlot(slot) }
+                                        .background(if (raHardcoreActive) colors.surface else colors.green)
+                                        .border(1.dp, if (raHardcoreActive) Color(0xFFFACC15).copy(alpha = 0.5f) else colors.green, RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            if (raHardcoreActive) {
+                                                onHardcoreBlocked(context.getString(R.string.ra_hardcore_blocked_load_state))
+                                            } else {
+                                                onLoadSlot(slot)
+                                            }
+                                        }
                                         .padding(horizontal = 10.dp, vertical = 6.dp),
                                 ) {
-                                    Text(stringResource(R.string.load), color = Color(0xFF05060A), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = if (raHardcoreActive) "HC" else stringResource(R.string.load),
+                                        color = if (raHardcoreActive) Color(0xFFFACC15) else Color(0xFF05060A),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
                                 }
                             }
                         }

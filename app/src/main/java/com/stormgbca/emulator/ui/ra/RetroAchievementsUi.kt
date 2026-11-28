@@ -33,6 +33,7 @@ import androidx.compose.material.Text
 import androidx.compose.material.TextFieldDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudSync
@@ -42,8 +43,10 @@ import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,6 +90,24 @@ import com.stormgbca.emulator.ui.theme.WatermelonMono
 import com.stormgbca.emulator.ui.theme.watermelon
 import kotlinx.coroutines.launch
 
+data class RaMeasuredProgress(
+    val value: Long,
+    val target: Long,
+    val formatted: String = "",
+)
+
+data class RaUnlockToastData(
+    val achievement: RaAchievementBadge,
+    val hardcore: Boolean,
+    val key: Long = System.currentTimeMillis(),
+)
+
+data class RaActiveLeaderboardData(
+    val id: Int,
+    val title: String,
+    val scoreText: String,
+)
+
 /**
  * Full STORM DS-parity RetroAchievements settings panel (usable inside Settings sub-screen OR modal dialog).
  * Zero horizontal scrolling, 100% localized via stringResource, high-contrast white/black text.
@@ -94,6 +115,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun RetroAchievementsSettingsContent(
     modifier: Modifier = Modifier,
+    onHardcoreChanged: ((Boolean) -> Unit)? = null,
 ) {
     val colors = watermelon
     val context = LocalContext.current
@@ -163,8 +185,8 @@ fun RetroAchievementsSettingsContent(
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF22C55E)))
                                 Text(
-                                    text = if (hardcore) "Hardcore" else "Softcore",
-                                    color = if (hardcore) Color(0xFFFACC15) else colors.green,
+                                    text = if (hardcore) stringResource(R.string.ra_mode_hardcore) else stringResource(R.string.ra_mode_casual),
+                                    color = if (hardcore) Color(0xFFFACC15) else Color(0xFF38BDF8),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
@@ -192,7 +214,7 @@ fun RetroAchievementsSettingsContent(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         RaStatPill("Hardcore", "${profile.points} pts", Color(0xFFFACC15), Modifier.weight(1f))
-                        RaStatPill("Softcore", "${profile.softcorePoints} pts", Color(0xFF38BDF8), Modifier.weight(1f))
+                        RaStatPill("Casual", "${profile.softcorePoints} pts", Color(0xFF38BDF8), Modifier.weight(1f))
                         if (profile.rank > 0) {
                             RaStatPill(stringResource(R.string.ra_rank), "#${profile.rank}", colors.green, Modifier.weight(1f))
                         }
@@ -318,10 +340,17 @@ fun RetroAchievementsSettingsContent(
             RaToggleRow(stringResource(R.string.ra_hardcore), stringResource(R.string.ra_hardcore_sub), hardcore) {
                 hardcore = it; GbcaPrefs.setRaHardcore(it)
                 if (it) { richPresence = true; GbcaPrefs.setRaRichPresence(true) }
+                onHardcoreChanged?.invoke(it)
             }
             WatermelonRowSeparator()
-            RaToggleRow(stringResource(R.string.ra_rich_presence), stringResource(R.string.ra_rich_presence_sub), richPresence) {
-                richPresence = it; GbcaPrefs.setRaRichPresence(it)
+            RaToggleRow(stringResource(R.string.ra_rich_presence), stringResource(R.string.ra_rich_presence_sub), if (hardcore) true else richPresence) {
+                if (hardcore) {
+                    richPresence = true
+                    GbcaPrefs.setRaRichPresence(true)
+                } else {
+                    richPresence = it
+                    GbcaPrefs.setRaRichPresence(it)
+                }
             }
             WatermelonRowSeparator()
             RaToggleRow(stringResource(R.string.ra_encore), stringResource(R.string.ra_encore_sub), encore) {
@@ -332,7 +361,7 @@ fun RetroAchievementsSettingsContent(
                 unofficial = it; GbcaPrefs.setRaUnofficial(it)
             }
             WatermelonRowSeparator()
-            RaToggleRow(stringResource(R.string.ra_offline_softcore), stringResource(R.string.ra_offline_softcore_sub), offlineSoftcore) {
+            RaToggleRow(stringResource(R.string.ra_offline_casual), stringResource(R.string.ra_offline_casual_sub), offlineSoftcore) {
                 offlineSoftcore = it; GbcaPrefs.setRaOfflineSoftcore(it)
             }
             WatermelonRowSeparator()
@@ -503,6 +532,7 @@ fun RetroAchievementsSettingsContent(
 
 @Composable
 fun RetroAchievementsAccountDialog(
+    onHardcoreChanged: ((Boolean) -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     val colors = watermelon
@@ -559,7 +589,7 @@ fun RetroAchievementsAccountDialog(
                         .verticalScroll(rememberScrollState())
                         .padding(16.dp),
                 ) {
-                    RetroAchievementsSettingsContent()
+                    RetroAchievementsSettingsContent(onHardcoreChanged = onHardcoreChanged)
                 }
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 14.dp),
@@ -577,6 +607,11 @@ fun GameAchievementsDialog(
     gameTitleFallback: String,
     session: RaGameSession?,
     isLoading: Boolean = false,
+    raHardcoreActive: Boolean = GbcaPrefs.isRaHardcore(),
+    richPresenceText: String = "",
+    primedIds: Set<Int> = emptySet(),
+    measuredMap: Map<Int, RaMeasuredProgress> = emptyMap(),
+    onToggleHardcoreMode: ((Boolean) -> Unit)? = null,
     onOpenLogin: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
@@ -639,14 +674,34 @@ fun GameAchievementsDialog(
                         )
                         Text(
                             text = if (session != null) {
-                                "ID #${session.gameId} | ${if (GbcaPrefs.isRaHardcore()) "Hardcore" else "Softcore"}"
+                                "ID #${session.gameId} | ${if (raHardcoreActive) stringResource(R.string.ra_mode_hardcore) else stringResource(R.string.ra_mode_casual)}"
                             } else {
                                 "RetroAchievements"
                             },
-                            color = colors.text2,
+                            color = if (session != null && raHardcoreActive) Color(0xFFFACC15) else colors.text2,
                             fontFamily = WatermelonMono,
                             fontSize = 11.sp,
                         )
+                    }
+                    if (session != null && onToggleHardcoreMode != null) {
+                        val modeColor = if (raHardcoreActive) Color(0xFFFACC15) else Color(0xFF38BDF8)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(modeColor.copy(alpha = 0.18f))
+                                .border(1.dp, modeColor, RoundedCornerShape(9.dp))
+                                .clickable { onToggleHardcoreMode(!raHardcoreActive) }
+                                .padding(horizontal = 9.dp, vertical = 5.dp),
+                        ) {
+                            Text(
+                                text = if (raHardcoreActive) "Hardcore" else "Casual",
+                                color = modeColor,
+                                fontFamily = WatermelonMono,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
                     }
                     if (session != null) {
                         IconButton(
@@ -721,6 +776,16 @@ fun GameAchievementsDialog(
                                     backgroundColor = colors.surface2,
                                     modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(4.dp)),
                                 )
+                                if (richPresenceText.isNotBlank()) {
+                                    Text(
+                                        text = richPresenceText,
+                                        color = colors.green,
+                                        fontFamily = WatermelonMono,
+                                        fontSize = 11.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                         }
 
@@ -842,7 +907,11 @@ fun GameAchievementsDialog(
                                 modifier = Modifier.weight(1f, fill = false).heightIn(max = 420.dp),
                             ) {
                                 items(filtered, key = { it.id }) { ach ->
-                                    AchievementRowCard(ach)
+                                    AchievementRowCard(
+                                        ach = ach,
+                                        isPrimed = primedIds.contains(ach.id),
+                                        measured = measuredMap[ach.id],
+                                    )
                                 }
                             }
                         }
@@ -882,13 +951,18 @@ private fun RaTabChip(label: String, active: Boolean, modifier: Modifier = Modif
 }
 
 @Composable
-private fun AchievementRowCard(ach: RaAchievementBadge) {
+private fun AchievementRowCard(
+    ach: RaAchievementBadge,
+    isPrimed: Boolean = false,
+    measured: RaMeasuredProgress? = null,
+) {
     val colors = watermelon
     val context = LocalContext.current
     val isEarned = ach.unlocked || ach.unlockedHardcore
     val borderCol = when {
         ach.unlockedHardcore -> Color(0xFFFACC15)
-        ach.unlocked -> colors.green
+        ach.unlocked -> Color(0xFF38BDF8)
+        isPrimed -> Color(0xFFFACC15)
         else -> colors.line
     }
 
@@ -898,7 +972,7 @@ private fun AchievementRowCard(ach: RaAchievementBadge) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(colors.surface)
-            .border(1.dp, borderCol.copy(alpha = if (isEarned) 0.85f else 0.5f), RoundedCornerShape(14.dp))
+            .border(1.dp, borderCol.copy(alpha = if (isEarned || isPrimed) 0.85f else 0.5f), RoundedCornerShape(14.dp))
             .padding(10.dp),
     ) {
         Box(
@@ -937,6 +1011,16 @@ private fun AchievementRowCard(ach: RaAchievementBadge) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
+                if (isPrimed && !isEarned) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0x33FACC15))
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    ) {
+                        Text("PRIMED", color = Color(0xFFFACC15), fontFamily = WatermelonMono, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
                 if (ach.type.isNotBlank()) {
                     Box(
                         modifier = Modifier
@@ -950,6 +1034,20 @@ private fun AchievementRowCard(ach: RaAchievementBadge) {
             }
             Spacer(Modifier.height(2.dp))
             Text(ach.description, color = colors.text2, fontSize = 11.5.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (!isEarned && measured != null && measured.target > 0L) {
+                Spacer(Modifier.height(4.dp))
+                val frac = (measured.value.toFloat() / measured.target.toFloat()).coerceIn(0f, 1f)
+                val label = measured.formatted.ifBlank { "${measured.value}/${measured.target}" }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LinearProgressIndicator(
+                        progress = frac,
+                        color = Color(0xFF38BDF8),
+                        backgroundColor = colors.surface2,
+                        modifier = Modifier.weight(1f).height(5.dp).clip(RoundedCornerShape(3.dp)),
+                    )
+                    Text(label, color = Color(0xFF38BDF8), fontFamily = WatermelonMono, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
@@ -964,7 +1062,7 @@ private fun AchievementRowCard(ach: RaAchievementBadge) {
             if (isEarned) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = if (ach.unlockedHardcore) "HARDCORE" else "SOFTCORE",
+                    text = if (ach.unlockedHardcore) "HARDCORE" else "CASUAL",
                     color = borderCol,
                     fontFamily = WatermelonMono,
                     fontSize = 9.sp,
@@ -1009,5 +1107,318 @@ private fun RaToggleRow(title: String, subtitle: String, checked: Boolean, onCha
         }
         Spacer(Modifier.width(12.dp))
         WatermelonSwitch(checked = checked, onCheckedChange = onChanged)
+    }
+}
+
+@Composable
+fun RaStartupSessionBanner(
+    session: RaGameSession,
+    hardcore: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val accent = if (hardcore) Color(0xFFFACC15) else Color(0xFF38BDF8)
+    val unlocked = if (hardcore) session.hardcoreUnlockedCount else session.unlockedCount
+    val modeLabel = if (hardcore) {
+        stringResource(R.string.ra_banner_hardcore)
+    } else {
+        stringResource(R.string.ra_banner_casual)
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .widthIn(max = 420.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xE80A0E18))
+            .border(1.5.dp, accent, RoundedCornerShape(16.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(Color(0xFF141A29))
+                .border(1.dp, accent.copy(alpha = 0.7f), RoundedCornerShape(9.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (session.gameIconUrl.isNotBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context).data(session.gameIconUrl).crossfade(true).build(),
+                    contentDescription = session.gameTitle,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(38.dp),
+                )
+            } else {
+                Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f, fill = false)) {
+            Text(
+                text = session.gameTitle,
+                color = Color.White,
+                fontFamily = SpaceGrotesk,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = modeLabel,
+                color = accent,
+                fontFamily = WatermelonMono,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.5.sp,
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(accent.copy(alpha = 0.2f))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            Text(
+                text = "$unlocked / ${session.totalCount}",
+                color = accent,
+                fontFamily = WatermelonMono,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+            )
+        }
+    }
+}
+
+@Composable
+fun RaUnlockToastCard(
+    toast: RaUnlockToastData,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val ach = toast.achievement
+    val accent = if (toast.hardcore) Color(0xFFFACC15) else Color(0xFF38BDF8)
+    val isDetailed = GbcaPrefs.getRaNotifStyle() != "compact"
+    val badgeUrl = if (ach.badgeName.isNotBlank()) {
+        "https://media.retroachievements.org/Badge/${ach.badgeName}.png"
+    } else ""
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .widthIn(max = 380.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xF00B101C))
+            .border(1.8.dp, accent, RoundedCornerShape(16.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(if (isDetailed) 46.dp else 36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF161D2E))
+                .border(1.5.dp, accent, RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (badgeUrl.isNotBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context).data(badgeUrl).crossfade(true).build(),
+                    contentDescription = ach.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(if (isDetailed) 46.dp else 36.dp),
+                )
+            } else {
+                Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f, fill = false)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = if (toast.hardcore) "HARDCORE UNLOCK" else "CASUAL UNLOCK",
+                    color = accent,
+                    fontFamily = WatermelonMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 9.5.sp,
+                )
+                Text(
+                    text = "+${ach.points} pts",
+                    color = accent,
+                    fontFamily = WatermelonMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 9.5.sp,
+                )
+            }
+            Text(
+                text = ach.title,
+                color = Color.White,
+                fontFamily = SpaceGrotesk,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (isDetailed && ach.description.isNotBlank()) {
+                Text(
+                    text = ach.description,
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RaChallengeOverlayStrip(
+    primed: List<RaAchievementBadge>,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier,
+    ) {
+        primed.take(4).forEach { ach ->
+            val url = if (ach.badgeName.isNotBlank()) {
+                "https://media.retroachievements.org/Badge/${ach.badgeName}.png"
+            } else ""
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color(0xE00B101C))
+                    .border(1.5.dp, Color(0xFFFACC15), RoundedCornerShape(9.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (url.isNotBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context).data(url).crossfade(true).build(),
+                        contentDescription = ach.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(34.dp),
+                    )
+                } else {
+                    Icon(Icons.Filled.Bolt, contentDescription = ach.title, tint = Color(0xFFFACC15), modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RaMeasuredPill(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xE00A0E18))
+            .border(1.dp, Color(0xFF38BDF8), RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Icon(Icons.Filled.Shield, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
+        Text(
+            text = text,
+            color = Color.White,
+            fontFamily = WatermelonMono,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+fun RaLeaderboardTrackerPill(
+    lb: RaActiveLeaderboardData,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xE00A0E18))
+            .border(1.dp, Color(0xFFFACC15), RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Icon(Icons.Filled.Leaderboard, contentDescription = null, tint = Color(0xFFFACC15), modifier = Modifier.size(14.dp))
+        Text(
+            text = "${lb.title}: ${lb.scoreText}",
+            color = Color(0xFFFACC15),
+            fontFamily = WatermelonMono,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+fun RaSwitchToHardcoreConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = watermelon
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = colors.surface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFFFACC15), RoundedCornerShape(18.dp)),
+        ) {
+            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFACC15), modifier = Modifier.size(22.dp))
+                    Text(
+                        text = stringResource(R.string.ra_switch_to_hardcore_title),
+                        color = Color(0xFFFACC15),
+                        fontFamily = SpaceGrotesk,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.ra_switch_to_hardcore_msg),
+                    color = colors.text,
+                    fontSize = 13.sp,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.surface2)
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(stringResource(R.string.cancel), color = colors.text, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFFACC15))
+                            .clickable(onClick = onConfirm)
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(stringResource(R.string.confirm), color = Color(0xFF05060A), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
     }
 }

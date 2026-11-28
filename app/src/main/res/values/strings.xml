@@ -147,8 +147,8 @@
     <string name="ra_encore_sub">Trigger already-unlocked achievements again in this session</string>
     <string name="ra_unofficial">Unofficial Achievements</string>
     <string name="ra_unofficial_sub">Include test and community unofficial achievement sets</string>
-    <string name="ra_offline_softcore">Offline Softcore Queue</string>
-    <string name="ra_offline_softcore_sub">Queue softcore unlocks offline and sync automatically later</string>
+    <string name="ra_offline_casual">Offline Casual Queue</string>
+    <string name="ra_offline_casual_sub">Queue casual unlocks offline and sync automatically later</string>
     <string name="ra_challenge_ind">Active Challenge Indicators</string>
     <string name="ra_progress_ind">Progress Indicators</string>
     <string name="ra_lb_ind">Leaderboard Indicators</string>
@@ -415,4 +415,24 @@
     <string name="ctrl_section_gb">Game Boy (GB)</string>
     <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
     <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
+    <string name="ra_mode_hardcore">Hardcore</string>
+    <string name="ra_mode_casual">Casual</string>
+    <string name="ra_banner_hardcore">RetroAchievements - Hardcore</string>
+    <string name="ra_banner_casual">RetroAchievements - Casual</string>
+    <string name="ra_hardcore_blocked_load_state">Save state loading is blocked in Hardcore mode</string>
+    <string name="ra_hardcore_blocked_rewind">Rewind is disabled in Hardcore mode</string>
+    <string name="ra_hardcore_blocked_cheats">Cheats are disabled in Hardcore mode</string>
+    <string name="ra_hardcore_blocked_ram_finder">RAM Finder is disabled in Hardcore mode</string>
+    <string name="ra_hardcore_blocked_patch">Mid-session soft-patching is blocked in Hardcore mode</string>
+    <string name="ra_hardcore_blocked_overclock">CPU Overclock is locked to 100% in Hardcore mode</string>
+    <string name="ra_switch_to_hardcore_title">Switch to Hardcore Mode?</string>
+    <string name="ra_switch_to_hardcore_msg">Switching to Hardcore mode mid-session will perform a full console reset and clear active cheats and rewind history. Continue?</string>
+    <string name="ra_switched_casual_toast">Switched to Casual mode</string>
+    <string name="ra_switched_hardcore_toast">Hardcore mode active - console reset</string>
+    <string name="ra_lb_submitted_fmt">Leaderboard submitted: %1$s (%2$s)</string>
+    <string name="about_legal_section">Legal &amp; Privacy</string>
+    <string name="about_privacy_policy">Privacy Policy</string>
+    <string name="about_privacy_policy_sub">View STORM GBCA privacy policy on GitHub</string>
+    <string name="about_third_party_licenses">Third-Party Licenses (FOSS)</string>
+    <string name="about_third_party_licenses_sub">mGBA, SameBoy, rcheevos, librashader, Oboe and open-source licenses</string>
 </resources>

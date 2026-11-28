@@ -4,6 +4,7 @@
 #include "storm_gbca_core.h"
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -156,6 +157,17 @@ struct NormalizedCheatLine {
 };
 
 std::vector<NormalizedCheatLine> parse_and_normalize_cheat_lines(const char* raw_code, int platform);
+
+// RetroAchievements Runtime & Hardcore helpers (storm_ra_runtime.cpp + storm_gbca_core.cpp)
+struct StormRaState;
+StormRaState* ra_create();
+void ra_destroy(StormRaState* st);
+void ra_do_frame(StormRaState* st, StormGbcaContext* ctx);
+
+StormRaState* ra_state_from_ctx(const StormGbcaContext* ctx);
+std::recursive_mutex& core_mutex_from_ctx(const StormGbcaContext* ctx);
+bool is_hardcore_from_ctx(const StormGbcaContext* ctx);
+uint32_t ra_peek_core_memory(const StormGbcaContext* ctx, uint32_t address, uint8_t* buffer, uint32_t num_bytes);
 
 } // namespace storm
 

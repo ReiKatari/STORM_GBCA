@@ -734,6 +734,229 @@ Java_ru_stormgames_gbca_NativeCore_nativePollPrinterImage(JNIEnv* env, jclass, j
     return arr;
 }
 
+// --- RetroAchievements Hardcore Gatekeeper & Live rcheevos 12.5.0 Runtime ---
+
+namespace {
+
+static std::string jstr_to_utf8(JNIEnv* env, jstring s) {
+    if (!s) return {};
+    const char* c = env->GetStringUTFChars(s, nullptr);
+    if (!c) return {};
+    std::string out(c);
+    env->ReleaseStringUTFChars(s, c);
+    return out;
+}
+
+static jobjectArray make_req_pair(JNIEnv* env, int rc, const char* url, const char* post) {
+    if (rc != 0) return nullptr;
+    jclass strCls = env->FindClass("java/lang/String");
+    if (!strCls) return nullptr;
+    jobjectArray arr = env->NewObjectArray(2, strCls, nullptr);
+    if (!arr) return nullptr;
+    jstring jurl = env->NewStringUTF(url ? url : "");
+    jstring jpost = env->NewStringUTF(post ? post : "");
+    env->SetObjectArrayElement(arr, 0, jurl);
+    env->SetObjectArrayElement(arr, 1, jpost);
+    env->DeleteLocalRef(jurl);
+    env->DeleteLocalRef(jpost);
+    return arr;
+}
+
+static jstring poll_event_str(JNIEnv* env, jlong handle) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    StormGbcaRaEvent ev{};
+    if (storm_gbca_ra_poll_event(ctx, &ev) != 1) return nullptr;
+    std::string fmt = sanitize_field(ev.formatted);
+    for (char& c : fmt) {
+        if (c == '|') c = '/';
+    }
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "%d|%u|%d|%d|%s",
+                  ev.type, ev.id, ev.value, ev.target, fmt.c_str());
+    return env->NewStringUTF(buf);
+}
+
+static jstring get_rp_str(JNIEnv* env, jlong handle) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    char buf[256] = {};
+    int rc = storm_gbca_ra_get_rich_presence(ctx, buf, sizeof(buf));
+    return env->NewStringUTF(rc < 0 ? "" : buf);
+}
+
+static jlongArray get_measured_arr(JNIEnv* env, jlong handle, jint id) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    uint32_t val = 0, target = 0;
+    if (storm_gbca_ra_get_achievement_measured(ctx, static_cast<uint32_t>(id), &val, &target) != 0 || target == 0) {
+        return nullptr;
+    }
+    jlongArray arr = env->NewLongArray(2);
+    if (!arr) return nullptr;
+    jlong vals[2] = { static_cast<jlong>(val), static_cast<jlong>(target) };
+    env->SetLongArrayRegion(arr, 0, 2, vals);
+    return arr;
+}
+
+static jbyteArray serialize_prog_arr(JNIEnv* env, jlong handle) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    int sz = storm_gbca_ra_serialize_progress(ctx, nullptr, 0);
+    if (sz <= 0) return nullptr;
+    std::vector<uint8_t> buf(static_cast<size_t>(sz));
+    int wrote = storm_gbca_ra_serialize_progress(ctx, buf.data(), sz);
+    if (wrote <= 0) return nullptr;
+    jbyteArray arr = env->NewByteArray(wrote);
+    if (!arr) return nullptr;
+    env->SetByteArrayRegion(arr, 0, wrote, reinterpret_cast<const jbyte*>(buf.data()));
+    return arr;
+}
+
+static jint deserialize_prog_arr(JNIEnv* env, jlong handle, jbyteArray data) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    if (!ctx || !data) return -1;
+    jsize len = env->GetArrayLength(data);
+    if (len <= 0) return -1;
+    jbyte* bytes = env->GetByteArrayElements(data, nullptr);
+    int rc = storm_gbca_ra_deserialize_progress(ctx, reinterpret_cast<const uint8_t*>(bytes), static_cast<int>(len));
+    env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
+    return rc;
+}
+
+} // namespace
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_setHardcoreMode(JNIEnv*, jclass, jlong handle, jboolean enabled) {
+    return storm_gbca_set_hardcore_mode(reinterpret_cast<StormGbcaContext*>(handle), enabled == JNI_TRUE ? 1 : 0);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_ru_stormgames_gbca_NativeCore_isHardcoreMode(JNIEnv*, jclass, jlong handle) {
+    return storm_gbca_get_hardcore_mode(reinterpret_cast<StormGbcaContext*>(handle)) != 0 ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_raReset(JNIEnv*, jclass, jlong handle) {
+    storm_gbca_ra_reset(reinterpret_cast<StormGbcaContext*>(handle));
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_raClearAll(JNIEnv*, jclass, jlong handle) {
+    storm_gbca_ra_clear_all(reinterpret_cast<StormGbcaContext*>(handle));
+}
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_raActivateAchievement(JNIEnv* env, jclass, jlong handle, jint id, jstring memaddr) {
+    std::string m = jstr_to_utf8(env, memaddr);
+    return storm_gbca_ra_activate_achievement(reinterpret_cast<StormGbcaContext*>(handle), static_cast<uint32_t>(id), m.c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_raDeactivateAchievement(JNIEnv*, jclass, jlong handle, jint id) {
+    storm_gbca_ra_deactivate_achievement(reinterpret_cast<StormGbcaContext*>(handle), static_cast<uint32_t>(id));
+}
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_raActivateLeaderboard(JNIEnv* env, jclass, jlong handle, jint id, jstring memaddr, jstring format) {
+    std::string m = jstr_to_utf8(env, memaddr);
+    std::string f = jstr_to_utf8(env, format);
+    return storm_gbca_ra_activate_leaderboard(reinterpret_cast<StormGbcaContext*>(handle), static_cast<uint32_t>(id), m.c_str(), f.c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_raDeactivateLeaderboard(JNIEnv*, jclass, jlong handle, jint id) {
+    storm_gbca_ra_deactivate_leaderboard(reinterpret_cast<StormGbcaContext*>(handle), static_cast<uint32_t>(id));
+}
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_raActivateRichPresence(JNIEnv* env, jclass, jlong handle, jstring script) {
+    std::string s = jstr_to_utf8(env, script);
+    return storm_gbca_ra_activate_rich_presence(reinterpret_cast<StormGbcaContext*>(handle), s.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_ru_stormgames_gbca_NativeCore_raPollEvent(JNIEnv* env, jclass, jlong handle) {
+    return poll_event_str(env, handle);
+}
+
+JNIEXPORT jstring JNICALL
+Java_ru_stormgames_gbca_NativeCore_raGetRichPresence(JNIEnv* env, jclass, jlong handle) {
+    return get_rp_str(env, handle);
+}
+
+JNIEXPORT jlongArray JNICALL
+Java_ru_stormgames_gbca_NativeCore_raGetAchievementMeasured(JNIEnv* env, jclass, jlong handle, jint id) {
+    return get_measured_arr(env, handle, id);
+}
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_raGetAchievementState(JNIEnv*, jclass, jlong handle, jint id) {
+    return storm_gbca_ra_get_achievement_state(reinterpret_cast<StormGbcaContext*>(handle), static_cast<uint32_t>(id));
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_ru_stormgames_gbca_NativeCore_raSerializeProgress(JNIEnv* env, jclass, jlong handle) {
+    return serialize_prog_arr(env, handle);
+}
+
+JNIEXPORT jint JNICALL
+Java_ru_stormgames_gbca_NativeCore_raDeserializeProgress(JNIEnv* env, jclass, jlong handle, jbyteArray data) {
+    return deserialize_prog_arr(env, handle, data);
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_ru_stormgames_gbca_NativeCore_raBuildLoginRequest(JNIEnv* env, jclass, jstring username, jstring password, jstring apiToken) {
+    std::string u = jstr_to_utf8(env, username);
+    std::string p = jstr_to_utf8(env, password);
+    std::string t = jstr_to_utf8(env, apiToken);
+    char url[512] = {}, post[1024] = {};
+    int rc = storm_gbca_ra_build_login_request(u.c_str(), p.c_str(), t.c_str(), url, sizeof(url), post, sizeof(post));
+    return make_req_pair(env, rc, url, post);
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_ru_stormgames_gbca_NativeCore_raBuildStartSessionRequest(JNIEnv* env, jclass, jstring username, jstring apiToken, jint gameId, jstring gameHash, jboolean hardcore) {
+    std::string u = jstr_to_utf8(env, username);
+    std::string t = jstr_to_utf8(env, apiToken);
+    std::string h = jstr_to_utf8(env, gameHash);
+    char url[512] = {}, post[1024] = {};
+    int rc = storm_gbca_ra_build_start_session_request(u.c_str(), t.c_str(), static_cast<uint32_t>(gameId), h.c_str(),
+                                                       hardcore == JNI_TRUE ? 1 : 0, url, sizeof(url), post, sizeof(post));
+    return make_req_pair(env, rc, url, post);
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_ru_stormgames_gbca_NativeCore_raBuildAwardRequest(JNIEnv* env, jclass, jstring username, jstring apiToken, jint achievementId, jboolean hardcore, jstring gameHash) {
+    std::string u = jstr_to_utf8(env, username);
+    std::string t = jstr_to_utf8(env, apiToken);
+    std::string h = jstr_to_utf8(env, gameHash);
+    char url[512] = {}, post[1024] = {};
+    int rc = storm_gbca_ra_build_award_request(u.c_str(), t.c_str(), static_cast<uint32_t>(achievementId),
+                                               hardcore == JNI_TRUE ? 1 : 0, h.c_str(), url, sizeof(url), post, sizeof(post));
+    return make_req_pair(env, rc, url, post);
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_ru_stormgames_gbca_NativeCore_raBuildLboardRequest(JNIEnv* env, jclass, jstring username, jstring apiToken, jint lboardId, jint score, jstring gameHash) {
+    std::string u = jstr_to_utf8(env, username);
+    std::string t = jstr_to_utf8(env, apiToken);
+    std::string h = jstr_to_utf8(env, gameHash);
+    char url[512] = {}, post[1024] = {};
+    int rc = storm_gbca_ra_build_lboard_request(u.c_str(), t.c_str(), static_cast<uint32_t>(lboardId),
+                                                static_cast<int32_t>(score), h.c_str(), url, sizeof(url), post, sizeof(post));
+    return make_req_pair(env, rc, url, post);
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_ru_stormgames_gbca_NativeCore_raBuildPingRequest(JNIEnv* env, jclass, jstring username, jstring apiToken, jint gameId, jstring richPresence, jstring gameHash, jboolean hardcore) {
+    std::string u = jstr_to_utf8(env, username);
+    std::string t = jstr_to_utf8(env, apiToken);
+    std::string rp = jstr_to_utf8(env, richPresence);
+    std::string h = jstr_to_utf8(env, gameHash);
+    char url[512] = {}, post[2048] = {};
+    int rc = storm_gbca_ra_build_ping_request(u.c_str(), t.c_str(), static_cast<uint32_t>(gameId),
+                                              rp.c_str(), h.c_str(), hardcore == JNI_TRUE ? 1 : 0,
+                                              url, sizeof(url), post, sizeof(post));
+    return make_req_pair(env, rc, url, post);
+}
+
 } // extern "C"
 
 #endif // ANDROID

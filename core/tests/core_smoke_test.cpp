@@ -397,6 +397,89 @@ int main() {
         }
     }
 
+    // RetroAchievements Hardcore Gatekeeper & Live rcheevos 12.5.0 Runtime test
+    auto test_ra_hardcore_and_runtime = [&]() -> bool {
+        StormGbcaContext* ra_ctx = storm_gbca_create();
+        if (!ra_ctx) return false;
+
+        bool ra_ok = true;
+        ra_ok &= (storm_gbca_get_hardcore_mode(ra_ctx) == 0);
+        ra_ok &= (storm_gbca_load_rom_buffer(ra_ctx, gba_rom.data(), gba_rom.size(), "ra_test.gba") == 0);
+
+        // a) Casual mode: savestate save/load and write_memory work
+        uint8_t marker = 0x11;
+        ra_ok &= (storm_gbca_write_memory(ra_ctx, STORM_MEM_IWRAM, 0x10, &marker, 1) == 0);
+        size_t st_sz = 0;
+        ra_ok &= (storm_gbca_save_state_buffer(ra_ctx, nullptr, 0, &st_sz) == 0 && st_sz > 0);
+        std::vector<uint8_t> st_buf(st_sz);
+        ra_ok &= (storm_gbca_save_state_buffer(ra_ctx, st_buf.data(), st_buf.size(), &st_sz) == 0);
+        ra_ok &= (storm_gbca_load_state_buffer(ra_ctx, st_buf.data(), st_sz) == 0);
+
+        // b) Activate real rcheevos achievement trigger on GBA IWRAM 0x10 == 42
+        ra_ok &= (storm_gbca_ra_activate_achievement(ra_ctx, 9001u, "0xH000010=42") == 0);
+        storm_gbca_run_frame(ra_ctx); // ensure initial non-42 frame so trigger leaves WAITING if needed
+        uint8_t val42 = 42;
+        ra_ok &= (storm_gbca_write_memory(ra_ctx, STORM_MEM_IWRAM, 0x10, &val42, 1) == 0);
+        storm_gbca_run_frame(ra_ctx);
+
+        bool got_triggered = false;
+        StormGbcaRaEvent ev{};
+        while (storm_gbca_ra_poll_event(ra_ctx, &ev) == 1) {
+            if (ev.type == STORM_RA_EVENT_ACH_TRIGGERED && ev.id == 9001u) {
+                got_triggered = true;
+            }
+        }
+        ra_ok &= got_triggered;
+
+        // c) Serialize / deserialize progress in Casual mode
+        int prog_sz = storm_gbca_ra_serialize_progress(ra_ctx, nullptr, 0);
+        ra_ok &= (prog_sz > 0);
+        if (prog_sz > 0) {
+            std::vector<uint8_t> prog_buf(static_cast<size_t>(prog_sz));
+            int wrote = storm_gbca_ra_serialize_progress(ra_ctx, prog_buf.data(), prog_sz);
+            ra_ok &= (wrote == prog_sz);
+            ra_ok &= (storm_gbca_ra_deserialize_progress(ra_ctx, prog_buf.data(), wrote) == 0);
+
+            // d) Build signed award achievement request
+            char url[512] = {};
+            char post[512] = {};
+            ra_ok &= (storm_gbca_ra_build_award_request("StormTester", "tok123", 9001u, 1,
+                                                        "0123456789abcdef0123456789abcdef",
+                                                        url, sizeof(url), post, sizeof(post)) == 0);
+            ra_ok &= (url[0] != '\0');
+            ra_ok &= (std::strstr(post, "r=awardachievement") != nullptr);
+            ra_ok &= (std::strstr(post, "h=1") != nullptr);
+            ra_ok &= (std::strstr(post, "&v=") != nullptr);
+
+            // e) Enable Hardcore -> returns 1 (mandatory reset), blocks cheats/loadstate/rewind/memwrite/search/deserialize, allows save_state
+            int hc_rc = storm_gbca_set_hardcore_mode(ra_ctx, 1);
+            ra_ok &= (hc_rc == 1);
+            ra_ok &= (storm_gbca_get_hardcore_mode(ra_ctx) == 1);
+            size_t hc_st_sz = 0;
+            ra_ok &= (storm_gbca_save_state_buffer(ra_ctx, st_buf.data(), st_buf.size(), &hc_st_sz) == 0);
+            ra_ok &= (storm_gbca_load_state_buffer(ra_ctx, st_buf.data(), st_sz) == STORM_ERR_HARDCORE_BLOCKED);
+            ra_ok &= (storm_gbca_rewind_step(ra_ctx) == STORM_ERR_HARDCORE_BLOCKED);
+            ra_ok &= (storm_gbca_cheat_add(ra_ctx, "HCBlock", "02000010 00000077", 1) == STORM_ERR_HARDCORE_BLOCKED);
+            ra_ok &= (storm_gbca_write_memory(ra_ctx, STORM_MEM_IWRAM, 0x10, &val42, 1) == STORM_ERR_HARDCORE_BLOCKED);
+            ra_ok &= (storm_gbca_mem_search_reset(ra_ctx, STORM_MEM_IWRAM, 1) == STORM_ERR_HARDCORE_BLOCKED);
+            ra_ok &= (storm_gbca_ra_deserialize_progress(ra_ctx, prog_buf.data(), wrote) == STORM_ERR_HARDCORE_BLOCKED);
+        }
+
+        // f) Disable Hardcore -> returns 0 and load_state works again
+        ra_ok &= (storm_gbca_set_hardcore_mode(ra_ctx, 0) == 0);
+        ra_ok &= (storm_gbca_get_hardcore_mode(ra_ctx) == 0);
+        ra_ok &= (storm_gbca_load_state_buffer(ra_ctx, st_buf.data(), st_sz) == 0);
+
+        storm_gbca_destroy(ra_ctx);
+        if (!ra_ok) {
+            std::printf("[FAIL] RA-Hardcore   | Hardcore gatekeeper or rcheevos runtime check failed\n");
+        } else {
+            std::printf("[PASS] RA-Hardcore   | Live rcheevos 12.5.0 trigger + signed API + Hardcore Gatekeeper OK\n");
+        }
+        return ra_ok;
+    };
+    ok &= test_ra_hardcore_and_runtime();
+
     storm_gbca_destroy(ctx);
     return ok ? 0 : 1;
 }

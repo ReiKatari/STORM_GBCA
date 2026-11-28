@@ -321,11 +321,25 @@ public class StormGbcaMainView : Grid
 
     private void ShowAboutModal()
     {
-        var card = new AuroraGlassCard { Width = 460, Padding = new Thickness(22), SpotlightEnabled = true };
+        var card = new AuroraGlassCard { Width = 500, Padding = new Thickness(22), SpotlightEnabled = true };
         var sp = new StackPanel { Spacing = 10 };
         sp.Children.Add(new TextBlock { Text = $"STORM GBCA {GbcaLoc.AppVersion}", FontSize = 18, FontWeight = FontWeight.Black, Foreground = StormThemeBrushes.Accent });
         sp.Children.Add(new TextBlock { Text = GbcaLoc.T("AppSubtitle"), FontSize = 12.5, Foreground = StormThemeBrushes.PrimaryText, TextWrapping = TextWrapping.Wrap });
         sp.Children.Add(new TextBlock { Text = $"Ядра: mGBA + SameBoy | Версия storm_gbca_core: {NativeCoreBindings.GetVersionString()}", FontSize = 11.5, Foreground = StormThemeBrushes.SecondaryText, TextWrapping = TextWrapping.Wrap });
+        sp.Children.Add(new TextBlock { Text = "100% бесплатное ПО с открытым исходным кодом (MPL-2.0): без рекламы, подписок и телеметрии.", FontSize = 11.5, Foreground = StormThemeBrushes.BodyText, TextWrapping = TextWrapping.Wrap });
+
+        var linkRow = new WrapPanel { Orientation = Orientation.Horizontal };
+        void AddLink(string title, string url)
+        {
+            var lb = new AuroraVolumetricButton { Height = 28, Padding = new Thickness(10, 0), Margin = new Thickness(0, 0, 8, 4) };
+            lb.Content = new TextBlock { Text = title, FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.Accent, VerticalAlignment = VerticalAlignment.Center };
+            lb.Click += (_, _) => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch { } };
+            linkRow.Children.Add(lb);
+        }
+        AddLink("Privacy Policy", "https://github.com/ReiKatari/STORM_GBCA/blob/main/PRIVACY_POLICY.md");
+        AddLink("Third-Party Licenses", "https://github.com/ReiKatari/STORM_GBCA/blob/main/THIRD_PARTY_LICENSES.md");
+        sp.Children.Add(linkRow);
+
         var closeBtn = new AuroraVolumetricButton { Height = 32, Width = 140, HorizontalAlignment = HorizontalAlignment.Right };
         closeBtn.Content = new TextBlock { Text = GbcaLoc.T("ActionClose"), FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         closeBtn.Click += (_, _) => _modalHost.Dismiss();

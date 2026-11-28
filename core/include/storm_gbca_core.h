@@ -343,6 +343,63 @@ STORM_GBCA_API int storm_gbca_printer_poll_image(StormGbcaContext* ctx, uint32_t
 STORM_GBCA_API int storm_gbca_get_dmg_palette_count(void);
 STORM_GBCA_API const char* storm_gbca_get_dmg_palette_name(int index);
 
+/* RetroAchievements Hardcore Gatekeeper & Live Runtime (rcheevos 12.5.0) */
+#define STORM_ERR_HARDCORE_BLOCKED (-10)
+
+enum {
+    STORM_RA_EVENT_NONE              = 0,
+    STORM_RA_EVENT_ACH_TRIGGERED     = 1,
+    STORM_RA_EVENT_ACH_PRIMED        = 2,
+    STORM_RA_EVENT_ACH_UNPRIMED      = 3,
+    STORM_RA_EVENT_ACH_MEASURED      = 4,
+    STORM_RA_EVENT_LBOARD_STARTED    = 5,
+    STORM_RA_EVENT_LBOARD_UPDATED    = 6,
+    STORM_RA_EVENT_LBOARD_CANCELED   = 7,
+    STORM_RA_EVENT_LBOARD_TRIGGERED  = 8,
+    STORM_RA_EVENT_ACH_RESET         = 9,
+};
+
+typedef struct StormGbcaRaEvent {
+    int      type;      /* STORM_RA_EVENT_* */
+    uint32_t id;        /* Achievement or Leaderboard ID */
+    int32_t  value;     /* Current measured value or leaderboard score */
+    int32_t  target;    /* Measured target (for STORM_RA_EVENT_ACH_MEASURED) */
+    char     formatted[64]; /* Formatted measured or leaderboard score text */
+} StormGbcaRaEvent;
+
+STORM_GBCA_API int storm_gbca_set_hardcore_mode(StormGbcaContext* ctx, int enabled);
+STORM_GBCA_API int storm_gbca_get_hardcore_mode(const StormGbcaContext* ctx);
+
+STORM_GBCA_API void storm_gbca_ra_reset(StormGbcaContext* ctx);
+STORM_GBCA_API void storm_gbca_ra_clear_all(StormGbcaContext* ctx);
+STORM_GBCA_API int  storm_gbca_ra_activate_achievement(StormGbcaContext* ctx, uint32_t id, const char* memaddr);
+STORM_GBCA_API void storm_gbca_ra_deactivate_achievement(StormGbcaContext* ctx, uint32_t id);
+STORM_GBCA_API int  storm_gbca_ra_activate_leaderboard(StormGbcaContext* ctx, uint32_t id, const char* memaddr, const char* format);
+STORM_GBCA_API void storm_gbca_ra_deactivate_leaderboard(StormGbcaContext* ctx, uint32_t id);
+STORM_GBCA_API int  storm_gbca_ra_activate_rich_presence(StormGbcaContext* ctx, const char* script);
+STORM_GBCA_API int  storm_gbca_ra_poll_event(StormGbcaContext* ctx, StormGbcaRaEvent* out_event);
+STORM_GBCA_API int  storm_gbca_ra_get_rich_presence(StormGbcaContext* ctx, char* out_buf, int buf_size);
+STORM_GBCA_API int  storm_gbca_ra_get_achievement_measured(const StormGbcaContext* ctx, uint32_t id, uint32_t* out_val, uint32_t* out_target);
+STORM_GBCA_API int  storm_gbca_ra_get_achievement_state(const StormGbcaContext* ctx, uint32_t id);
+
+STORM_GBCA_API int  storm_gbca_ra_serialize_progress(const StormGbcaContext* ctx, uint8_t* dst, int capacity);
+STORM_GBCA_API int  storm_gbca_ra_deserialize_progress(StormGbcaContext* ctx, const uint8_t* src, int size);
+
+STORM_GBCA_API int  storm_gbca_ra_build_login_request(const char* username, const char* password, const char* api_token,
+                                                      char* out_url, int url_cap, char* out_post, int post_cap);
+STORM_GBCA_API int  storm_gbca_ra_build_start_session_request(const char* username, const char* api_token, uint32_t game_id,
+                                                              const char* game_hash, int hardcore,
+                                                              char* out_url, int url_cap, char* out_post, int post_cap);
+STORM_GBCA_API int  storm_gbca_ra_build_award_request(const char* username, const char* api_token, uint32_t achievement_id,
+                                                      int hardcore, const char* game_hash,
+                                                      char* out_url, int url_cap, char* out_post, int post_cap);
+STORM_GBCA_API int  storm_gbca_ra_build_lboard_request(const char* username, const char* api_token, uint32_t lboard_id,
+                                                       int32_t score, const char* game_hash,
+                                                       char* out_url, int url_cap, char* out_post, int post_cap);
+STORM_GBCA_API int  storm_gbca_ra_build_ping_request(const char* username, const char* api_token, uint32_t game_id,
+                                                     const char* rich_presence, const char* game_hash, int hardcore,
+                                                     char* out_url, int url_cap, char* out_post, int post_cap);
+
 #ifdef __cplusplus
 }
 #endif

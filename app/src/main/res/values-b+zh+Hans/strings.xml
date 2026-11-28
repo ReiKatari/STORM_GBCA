@@ -147,8 +147,8 @@
     <string name="ra_encore_sub">在本次游玩中重新触发已解锁成就</string>
     <string name="ra_unofficial">非官方成就</string>
     <string name="ra_unofficial_sub">包含测试与社区非官方成就集</string>
-    <string name="ra_offline_softcore">离线普通模式队列</string>
-    <string name="ra_offline_softcore_sub">离线缓存成就并在联网后自动同步</string>
+    <string name="ra_offline_casual">离线普通模式队列</string>
+    <string name="ra_offline_casual_sub">离线缓存成就并在联网后自动同步</string>
     <string name="ra_challenge_ind">挑战触发指示器</string>
     <string name="ra_progress_ind">进度指示器</string>
     <string name="ra_lb_ind">排行榜指示器</string>
@@ -415,4 +415,24 @@
     <string name="ctrl_section_gb">Game Boy (GB)</string>
     <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
     <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
+    <string name="ra_mode_hardcore">Hardcore</string>
+    <string name="ra_mode_casual">Casual</string>
+    <string name="ra_banner_hardcore">RetroAchievements - Hardcore</string>
+    <string name="ra_banner_casual">RetroAchievements - Casual</string>
+    <string name="ra_hardcore_blocked_load_state">硬核模式下禁止读取即时存档</string>
+    <string name="ra_hardcore_blocked_rewind">硬核模式下已禁用倒带功能</string>
+    <string name="ra_hardcore_blocked_cheats">硬核模式下已禁用金手指</string>
+    <string name="ra_hardcore_blocked_ram_finder">硬核模式下已禁用内存搜索</string>
+    <string name="ra_hardcore_blocked_patch">硬核模式下禁止在游戏过程中应用补丁</string>
+    <string name="ra_hardcore_blocked_overclock">硬核模式下CPU超频锁定为100%</string>
+    <string name="ra_switch_to_hardcore_title">切换到硬核模式？</string>
+    <string name="ra_switch_to_hardcore_msg">在游戏中途切换到硬核模式将完全重置主机，并清除当前金手指与倒带历史。是否继续？</string>
+    <string name="ra_switched_casual_toast">已切换到休闲模式 (Casual)</string>
+    <string name="ra_switched_hardcore_toast">硬核模式已激活 - 主机已重置</string>
+    <string name="ra_lb_submitted_fmt">排行榜已提交: %1$s (%2$s)</string>
+    <string name="about_legal_section">法律与隐私</string>
+    <string name="about_privacy_policy">隐私政策</string>
+    <string name="about_privacy_policy_sub">在 GitHub 查看 STORM GBCA 隐私政策</string>
+    <string name="about_third_party_licenses">第三方开源许可 (FOSS)</string>
+    <string name="about_third_party_licenses_sub">mGBA, SameBoy, rcheevos, librashader, Oboe 等开源许可</string>
 </resources>

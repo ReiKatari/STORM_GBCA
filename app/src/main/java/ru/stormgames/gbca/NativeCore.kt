@@ -282,4 +282,37 @@ object NativeCore {
     @JvmStatic external fun nativeLinkGetStatus(handle: Long): String
     @JvmStatic external fun nativeLanDiscover(timeoutMs: Int): String
     @JvmStatic external fun nativePollPrinterImage(handle: Long, outWH: IntArray): IntArray?
+
+    // 1.6.0 RetroAchievements Hardcore Compliance & Live rcheevos Runtime
+    const val RA_EVT_ACH_TRIGGERED = 1
+    const val RA_EVT_ACH_PRIMED = 2
+    const val RA_EVT_ACH_UNPRIMED = 3
+    const val RA_EVT_ACH_MEASURED = 4
+    const val RA_EVT_LBOARD_STARTED = 5
+    const val RA_EVT_LBOARD_UPDATED = 6
+    const val RA_EVT_LBOARD_CANCELED = 7
+    const val RA_EVT_LBOARD_TRIGGERED = 8
+    const val RA_EVT_ACH_RESET = 9
+    const val STORM_ERR_HARDCORE_BLOCKED = -10
+
+    @JvmStatic external fun setHardcoreMode(ctx: Long, enabled: Boolean): Int
+    @JvmStatic external fun isHardcoreMode(ctx: Long): Boolean
+    @JvmStatic external fun raReset(ctx: Long)
+    @JvmStatic external fun raClearAll(ctx: Long)
+    @JvmStatic external fun raActivateAchievement(ctx: Long, id: Int, memAddr: String): Int
+    @JvmStatic external fun raDeactivateAchievement(ctx: Long, id: Int)
+    @JvmStatic external fun raActivateLeaderboard(ctx: Long, id: Int, memAddr: String, format: String): Int
+    @JvmStatic external fun raDeactivateLeaderboard(ctx: Long, id: Int)
+    @JvmStatic external fun raActivateRichPresence(ctx: Long, script: String): Int
+    @JvmStatic external fun raPollEvent(ctx: Long): String?
+    @JvmStatic external fun raGetRichPresence(ctx: Long): String
+    @JvmStatic external fun raGetAchievementMeasured(ctx: Long, id: Int): LongArray?
+    @JvmStatic external fun raGetAchievementState(ctx: Long, id: Int): Int
+    @JvmStatic external fun raSerializeProgress(ctx: Long): ByteArray?
+    @JvmStatic external fun raDeserializeProgress(ctx: Long, data: ByteArray): Int
+    @JvmStatic external fun raBuildLoginRequest(username: String, password: String, apiToken: String): Array<String>?
+    @JvmStatic external fun raBuildStartSessionRequest(username: String, apiToken: String, gameId: Int, gameHash: String, hardcore: Boolean): Array<String>?
+    @JvmStatic external fun raBuildAwardRequest(username: String, apiToken: String, achievementId: Int, hardcore: Boolean, gameHash: String): Array<String>?
+    @JvmStatic external fun raBuildLboardRequest(username: String, apiToken: String, lboardId: Int, score: Int, gameHash: String): Array<String>?
+    @JvmStatic external fun raBuildPingRequest(username: String, apiToken: String, gameId: Int, richPresence: String, gameHash: String, hardcore: Boolean): Array<String>?
 }

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -53,6 +54,7 @@ public class SettingsView : Grid
     private StormLinkMode _mpSelectedMode = StormLinkMode.LanHost;
     private readonly List<GbcaLanRoomInfo> _discoveredRooms = [];
     private string _mpFeedback = string.Empty;
+    private bool _pendingHardcoreConfirm;
 
     public SettingsView()
     {
@@ -441,7 +443,14 @@ public class SettingsView : Grid
         p.Children.Add(CreateCombo("Ядро для Game Boy Advance (GBA):", ["mGBA (Высокая точность)"], 0, _ => s.PreferredCoreGba = StormCoreBackend.Mgba));
         p.Children.Add(CreateCombo("Модель оборудования Game Boy:", ["Автоопределение", "DMG (Классический)", "MGB (Pocket)", "SGB (Super Game Boy)", "SGB2", "CGB (Color)", "AGB (GBA)"], (int)s.GbModel, i => s.GbModel = (StormGbModel)i));
         p.Children.Add(CreateCheck("Пропускать заставку BIOS при запуске", s.SkipBiosIntro, v => s.SkipBiosIntro = v));
-        p.Children.Add(CreateCheck("Включить перемотку времени назад (Rewind)", s.RewindEnabled, v => s.RewindEnabled = v));
+        bool hcCore = StormGbcaUiState.Instance.IsEmulationActive && StormGbcaUiState.Instance.Emulator.IsHardcoreMode;
+        var rwCheck = CreateCheck(hcCore ? "Включить перемотку времени назад (заблокировано в Hardcore)" : "Включить перемотку времени назад (Rewind)", hcCore ? false : s.RewindEnabled, v => { if (!hcCore) s.RewindEnabled = v; });
+        if (hcCore)
+        {
+            rwCheck.IsEnabled = false;
+            rwCheck.Opacity = 0.5;
+        }
+        p.Children.Add(rwCheck);
         p.Children.Add(CreateSlider("Упреждающие кадры (Run-Ahead):", 0, 2, s.RunAheadFrames, "кадра", v => s.RunAheadFrames = (int)v));
         p.Children.Add(CreateSlider("Буфер перемотки назад:", 8, 64, s.RewindBufferMb, "МБ", v => s.RewindBufferMb = (int)v));
         p.Children.Add(CreateSlider("Скорость ускорения (Fast-Forward):", 1, 8, s.FastForwardMultiplier, "x", v => s.FastForwardMultiplier = (float)v));
@@ -631,7 +640,17 @@ public class SettingsView : Grid
             }
         }, reloadAfter: true));
 
-        p.Children.Add(CreateSlider("Разгон процессора консоли (CPU Overclock):", 50, 400, s.CpuOverclockPct, "%", v => s.CpuOverclockPct = Math.Clamp(((int)v / 25) * 25, 50, 400)));
+        bool hcVideo = StormGbcaUiState.Instance.IsEmulationActive && StormGbcaUiState.Instance.Emulator.IsHardcoreMode;
+        var ocSlider = CreateSlider(hcVideo ? "Разгон процессора консоли (Hardcore 100%):" : "Разгон процессора консоли (CPU Overclock):", 50, 400, hcVideo ? 100 : s.CpuOverclockPct, "%", v =>
+        {
+            if (!hcVideo) s.CpuOverclockPct = Math.Clamp(((int)v / 25) * 25, 50, 400);
+        });
+        if (hcVideo)
+        {
+            ocSlider.IsEnabled = false;
+            ocSlider.Opacity = 0.5;
+        }
+        p.Children.Add(ocSlider);
         p.Children.Add(CreateCombo("Пропуск кадров (Frame Skip):", ["Выкл (0)", "1 кадр", "2 кадра", "3 кадра", "4 кадра"], Math.Clamp(s.FrameSkip, 0, 4), i => s.FrameSkip = i));
 
         p.Children.Add(CreateSectionTitle("Цветокоррекция LCD, палитры DMG и фильтры"));
@@ -1108,7 +1127,7 @@ public class SettingsView : Grid
         var statusSub = new TextBlock
         {
             Text = ra.IsLoggedIn
-                ? $"Hardcore: {ra.Points} pts  |  Softcore: {ra.SoftcorePoints} pts{(ra.Rank > 0 ? $"  |  Рейтинг: #{ra.Rank}" : "")}"
+                ? $"Hardcore: {ra.Points} pts  |  Casual: {ra.SoftcorePoints} pts{(ra.Rank > 0 ? $"  |  Рейтинг: #{ra.Rank}" : "")}"
                 : "Введите логин и пароль RetroAchievements для синхронизации очков и трофеев",
             FontSize = 11.5,
             Foreground = StormThemeBrushes.SecondaryText,
@@ -1188,13 +1207,75 @@ public class SettingsView : Grid
         p.Children.Add(btnRow);
         p.Children.Add(statusTxt);
 
-        p.Children.Add(CreateCheck("Режим Hardcore (запрещает загрузку состояний, перемотку и читы)", s.RetroAchievementsHardcoreMode, v => s.RetroAchievementsHardcoreMode = v));
-        p.Children.Add(CreateCheck("Rich Presence статус активности", s.RetroAchievementsRichPresence, v => s.RetroAchievementsRichPresence = v));
+        var hcCheck = new AuroraNeonCheckBox
+        {
+            Label = "Режим Hardcore (запрещает загрузку состояний, перемотку, читы, RAM Finder, разгон и замедление)",
+            IsChecked = s.RetroAchievementsHardcoreMode,
+            Margin = new Thickness(0, 2)
+        };
+        hcCheck.IsCheckedChanged += (_, v) =>
+        {
+            if (StormGbcaUiState.Instance.IsEmulationActive && v && !StormGbcaUiState.Instance.Emulator.IsHardcoreMode)
+            {
+                _pendingHardcoreConfirm = true;
+                LoadTab(_activeTabIndex);
+                return;
+            }
+            _pendingHardcoreConfirm = false;
+            StormGbcaUiState.Instance.SetHardcoreModeFromUi(v);
+            LoadTab(_activeTabIndex);
+        };
+        p.Children.Add(hcCheck);
+
+        if (_pendingHardcoreConfirm && StormGbcaUiState.Instance.IsEmulationActive)
+        {
+            var confirmCard = new Border
+            {
+                Padding = new Thickness(12, 9),
+                CornerRadius = new CornerRadius(10),
+                Background = new SolidColorBrush(Color.FromArgb(45, 245, 158, 11)),
+                BorderBrush = new SolidColorBrush(Color.Parse("#F59E0B")),
+                BorderThickness = new Thickness(1)
+            };
+            var cCol = new StackPanel { Spacing = 8 };
+            cCol.Children.Add(new TextBlock
+            {
+                Text = "Переход из Casual в Hardcore во время игры выполнит полный перезапуск консоли и отключит читы, загрузку состояний, перемотку, RAM Finder и разгон.",
+                FontSize = 11.5,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = StormThemeBrushes.PrimaryText,
+                TextWrapping = TextWrapping.Wrap
+            });
+            var cBtns = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            var okBtn = new AuroraVolumetricButton { IsHero = true, Height = 30, Padding = new Thickness(12, 0) };
+            okBtn.Content = new TextBlock { Text = "Подтвердить и перезапустить", FontSize = 11, FontWeight = FontWeight.Bold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+            okBtn.Click += (_, _) =>
+            {
+                _pendingHardcoreConfirm = false;
+                StormGbcaUiState.Instance.SetHardcoreModeFromUi(true);
+                LoadTab(_activeTabIndex);
+            };
+            var cancelBtn = new AuroraVolumetricButton { Height = 30, Padding = new Thickness(12, 0) };
+            cancelBtn.Content = new TextBlock { Text = "Отмена", FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center };
+            cancelBtn.Click += (_, _) =>
+            {
+                _pendingHardcoreConfirm = false;
+                LoadTab(_activeTabIndex);
+            };
+            cBtns.Children.Add(okBtn);
+            cBtns.Children.Add(cancelBtn);
+            cCol.Children.Add(cBtns);
+            confirmCard.Child = cCol;
+            p.Children.Add(confirmCard);
+        }
+
+        p.Children.Add(CreateCheck("Rich Presence статус активности (в Hardcore активен всегда)", s.RetroAchievementsRichPresence, v => s.RetroAchievementsRichPresence = v));
         p.Children.Add(CreateCheck("Enable RetroAchievements", s.RetroAchievementsEnabled, v => s.RetroAchievementsEnabled = v));
         p.Children.Add(CreateCheck("Encore Mode (re-trigger unlocked trophies)", s.RetroAchievementsEncoreMode, v => s.RetroAchievementsEncoreMode = v));
         p.Children.Add(CreateCheck("Unofficial Achievements", s.RetroAchievementsUnofficial, v => s.RetroAchievementsUnofficial = v));
         p.Children.Add(CreateCheck("In-Game Unlock Notifications", s.RetroAchievementsNotifications, v => s.RetroAchievementsNotifications = v));
-        p.Children.Add(CreateCheck("Leaderboards & Indicators", s.RetroAchievementsLeaderboards, v => s.RetroAchievementsLeaderboards = v));
+        p.Children.Add(CreateCheck("Leaderboards Evaluation (в Hardcore активна всегда)", s.RetroAchievementsLeaderboards, v => s.RetroAchievementsLeaderboards = v));
+        p.Children.Add(CreateCheck("Show Leaderboard Popups (OSD-уведомления таблиц лидеров)", s.RetroAchievementsShowLeaderboardPopups, v => s.RetroAchievementsShowLeaderboardPopups = v));
         p.Children.Add(CreateCheck("Progress & Challenge Indicators", s.RetroAchievementsProgressIndicators, v => { s.RetroAchievementsProgressIndicators = v; s.RetroAchievementsChallengeIndicators = v; }));
 
         var testBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(16, 0), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
@@ -1333,6 +1414,53 @@ public class SettingsView : Grid
         updBtn.Content = new TextBlock { Text = "Проверить обновления сейчас", FontSize = 12, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         updBtn.Click += (_, _) => StormGbcaUiState.Instance.RequestUpdateCheck(true);
         p.Children.Add(updBtn);
+
+        p.Children.Add(CreateSectionTitle("О программе, конфиденциальность и лицензии (Open Source)"));
+        var aboutCard = new Border
+        {
+            Padding = new Thickness(14, 10),
+            CornerRadius = new CornerRadius(10),
+            Background = StormThemeBrushes.RowSurface,
+            BorderBrush = StormThemeBrushes.SubtleBorder,
+            BorderThickness = new Thickness(1)
+        };
+        var aboutCol = new StackPanel { Spacing = 8 };
+        aboutCol.Children.Add(new TextBlock
+        {
+            Text = $"STORM GBCA {GbcaLoc.AppVersion} - 100% бесплатное ПО с открытым исходным кодом (MPL-2.0): без рекламы, без платных подписок и без телеметрии.",
+            FontSize = 11.5,
+            Foreground = StormThemeBrushes.BodyText,
+            TextWrapping = TextWrapping.Wrap
+        });
+        var linksWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+        linksWrap.Children.Add(CreateExternalLinkBtn("Политика конфиденциальности (PRIVACY_POLICY.md)", "https://github.com/ReiKatari/STORM_GBCA/blob/main/PRIVACY_POLICY.md"));
+        linksWrap.Children.Add(CreateExternalLinkBtn("Сторонние лицензии (THIRD_PARTY_LICENSES.md)", "https://github.com/ReiKatari/STORM_GBCA/blob/main/THIRD_PARTY_LICENSES.md"));
+        linksWrap.Children.Add(CreateExternalLinkBtn("Исходный код на GitHub", "https://github.com/ReiKatari/STORM_GBCA"));
+        aboutCol.Children.Add(linksWrap);
+        aboutCard.Child = aboutCol;
+        p.Children.Add(aboutCard);
+    }
+
+    private static AuroraVolumetricButton CreateExternalLinkBtn(string label, string url)
+    {
+        var btn = new AuroraVolumetricButton { Height = 30, Padding = new Thickness(12, 0), Margin = new Thickness(0, 0, 8, 6) };
+        btn.Content = new TextBlock
+        {
+            Text = label,
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = StormThemeBrushes.Accent,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        btn.Click += (_, _) =>
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch { }
+        };
+        return btn;
     }
 
     private static TextBlock CreateSectionTitle(string title) => new()

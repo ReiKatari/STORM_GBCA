@@ -277,6 +277,7 @@ public sealed class GbcaAppSettings
     public bool RetroAchievementsUnofficial { get; set; } = false;
     public bool RetroAchievementsNotifications { get; set; } = true;
     public bool RetroAchievementsLeaderboards { get; set; } = true;
+    public bool RetroAchievementsShowLeaderboardPopups { get; set; } = true;
     public bool RetroAchievementsProgressIndicators { get; set; } = true;
     public bool RetroAchievementsChallengeIndicators { get; set; } = true;
     public int RetroAchievementsPoints { get; set; } = 0;
@@ -373,7 +374,11 @@ public sealed class GbcaCheatEntry
 
 public sealed class RetroAchievementsQueueItem
 {
+    public string ItemType { get; set; } = "achievement"; // "achievement" | "leaderboard"
     public int AchievementId { get; set; }
+    public int LeaderboardId { get; set; }
+    public int Score { get; set; }
+    public bool Hardcore { get; set; }
     public string GameHash { get; set; } = string.Empty;
     public string Username { get; set; } = string.Empty;
     public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;

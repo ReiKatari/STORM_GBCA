@@ -82,6 +82,7 @@ import com.stormgbca.emulator.BuildConfig
 import com.stormgbca.emulator.R
 import com.stormgbca.emulator.data.BoxArtRepository
 import com.stormgbca.emulator.data.GbcaPrefs
+import com.stormgbca.emulator.data.RetroAchievementsClient
 import com.stormgbca.emulator.data.RomRepository
 import com.stormgbca.emulator.data.ShaderRepository
 import com.stormgbca.emulator.model.ConsoleSystem
@@ -498,19 +499,36 @@ private fun SettingsScreen(
                                 GbcaPrefs.updateCoreConfig { it.copy(preferredCoreGbc = id) }
                             }
 
+                            val raHardcoreLocked = RetroAchievementsClient.isLoggedIn() && RetroAchievementsClient.isHardcore()
+                            val displayOverclock = if (raHardcoreLocked) 100 else cfg.cpuOverclockPct
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(stringResource(R.string.sys_overclock), color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                Text("${cfg.cpuOverclockPct}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
+                                Text(
+                                    text = if (raHardcoreLocked) "100% (Hardcore)" else "${displayOverclock}%",
+                                    color = if (raHardcoreLocked) Color(0xFFFACC15) else colors.green,
+                                    fontFamily = WatermelonMono,
+                                    fontSize = 12.sp,
+                                )
                             }
                             Slider(
-                                value = cfg.cpuOverclockPct.toFloat(),
+                                value = displayOverclock.toFloat(),
+                                enabled = !raHardcoreLocked,
                                 onValueChange = { v ->
-                                    val snapped = ((v / 25f).toInt() * 25).coerceIn(50, 400)
-                                    GbcaPrefs.updateCoreConfig { it.copy(cpuOverclockPct = snapped) }
+                                    if (!raHardcoreLocked) {
+                                        val snapped = ((v / 25f).toInt() * 25).coerceIn(50, 400)
+                                        GbcaPrefs.updateCoreConfig { it.copy(cpuOverclockPct = snapped) }
+                                    }
                                 },
                                 valueRange = 50f..400f,
                                 colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
                             )
+                            if (raHardcoreLocked) {
+                                Text(
+                                    text = stringResource(R.string.ra_hardcore_blocked_overclock),
+                                    color = Color(0xFFFACC15),
+                                    fontSize = 11.sp,
+                                )
+                            }
 
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(stringResource(R.string.sys_frame_skip), color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -1049,15 +1067,21 @@ private fun SettingsScreen(
                 }
 
                 SettingsPage.ABOUT -> {
+                    val cleanAppVer = BuildConfig.VERSION_NAME.trim().removePrefix("v").removePrefix("V")
+                    val cleanCoreVer = runCatching { NativeCore.nativeVersion() }
+                        .getOrDefault(cleanAppVer)
+                        .trim()
+                        .removePrefix("v")
+                        .removePrefix("V")
                     WatermelonSectionLabel("STORM GBCA")
                     WatermelonCard {
                         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("STORM GBCA ${BuildConfig.VERSION_NAME.trim().removePrefix("v").removePrefix("V")}", color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                            Text("STORM GBCA $cleanAppVer", color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
                             Text("mGBA + SameBoy + rcheevos + librashader + Oboe", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.5.sp)
                             Spacer(Modifier.height(4.dp))
                             Text("Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.5.sp)
                             Text("ABI: ${GbcaPrefs.detectedPrimaryAbi} | RAM: ${GbcaPrefs.detectedTotalRamMb} MB", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.5.sp)
-                            Text("Core: ${runCatching { NativeCore.nativeVersion() }.getOrDefault(BuildConfig.VERSION_NAME)}", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.5.sp)
+                            Text("Core: $cleanCoreVer", color = colors.text2, fontFamily = WatermelonMono, fontSize = 11.5.sp)
                         }
                     }
 
@@ -1073,10 +1097,44 @@ private fun SettingsScreen(
                                 val rel = StormUpdateMirrorClient.checkLatestUpdate()
                                 if (rel != null) {
                                     foundUpdate = rel
-                                    updateStatus = context.getString(R.string.update_available_fmt, rel.version)
+                                    val cleanRelVer = rel.version.trim().removePrefix("v").removePrefix("V")
+                                    updateStatus = context.getString(R.string.update_available_fmt, cleanRelVer)
                                 } else {
-                                    updateStatus = context.getString(R.string.update_latest, BuildConfig.VERSION_NAME)
+                                    updateStatus = context.getString(R.string.update_latest, cleanAppVer)
                                 }
+                            }
+                        }
+                    }
+
+                    WatermelonSectionLabel(stringResource(R.string.about_legal_section))
+                    WatermelonCard {
+                        SettingsNavRow(
+                            icon = Icons.Filled.Info,
+                            title = stringResource(R.string.about_privacy_policy),
+                            subtitle = stringResource(R.string.about_privacy_policy_sub),
+                        ) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://github.com/ReiKatari/STORM_GBCA/blob/main/PRIVACY_POLICY.md"),
+                                    ),
+                                )
+                            }
+                        }
+                        WatermelonRowSeparator()
+                        SettingsNavRow(
+                            icon = Icons.Filled.Info,
+                            title = stringResource(R.string.about_third_party_licenses),
+                            subtitle = stringResource(R.string.about_third_party_licenses_sub),
+                        ) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://github.com/ReiKatari/STORM_GBCA/blob/main/THIRD_PARTY_LICENSES.md"),
+                                    ),
+                                )
                             }
                         }
                     }

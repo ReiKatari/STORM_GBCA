@@ -414,10 +414,14 @@ object GbcaPrefs {
     fun isRaChallengeIndicators(): Boolean = prefs.getBoolean("ra_challenge_indicators", true)
     fun isRaProgressIndicators(): Boolean = prefs.getBoolean("ra_progress_indicators", true)
     fun isRaLeaderboardIndicators(): Boolean = prefs.getBoolean("ra_leaderboard_indicators", true)
+    fun isLeaderboardPopupsEnabled(): Boolean = isRaLeaderboardIndicators()
     fun getRaNotifPosition(): String = prefs.getString("ra_notif_position", "top") ?: "top"
     fun getRaNotifStyle(): String = prefs.getString("ra_notif_style", "detailed") ?: "detailed"
     fun getRaNotifSound(): String = prefs.getString("ra_notif_sound", "chime") ?: "chime"
-    fun getRaPendingQueueCount(): Int = prefs.getStringSet("ra_pending_queue", emptySet())?.size ?: 0
+    fun getRaPendingQueueCount(): Int {
+        val raw = getRaPendingQueueJson()
+        return runCatching { org.json.JSONArray(raw).length() }.getOrDefault(0)
+    }
     fun getRaPoints(): Int = prefs.getInt("ra_points", 0)
     fun getRaSoftcorePoints(): Int = prefs.getInt("ra_softcore_points", 0)
     fun getRaRank(): Int = prefs.getInt("ra_rank", 0)
@@ -444,11 +448,39 @@ object GbcaPrefs {
     fun setRaChallengeIndicators(v: Boolean) { prefs.edit().putBoolean("ra_challenge_indicators", v).apply() }
     fun setRaProgressIndicators(v: Boolean) { prefs.edit().putBoolean("ra_progress_indicators", v).apply() }
     fun setRaLeaderboardIndicators(v: Boolean) { prefs.edit().putBoolean("ra_leaderboard_indicators", v).apply() }
+    fun setLeaderboardPopupsEnabled(v: Boolean) { setRaLeaderboardIndicators(v) }
     fun setRaNotifPosition(v: String) { prefs.edit().putString("ra_notif_position", v).apply() }
     fun setRaNotifStyle(v: String) { prefs.edit().putString("ra_notif_style", v).apply() }
     fun setRaNotifSound(v: String) { prefs.edit().putString("ra_notif_sound", v).apply() }
 
-    fun getRaPendingQueue(): Set<String> = prefs.getStringSet("ra_pending_queue", emptySet()) ?: emptySet()
+    fun getRaPendingQueueJson(): String {
+        return try {
+            prefs.getString("ra_pending_queue", "[]")?.takeIf { it.isNotBlank() } ?: "[]"
+        } catch (_: ClassCastException) {
+            // Migrate legacy StringSet queue to JSON array format
+            val legacy = runCatching { prefs.getStringSet("ra_pending_queue", emptySet()) }.getOrNull().orEmpty()
+            val arr = org.json.JSONArray()
+            for (item in legacy) {
+                val id = item.toIntOrNull() ?: continue
+                arr.put(org.json.JSONObject().apply {
+                    put("kind", "achievement")
+                    put("id", id)
+                    put("hardcore", false)
+                    put("score", 0)
+                    put("hash", "")
+                    put("timestamp", System.currentTimeMillis())
+                })
+            }
+            val migrated = arr.toString()
+            prefs.edit().remove("ra_pending_queue").putString("ra_pending_queue", migrated).apply()
+            migrated
+        }
+    }
+
+    fun saveRaPendingQueueJson(jsonArrayStr: String) {
+        prefs.edit().putString("ra_pending_queue", jsonArrayStr).apply()
+    }
+
     fun clearRaPendingQueue() { prefs.edit().remove("ra_pending_queue").apply() }
 
     fun clearRaAccount() {

@@ -93,6 +93,7 @@ endif()
 # 3. rcheevos static library (RetroAchievements hashing + runtime)
 # ------------------------------------------------------------------------------
 file(GLOB_RECURSE RCHEEVOS_SRC
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rcheevos/src/api/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rcheevos/src/hash/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rcheevos/src/runtime/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rcheevos/src/util/*.c"
@@ -128,6 +129,7 @@ set(STORM_CORE_SRC
     src/storm_upscaler.cpp
     src/storm_mem_search.cpp
     src/storm_multiplayer.cpp
+    src/storm_ra_runtime.cpp
 )
 
 if(ANDROID)

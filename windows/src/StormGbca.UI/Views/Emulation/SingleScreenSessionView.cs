@@ -15,6 +15,7 @@ using StormGbca.Core.Configuration;
 using StormGbca.Core.Engine;
 using StormGbca.Core.Native;
 using StormGbca.Core.Paths;
+using StormGbca.Core.Subsystems;
 using StormGbca.UI.Common;
 
 namespace StormGbca.UI.Views.Emulation;
@@ -30,6 +31,8 @@ public class SingleScreenSessionView : Grid
     private readonly TextBlock _statsText;
     private readonly TextBlock _ffText;
     private readonly TextBlock _skinLabel;
+    private readonly Button _rwBtn;
+    private readonly Button _ldBtn;
     private readonly List<TextBlock> _collapsibleHudLabels = [];
     private readonly Grid _stageHost;
     private readonly Image _chassisImage;
@@ -38,6 +41,27 @@ public class SingleScreenSessionView : Grid
     private readonly Gbca3DBootOverlay _bootSplash;
     private readonly EmulationPauseOverlay _pauseOverlay;
     private readonly DispatcherTimer _uiTimer;
+
+    // Live RetroAchievements HUD overlays
+    private readonly Border _raBannerCard;
+    private readonly TextBlock _raBannerTitle;
+    private readonly TextBlock _raBannerSub;
+    private readonly DispatcherTimer _raBannerTimer;
+
+    private readonly Border _raToastCard;
+    private readonly TextBlock _raToastBadge;
+    private readonly TextBlock _raToastTitle;
+    private readonly TextBlock _raToastDesc;
+    private readonly DispatcherTimer _raToastTimer;
+
+    private readonly Border _raChallengePill;
+    private readonly TextBlock _raChallengeText;
+    private readonly Border _raMeasuredPill;
+    private readonly TextBlock _raMeasuredText;
+    private readonly DispatcherTimer _raMeasuredTimer;
+    private readonly Border _raLeaderboardPill;
+    private readonly TextBlock _raLeaderboardText;
+    private readonly DispatcherTimer _raLeaderboardTimer;
 
     private WriteableBitmap? _lcdBitmap;
     private int _lcdW;
@@ -82,6 +106,7 @@ public class SingleScreenSessionView : Grid
         actionsWrap.Children.Add(ovBtn.Btn);
 
         var rwBtn = CreateHudPill(AuroraIconKind.RewindVortex, "Перемотка", Color.Parse("#38BDF8"), PerformRewind);
+        _rwBtn = rwBtn.Btn;
         _collapsibleHudLabels.Add(rwBtn.Label);
         actionsWrap.Children.Add(rwBtn.Btn);
 
@@ -98,6 +123,7 @@ public class SingleScreenSessionView : Grid
         actionsWrap.Children.Add(svBtn.Btn);
 
         var ldBtn = CreateHudPill(AuroraIconKind.LoadSlotArrow, "Загрузить (F8)", Color.Parse("#38BDF8"), () => PerformQuickLoad(_activeSlot));
+        _ldBtn = ldBtn.Btn;
         _collapsibleHudLabels.Add(ldBtn.Label);
         actionsWrap.Children.Add(ldBtn.Btn);
 
@@ -153,6 +179,126 @@ public class SingleScreenSessionView : Grid
         _stageHost.Children.Add(_chassisImage);
         _stageHost.Children.Add(_lcdImage);
         _stageHost.Children.Add(_overlayImage);
+
+        // Live RetroAchievements HUD Layer
+        var raHudLayer = new Grid { IsHitTestVisible = false, Margin = new Thickness(14) };
+
+        _raBannerTitle = new TextBlock { FontSize = 13, FontWeight = FontWeight.Black, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center };
+        _raBannerSub = new TextBlock { FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Color.Parse("#E2E8F0")), HorizontalAlignment = HorizontalAlignment.Center };
+        _raBannerCard = new Border
+        {
+            IsVisible = false,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Padding = new Thickness(18, 9),
+            CornerRadius = new CornerRadius(12),
+            Background = new SolidColorBrush(Color.FromArgb(230, 11, 15, 25)),
+            BorderThickness = new Thickness(1.5),
+            Child = new StackPanel
+            {
+                Spacing = 2,
+                Children = { _raBannerTitle, _raBannerSub }
+            }
+        };
+        raHudLayer.Children.Add(_raBannerCard);
+
+        _raToastBadge = new TextBlock { FontSize = 10, FontWeight = FontWeight.Black };
+        _raToastTitle = new TextBlock { FontSize = 12.5, FontWeight = FontWeight.Bold, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap };
+        _raToastDesc = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(Color.Parse("#CBD5E1")), TextWrapping = TextWrapping.Wrap };
+        _raToastCard = new Border
+        {
+            IsVisible = false,
+            MaxWidth = 340,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Padding = new Thickness(14, 10),
+            CornerRadius = new CornerRadius(12),
+            Background = new SolidColorBrush(Color.FromArgb(236, 15, 23, 42)),
+            BorderBrush = new SolidColorBrush(Color.Parse("#FACC15")),
+            BorderThickness = new Thickness(1.5),
+            Child = new StackPanel
+            {
+                Spacing = 3,
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 6,
+                        Children =
+                        {
+                            new AuroraVectorIcon { Kind = AuroraIconKind.TrophyCrown, Size = 15, VerticalAlignment = VerticalAlignment.Center },
+                            _raToastBadge
+                        }
+                    },
+                    _raToastTitle,
+                    _raToastDesc
+                }
+            }
+        };
+        raHudLayer.Children.Add(_raToastCard);
+
+        var statusBottomStack = new StackPanel
+        {
+            Spacing = 6,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Bottom
+        };
+
+        _raChallengeText = new TextBlock { FontSize = 11, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(Color.Parse("#FDE047")) };
+        _raChallengePill = new Border
+        {
+            IsVisible = false,
+            Padding = new Thickness(10, 5),
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Color.FromArgb(220, 30, 27, 15)),
+            BorderBrush = new SolidColorBrush(Color.Parse("#FACC15")),
+            BorderThickness = new Thickness(1),
+            Child = _raChallengeText
+        };
+        statusBottomStack.Children.Add(_raChallengePill);
+
+        _raMeasuredText = new TextBlock { FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Color.Parse("#BAE6FD")) };
+        _raMeasuredPill = new Border
+        {
+            IsVisible = false,
+            Padding = new Thickness(10, 5),
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Color.FromArgb(220, 12, 24, 38)),
+            BorderBrush = new SolidColorBrush(Color.Parse("#38BDF8")),
+            BorderThickness = new Thickness(1),
+            Child = _raMeasuredText
+        };
+        statusBottomStack.Children.Add(_raMeasuredPill);
+
+        _raLeaderboardText = new TextBlock { FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Color.Parse("#DDD6FE")) };
+        _raLeaderboardPill = new Border
+        {
+            IsVisible = false,
+            Padding = new Thickness(10, 5),
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Color.FromArgb(220, 24, 16, 42)),
+            BorderBrush = new SolidColorBrush(Color.Parse("#A855F7")),
+            BorderThickness = new Thickness(1),
+            Child = _raLeaderboardText
+        };
+        statusBottomStack.Children.Add(_raLeaderboardPill);
+
+        raHudLayer.Children.Add(statusBottomStack);
+        _stageHost.Children.Add(raHudLayer);
+
+        _raBannerTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        _raBannerTimer.Tick += (_, _) => { _raBannerTimer.Stop(); _raBannerCard.IsVisible = false; };
+
+        _raToastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4.5) };
+        _raToastTimer.Tick += (_, _) => { _raToastTimer.Stop(); _raToastCard.IsVisible = false; };
+
+        _raMeasuredTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        _raMeasuredTimer.Tick += (_, _) => { _raMeasuredTimer.Stop(); _raMeasuredPill.IsVisible = false; };
+
+        _raLeaderboardTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        _raLeaderboardTimer.Tick += (_, _) => { _raLeaderboardTimer.Stop(); _raLeaderboardPill.IsVisible = false; };
+
         _stageHost.PropertyChanged += (_, ch) =>
         {
             if (ch.Property == BoundsProperty) InvalidateStageVisuals(force: true);
@@ -185,12 +331,24 @@ public class SingleScreenSessionView : Grid
 
         StormGbcaUiState.Instance.EmulationStarted += OnEmulationStarted;
         StormGbcaUiState.Instance.EmulationStopped += OnEmulationStopped;
+        StormGbcaUiState.Instance.SettingsSaved += () => Dispatcher.UIThread.Post(UpdateHardcoreHudButtons);
         StormGbcaUiState.Instance.SkinOrOverlayChanged += () => InvalidateStageVisuals(force: true);
         StormGbcaUiState.Instance.FullscreenChanged += fs =>
         {
             _hudBar.IsVisible = !fs;
             InvalidateStageVisuals(force: true);
         };
+
+        var emu = StormGbcaUiState.Instance.Emulator;
+        emu.RaSessionActivated += (session, hardcore) => Dispatcher.UIThread.Post(() =>
+        {
+            UpdateHardcoreHudButtons();
+            ShowStartupBanner(session, hardcore);
+        });
+        emu.RaAchievementUnlocked += (ach, hardcore) => Dispatcher.UIThread.Post(() => ShowUnlockToast(ach, hardcore));
+        emu.RaChallengePrimedChanged += (_, title, isPrimed) => Dispatcher.UIThread.Post(() => UpdateChallengePill(title, isPrimed));
+        emu.RaMeasuredProgressUpdated += (_, title, val, target, fmt) => Dispatcher.UIThread.Post(() => ShowMeasuredPill(title, val, target, fmt));
+        emu.RaLeaderboardUpdated += (_, title, score, fmt, type) => Dispatcher.UIThread.Post(() => UpdateLeaderboardPill(title, score, fmt, type));
 
         KeyDown += OnViewKeyDown;
         KeyUp += OnViewKeyUp;
@@ -208,6 +366,12 @@ public class SingleScreenSessionView : Grid
         _keyboardMask = 0;
         _pointerOverlayMask = 0;
         _ffText.Text = "Ускорение (1x)";
+        _raBannerCard.IsVisible = false;
+        _raToastCard.IsVisible = false;
+        _raChallengePill.IsVisible = false;
+        _raMeasuredPill.IsVisible = false;
+        _raLeaderboardPill.IsVisible = false;
+        UpdateHardcoreHudButtons();
         InvalidateStageVisuals(force: true);
         if (StormGbcaUiState.Instance.Settings.Show3DBootSplash)
         {
@@ -225,8 +389,107 @@ public class SingleScreenSessionView : Grid
     private void OnEmulationStopped()
     {
         _uiTimer.Stop();
+        _raBannerTimer.Stop();
+        _raToastTimer.Stop();
+        _raMeasuredTimer.Stop();
+        _raLeaderboardTimer.Stop();
+        _raBannerCard.IsVisible = false;
+        _raToastCard.IsVisible = false;
+        _raChallengePill.IsVisible = false;
+        _raMeasuredPill.IsVisible = false;
+        _raLeaderboardPill.IsVisible = false;
         _bootSplash.Dismiss();
         _pauseOverlay.IsVisible = false;
+    }
+
+    private void UpdateHardcoreHudButtons()
+    {
+        bool hc = StormGbcaUiState.Instance.Emulator.IsHardcoreMode;
+        _rwBtn.IsEnabled = !hc;
+        _rwBtn.Opacity = hc ? 0.42 : 1.0;
+        ToolTip.SetTip(_rwBtn, hc ? "Перемотка отключена в режиме Hardcore RetroAchievements" : "Перемотка");
+
+        _ldBtn.IsEnabled = !hc;
+        _ldBtn.Opacity = hc ? 0.42 : 1.0;
+        ToolTip.SetTip(_ldBtn, hc ? "Загрузка состояний отключена в режиме Hardcore RetroAchievements" : "Загрузить (F8)");
+    }
+
+    private void ShowStartupBanner(RaGameSessionInfo session, bool hardcore)
+    {
+        Color accent = hardcore ? Color.Parse("#FACC15") : Color.Parse("#38BDF8");
+        _raBannerCard.BorderBrush = new SolidColorBrush(accent);
+        _raBannerTitle.Foreground = new SolidColorBrush(accent);
+        _raBannerTitle.Text = hardcore ? "RetroAchievements - Hardcore" : "RetroAchievements - Casual";
+        _raBannerSub.Text = $"{session.GameTitle}  |  {session.UnlockedCount} / {session.TotalCount}";
+        _raBannerCard.IsVisible = true;
+        _raBannerTimer.Stop();
+        _raBannerTimer.Start();
+    }
+
+    private void ShowUnlockToast(RaAchievementInfo ach, bool hardcore)
+    {
+        if (!StormGbcaUiState.Instance.Settings.RetroAchievementsNotifications) return;
+        Color accent = hardcore ? Color.Parse("#FACC15") : Color.Parse("#38BDF8");
+        _raToastCard.BorderBrush = new SolidColorBrush(accent);
+        _raToastBadge.Foreground = new SolidColorBrush(accent);
+        _raToastBadge.Text = hardcore
+            ? $"TROPHY UNLOCKED [HARDCORE] (+{ach.Points} pts)"
+            : $"TROPHY UNLOCKED [CASUAL] (+{ach.Points} pts)";
+        _raToastTitle.Text = ach.Title;
+        _raToastDesc.Text = ach.Description;
+        _raToastCard.IsVisible = true;
+        _raToastTimer.Stop();
+        _raToastTimer.Start();
+        AuroraTactileFeedbackService.Instance.PlayAchievementChime();
+    }
+
+    private void UpdateChallengePill(string title, bool isPrimed)
+    {
+        if (!StormGbcaUiState.Instance.Settings.RetroAchievementsChallengeIndicators)
+        {
+            _raChallengePill.IsVisible = false;
+            return;
+        }
+        var primed = StormGbcaUiState.Instance.Emulator.GetPrimedAchievementsSnapshot();
+        if (primed.Count == 0 && !isPrimed)
+        {
+            _raChallengePill.IsVisible = false;
+            return;
+        }
+        _raChallengeText.Text = primed.Count > 1
+            ? $"Challenge Active ({primed.Count}): {title}"
+            : $"Challenge Active: {title}";
+        _raChallengePill.IsVisible = true;
+    }
+
+    private void ShowMeasuredPill(string title, int val, int target, string fmt)
+    {
+        if (!StormGbcaUiState.Instance.Settings.RetroAchievementsProgressIndicators) return;
+        string progress = !string.IsNullOrWhiteSpace(fmt) ? fmt : $"{val}/{target}";
+        _raMeasuredText.Text = $"{title}: {progress}";
+        _raMeasuredPill.IsVisible = true;
+        _raMeasuredTimer.Stop();
+        _raMeasuredTimer.Start();
+    }
+
+    private void UpdateLeaderboardPill(string title, int score, string fmt, StormRaEventType type)
+    {
+        if (!StormGbcaUiState.Instance.Settings.RetroAchievementsShowLeaderboardPopups) return;
+        string valText = !string.IsNullOrWhiteSpace(fmt) ? fmt : score.ToString();
+        _raLeaderboardText.Text = type switch
+        {
+            StormRaEventType.LboardStarted => $"Leaderboard: {title}",
+            StormRaEventType.LboardUpdated => $"{title}: {valText}",
+            StormRaEventType.LboardTriggered => $"Leaderboard Submitted: {title} ({valText})",
+            StormRaEventType.LboardCanceled => $"Leaderboard Canceled: {title}",
+            _ => $"{title}: {valText}",
+        };
+        _raLeaderboardPill.IsVisible = true;
+        _raLeaderboardTimer.Stop();
+        if (type is StormRaEventType.LboardTriggered or StormRaEventType.LboardCanceled)
+        {
+            _raLeaderboardTimer.Start();
+        }
     }
 
     private void OnUiTick(object? sender, EventArgs e)
@@ -234,6 +497,7 @@ public class SingleScreenSessionView : Grid
         if (!StormGbcaUiState.Instance.IsEmulationActive || StormGbcaUiState.Instance.IsPaused) return;
 
         var emu = StormGbcaUiState.Instance.Emulator;
+        emu.PollRaEvents();
         int copied = emu.CopyCurrentFrameBgra(ref _frameStaging, out int w, out int h);
         if (copied > 0 && w > 0 && h > 0)
         {
@@ -549,7 +813,8 @@ public class SingleScreenSessionView : Grid
 
     private void PerformQuickLoad(int slot)
     {
-        if (!StormGbcaUiState.Instance.RetroAchievements.IsFeatureAllowedInCurrentMode("loadstate"))
+        if (StormGbcaUiState.Instance.Emulator.IsHardcoreMode ||
+            !StormGbcaUiState.Instance.RetroAchievements.IsFeatureAllowedInCurrentMode("loadstate"))
         {
             StormGbcaUiState.Instance.NotifyStatus("Загрузка состояний отключена в хардкорном режиме RetroAchievements");
             return;
@@ -561,7 +826,8 @@ public class SingleScreenSessionView : Grid
 
     private void PerformRewind()
     {
-        if (!StormGbcaUiState.Instance.RetroAchievements.IsFeatureAllowedInCurrentMode("rewind"))
+        if (StormGbcaUiState.Instance.Emulator.IsHardcoreMode ||
+            !StormGbcaUiState.Instance.RetroAchievements.IsFeatureAllowedInCurrentMode("rewind"))
         {
             StormGbcaUiState.Instance.NotifyStatus("Перемотка отключена в хардкорном режиме RetroAchievements");
             return;

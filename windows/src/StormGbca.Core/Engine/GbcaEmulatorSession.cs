@@ -89,18 +89,46 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
     private string _activeSramPath = string.Empty;
     private bool _sramLoaded;
 
+    private bool _hardcoreMode;
+    private RetroAchievementsService? _raService;
+    private RaGameSessionInfo? _activeRaSession;
+    private string _activeGameHash = string.Empty;
+    private string _currentRichPresence = string.Empty;
+    private Timer? _raPingTimer;
+    private readonly Dictionary<uint, (int Value, int Target, string Formatted)> _measuredProgress = new();
+    private readonly HashSet<uint> _primedAchievements = [];
+    private readonly object _raStateLock = new();
+
     public bool IsRunning => _isRunning;
     public bool IsPaused => _isPaused;
     public bool IsFastForward => _fastForwardActive;
+    public bool IsHardcoreMode => _hardcoreMode;
     public float FastForwardMultiplier => _fastForwardMult;
     public nint NativeContext => _ctx;
     public StormPlatform ActivePlatform { get; private set; } = StormPlatform.None;
     public StormHwFlags ActiveHardwareFlags { get; private set; } = StormHwFlags.None;
     public string ActiveRomKey => _activeRomKey;
+    public string CurrentRichPresence => _currentRichPresence;
     public XInputGamepadService Gamepad => _gamepad;
 
     public event Action<GbcaFrameMetrics>? FrameCompleted;
     public event Action<string>? StatusMessage;
+    public event Action<RaAchievementInfo, bool>? RaAchievementUnlocked;
+    public event Action<uint, string, bool>? RaChallengePrimedChanged;
+    public event Action<uint, string, int, int, string>? RaMeasuredProgressUpdated;
+    public event Action<uint, string, int, string, StormRaEventType>? RaLeaderboardUpdated;
+    public event Action<string>? RaRichPresenceUpdated;
+    public event Action<RaGameSessionInfo, bool>? RaSessionActivated;
+
+    public IReadOnlyDictionary<uint, (int Value, int Target, string Formatted)> GetMeasuredProgressSnapshot()
+    {
+        lock (_raStateLock) return new Dictionary<uint, (int, int, string)>(_measuredProgress);
+    }
+
+    public IReadOnlySet<uint> GetPrimedAchievementsSnapshot()
+    {
+        lock (_raStateLock) return new HashSet<uint>(_primedAchievements);
+    }
 
     public GbcaEmulatorSession()
     {
@@ -154,8 +182,9 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             cfg.channel_volumes[i] = Math.Clamp(settings.ChannelVolumes[i], 0f, 1.5f);
         }
         cfg.master_volume = Math.Clamp(settings.MasterVolume, 0f, 2.0f);
+        bool effHardcore = hardcoreActive || _hardcoreMode;
         cfg.run_ahead_frames = Math.Clamp(settings.RunAheadFrames, 0, 2);
-        cfg.rewind_enabled = (settings.RewindEnabled && !hardcoreActive) ? 1 : 0;
+        cfg.rewind_enabled = (settings.RewindEnabled && !effHardcore) ? 1 : 0;
         cfg.rewind_buffer_mb = Math.Clamp(settings.RewindBufferMb, 4, 128);
         cfg.rewind_interval = Math.Clamp(settings.RewindInterval, 1, 10);
         cfg.skip_bios_intro = settings.SkipBiosIntro ? 1 : 0;
@@ -167,11 +196,13 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         if (File.Exists(settings.BiosGbaPath)) cfg.SetBiosGbaPath(settings.BiosGbaPath);
         if (File.Exists(settings.BiosSgbPath)) cfg.SetBiosSgbPath(settings.BiosSgbPath);
 
+        int effectiveOverclock = effHardcore ? 100 : Math.Clamp(settings.CpuOverclockPct, 50, 400);
+
         lock (_coreLock)
         {
             NativeCoreBindings.storm_gbca_set_config(_ctx, &cfg);
             NativeCoreBindings.storm_gbca_set_upscale(_ctx, Math.Clamp(settings.ResolutionScale, 1, 4), (int)settings.UpscaleMode);
-            NativeCoreBindings.storm_gbca_set_performance(_ctx, Math.Clamp(settings.CpuOverclockPct, 50, 400), Math.Clamp(settings.FrameSkip, 0, 4));
+            NativeCoreBindings.storm_gbca_set_performance(_ctx, effectiveOverclock, Math.Clamp(settings.FrameSkip, 0, 4));
             NativeCoreBindings.storm_gbca_set_solar_lux(_ctx, settings.SolarLuxLevel);
             NativeCoreBindings.storm_gbca_set_rtc(_ctx, settings.UseHostRtc ? 1 : 0, 0);
             RefreshVideoInfoLocked();
@@ -179,7 +210,9 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
         _audioOut.IsMuted = settings.AudioMuted;
         _audioOut.Volume = 1.0f;
-        _fastForwardMult = Math.Clamp(settings.FastForwardMultiplier, 1f, 8f);
+        _fastForwardMult = effHardcore
+            ? Math.Clamp(settings.FastForwardMultiplier, 1f, 8f)
+            : Math.Clamp(settings.FastForwardMultiplier, 1f, 8f);
     }
 
     public bool LoadAndStartRom(
@@ -191,7 +224,9 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         Stop();
         if (_ctx == nint.Zero || !File.Exists(rom.FilePath)) return false;
 
-        ApplySettings(settings, raService.IsHardcoreMode);
+        _raService = raService;
+        _hardcoreMode = raService.IsEnabled && raService.IsHardcoreMode;
+        ApplySettings(settings, _hardcoreMode);
 
         int rc = -1;
         StormGbcaRomInfo info = default;
@@ -199,6 +234,9 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
         lock (_coreLock)
         {
+            NativeCoreBindings.storm_gbca_ra_clear_all(_ctx);
+            NativeCoreBindings.storm_gbca_set_hardcore_mode(_ctx, _hardcoreMode ? 1 : 0);
+
             if (isZip)
             {
                 if (!GbcaRomLibrary.TryExtractRomFromZip(rom.FilePath, out byte[] zipRomBytes, out string innerEntryName))
@@ -224,13 +262,14 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             }
             if (rc != 0) return false;
 
-            // Auto-apply matching .ips / .ups / .bps soft patch if present alongside ROM
+            // Auto-apply matching .ips / .ups / .bps soft patch if present alongside ROM (pre-boot)
             TryAutoApplyAdjacentPatchLocked(rom.FilePath);
 
             NativeCoreBindings.storm_gbca_get_rom_info(_ctx, &info);
             ActivePlatform = (StormPlatform)info.platform;
             ActiveHardwareFlags = (StormHwFlags)info.hw_flags;
             _activeCoreName = info.GetActiveCore();
+            _raService.SetActiveCore(_activeCoreName);
             _activeRomKey = !string.IsNullOrWhiteSpace(rom.FileName) ? rom.FileName : rom.GameCode;
             _activeSramPath = StormGbcaPaths.GetSaveFilePath(_activeRomKey);
 
@@ -247,7 +286,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             NativeCoreBindings.storm_gbca_set_solar_lux(_ctx, settings.SolarLuxLevel);
             NativeCoreBindings.storm_gbca_set_rtc(_ctx, settings.UseHostRtc ? 1 : 0, 0);
 
-            bool cheatsAllowed = raService.IsFeatureAllowedInCurrentMode("cheats");
+            bool cheatsAllowed = !_hardcoreMode && raService.IsFeatureAllowedInCurrentMode("cheats");
             cheatService.LoadCheatsForRom(_activeRomKey);
             cheatService.ApplyToNative(_ctx, cheatsAllowed);
         }
@@ -317,6 +356,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
     public void Stop()
     {
+        StopRaPingTimer();
         _stopRequested = true;
         _isRunning = false;
         if (_runnerThread != null && _runnerThread.IsAlive)
@@ -328,11 +368,21 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         _audioOut.ResetQueue();
         _audioOut.EndHighResTimer();
 
+        lock (_raStateLock)
+        {
+            _activeRaSession = null;
+            _activeGameHash = string.Empty;
+            _currentRichPresence = string.Empty;
+            _measuredProgress.Clear();
+            _primedAchievements.Clear();
+        }
+
         lock (_coreLock)
         {
             FlushSramLocked();
             if (_ctx != nint.Zero)
             {
+                NativeCoreBindings.storm_gbca_ra_clear_all(_ctx);
                 NativeCoreBindings.storm_gbca_unload_rom(_ctx);
             }
         }
@@ -360,7 +410,13 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             {
                 FlushSramLocked();
                 NativeCoreBindings.storm_gbca_reset(_ctx);
+                NativeCoreBindings.storm_gbca_ra_reset(_ctx);
             }
+        }
+        lock (_raStateLock)
+        {
+            _measuredProgress.Clear();
+            _primedAchievements.Clear();
         }
         StatusMessage?.Invoke("Консоль перезапущена");
     }
@@ -370,14 +426,42 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
     public void SetFastForward(bool enabled, float multiplier = 3.0f)
     {
+        if (_hardcoreMode && enabled && multiplier < 1.0f)
+        {
+            StatusMessage?.Invoke("Замедление времени отключено в режиме Hardcore RetroAchievements");
+            multiplier = 1.0f;
+            enabled = false;
+        }
         _fastForwardActive = enabled;
-        _fastForwardMult = Math.Clamp(multiplier, 1.0f, 8.0f);
+        _fastForwardMult = _hardcoreMode
+            ? Math.Clamp(multiplier, 1.0f, 8.0f)
+            : Math.Clamp(multiplier, 0.25f, 8.0f);
         lock (_coreLock)
         {
             if (_ctx != nint.Zero)
             {
                 NativeCoreBindings.storm_gbca_set_fast_forward(_ctx, enabled ? _fastForwardMult : 1.0f);
             }
+        }
+    }
+
+    public bool StepFrame()
+    {
+        if (_hardcoreMode)
+        {
+            StatusMessage?.Invoke("Покадровый шаг отключен в режиме Hardcore RetroAchievements");
+            return false;
+        }
+        lock (_coreLock)
+        {
+            if (_ctx == nint.Zero || !_isRunning) return false;
+            int rc = NativeCoreBindings.storm_gbca_run_frame(_ctx);
+            if (rc == 0)
+            {
+                CopyFrameLocked();
+                return true;
+            }
+            return false;
         }
     }
 
@@ -407,6 +491,11 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
     public bool ApplyPatchFile(string patchPath)
     {
+        if (_hardcoreMode)
+        {
+            StatusMessage?.Invoke("Применение мягких патчей во время игры отключено в режиме Hardcore");
+            return false;
+        }
         if (string.IsNullOrWhiteSpace(patchPath) || !File.Exists(patchPath)) return false;
         lock (_coreLock)
         {
@@ -428,6 +517,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         Directory.CreateDirectory(StormGbcaPaths.StatesDirectory);
         string path = StormGbcaPaths.GetSaveStateFilePath(_activeRomKey, slot);
         bool ok;
+        byte[]? raProg = null;
         lock (_coreLock)
         {
             if (_ctx == nint.Zero || !_isRunning) return false;
@@ -435,6 +525,10 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             FlushSramLocked();
             if (ok)
             {
+                if (!_hardcoreMode)
+                {
+                    raProg = NativeCoreBindings.SerializeRaProgress(_ctx);
+                }
                 CopyFrameLocked();
                 try
                 {
@@ -452,12 +546,21 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
                 }
             }
         }
+        if (ok && !_hardcoreMode && raProg is { Length: > 0 })
+        {
+            try { File.WriteAllBytes(path + ".raprog", raProg); } catch { }
+        }
         if (ok) StatusMessage?.Invoke($"Состояние сохранено в слот {slot + 1}");
         return ok;
     }
 
     public bool LoadState(int slot)
     {
+        if (_hardcoreMode)
+        {
+            StatusMessage?.Invoke("Загрузка состояний отключена в режиме Hardcore RetroAchievements");
+            return false;
+        }
         if (slot < 0 || slot >= SavestateSlotCount || string.IsNullOrWhiteSpace(_activeRomKey)) return false;
         string path = StormGbcaPaths.GetSaveStateFilePath(_activeRomKey, slot);
         if (!File.Exists(path)) return false;
@@ -467,6 +570,16 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             bool ok = NativeCoreBindings.storm_gbca_load_state_file(_ctx, path) == 0;
             if (ok)
             {
+                string progPath = path + ".raprog";
+                if (File.Exists(progPath))
+                {
+                    try
+                    {
+                        byte[] progBytes = File.ReadAllBytes(progPath);
+                        NativeCoreBindings.DeserializeRaProgress(_ctx, progBytes);
+                    }
+                    catch { }
+                }
                 CopyFrameLocked();
                 StatusMessage?.Invoke($"Состояние загружено из слота {slot + 1}");
             }
@@ -476,6 +589,11 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
     public bool RewindStep()
     {
+        if (_hardcoreMode)
+        {
+            StatusMessage?.Invoke("Перемотка времени отключена в режиме Hardcore RetroAchievements");
+            return false;
+        }
         lock (_coreLock)
         {
             if (_ctx == nint.Zero || !_isRunning) return false;
@@ -872,6 +990,11 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
     public int MemSearchReset(StormMemoryRegion region, int valueSizeBytes)
     {
+        if (_hardcoreMode)
+        {
+            StatusMessage?.Invoke("Поиск в памяти (RAM Finder) отключен в режиме Hardcore RetroAchievements");
+            return 0;
+        }
         lock (_coreLock)
         {
             return _ctx != nint.Zero ? NativeCoreBindings.storm_gbca_mem_search_reset(_ctx, (int)region, valueSizeBytes) : 0;
@@ -880,6 +1003,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
     public int MemSearchFilter(StormSearchCmp cmpOp, uint targetValue)
     {
+        if (_hardcoreMode) return 0;
         lock (_coreLock)
         {
             return _ctx != nint.Zero ? NativeCoreBindings.storm_gbca_mem_search_filter(_ctx, (int)cmpOp, targetValue) : 0;
@@ -889,6 +1013,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
     public List<(uint Offset, uint Value)> MemSearchGetResults(int maxResults = 64)
     {
         var list = new List<(uint, uint)>();
+        if (_hardcoreMode) return list;
         lock (_coreLock)
         {
             if (_ctx == nint.Zero) return list;
@@ -903,6 +1028,11 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
     public bool WriteMemoryValue(StormMemoryRegion region, uint offset, uint value, int sizeBytes)
     {
+        if (_hardcoreMode)
+        {
+            StatusMessage?.Invoke("Запись в память отключена в режиме Hardcore RetroAchievements");
+            return false;
+        }
         lock (_coreLock)
         {
             if (_ctx == nint.Zero) return false;
@@ -914,6 +1044,286 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             buf[3] = (byte)((value >> 24) & 0xFF);
             return NativeCoreBindings.storm_gbca_write_memory(_ctx, (int)region, offset, buf, (nuint)sz) == 0;
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Live RetroAchievements Runtime & Hardcore Mode Control
+    // -----------------------------------------------------------------------
+    public void SetHardcoreMode(bool enabled, GbcaAppSettings settings, GbcaCheatService cheatService, RetroAchievementsService raService)
+    {
+        _raService = raService;
+        bool wasHardcore = _hardcoreMode;
+        _hardcoreMode = enabled && raService.IsEnabled;
+        raService.IsHardcoreMode = enabled;
+        settings.RetroAchievementsHardcoreMode = enabled;
+
+        if (_ctx == nint.Zero || !NativeCoreBindings.IsAvailable)
+        {
+            return;
+        }
+
+        if (_hardcoreMode)
+        {
+            bool needsReset = false;
+            lock (_coreLock)
+            {
+                if (_isRunning)
+                {
+                    NativeCoreBindings.storm_gbca_cheats_clear(_ctx);
+                    if (_fastForwardActive && _fastForwardMult < 1.0f)
+                    {
+                        _fastForwardActive = false;
+                        _fastForwardMult = 1.0f;
+                        NativeCoreBindings.storm_gbca_set_fast_forward(_ctx, 1.0f);
+                    }
+                }
+                int rc = NativeCoreBindings.storm_gbca_set_hardcore_mode(_ctx, 1);
+                needsReset = _isRunning && (rc == 1 || !wasHardcore);
+                if (needsReset)
+                {
+                    FlushSramLocked();
+                    NativeCoreBindings.storm_gbca_reset(_ctx);
+                    NativeCoreBindings.storm_gbca_ra_reset(_ctx);
+                }
+            }
+            ApplySettings(settings, hardcoreActive: true);
+            if (needsReset)
+            {
+                lock (_raStateLock)
+                {
+                    _measuredProgress.Clear();
+                    _primedAchievements.Clear();
+                }
+                if (_activeRaSession != null && !string.IsNullOrWhiteSpace(_activeGameHash))
+                {
+                    _ = ActivateRaSessionAsync(_activeRaSession, _activeGameHash);
+                }
+                StatusMessage?.Invoke("Hardcore активирован: консоль перезапущена, читы и загрузка состояний отключены");
+            }
+        }
+        else
+        {
+            lock (_coreLock)
+            {
+                NativeCoreBindings.storm_gbca_set_hardcore_mode(_ctx, 0);
+                if (_isRunning)
+                {
+                    cheatService.ApplyToNative(_ctx, cheatsAllowed: true);
+                }
+            }
+            ApplySettings(settings, hardcoreActive: false);
+            if (_activeRaSession != null && !string.IsNullOrWhiteSpace(_activeGameHash))
+            {
+                _ = ActivateRaSessionAsync(_activeRaSession, _activeGameHash);
+            }
+            if (wasHardcore && _isRunning)
+            {
+                StatusMessage?.Invoke("Переключено в режим Casual (без сброса эмуляции)");
+            }
+        }
+    }
+
+    public Task ActivateRaSessionAsync(RaGameSessionInfo session, string gameHash, CancellationToken ct = default)
+    {
+        var raService = _raService;
+        if (_ctx == nint.Zero || !_isRunning || raService == null || !raService.IsEnabled)
+        {
+            return Task.CompletedTask;
+        }
+
+        bool hardcore = _hardcoreMode;
+        lock (_raStateLock)
+        {
+            _activeRaSession = session;
+            _activeGameHash = gameHash;
+            _measuredProgress.Clear();
+            _primedAchievements.Clear();
+            _currentRichPresence = string.Empty;
+        }
+
+        lock (_coreLock)
+        {
+            if (_ctx == nint.Zero || !_isRunning) return Task.CompletedTask;
+            NativeCoreBindings.storm_gbca_ra_clear_all(_ctx);
+            NativeCoreBindings.storm_gbca_set_hardcore_mode(_ctx, hardcore ? 1 : 0);
+
+            foreach (var ach in session.Achievements)
+            {
+                bool isCore = ach.Flags == 3 || ach.Flags == 0;
+                if (!isCore && !raService.IsUnofficialEnabled) continue;
+
+                bool alreadyEarned = hardcore ? ach.UnlockedHardcore : (ach.Unlocked || ach.UnlockedHardcore);
+                if (alreadyEarned && !raService.IsEncoreMode) continue;
+                if (string.IsNullOrWhiteSpace(ach.MemAddr)) continue;
+
+                NativeCoreBindings.storm_gbca_ra_activate_achievement(_ctx, (uint)ach.Id, ach.MemAddr);
+            }
+
+            if (hardcore || raService.LeaderboardsEnabled)
+            {
+                foreach (var lb in session.Leaderboards)
+                {
+                    if (string.IsNullOrWhiteSpace(lb.Mem)) continue;
+                    NativeCoreBindings.storm_gbca_ra_activate_leaderboard(_ctx, (uint)lb.Id, lb.Mem, lb.Format);
+                }
+            }
+
+            if ((hardcore || raService.IsRichPresenceEnabled) && !string.IsNullOrWhiteSpace(session.RichPresencePatch))
+            {
+                NativeCoreBindings.storm_gbca_ra_activate_rich_presence(_ctx, session.RichPresencePatch);
+            }
+        }
+
+        return raService.StartSessionAsync(session.GameId, gameHash, hardcore, ct).ContinueWith(_ =>
+        {
+            RaSessionActivated?.Invoke(session, hardcore);
+            StartRaPingTimer();
+        }, TaskScheduler.Default);
+    }
+
+    public void PollRaEvents()
+    {
+        if (_ctx == nint.Zero || !_isRunning || _isPaused || _raService == null || !_raService.IsEnabled) return;
+
+        List<StormGbcaRaEvent>? events = null;
+        string? rpSnapshot = null;
+
+        lock (_coreLock)
+        {
+            if (_ctx == nint.Zero || !_isRunning) return;
+            for (int i = 0; i < 32; i++)
+            {
+                if (!NativeCoreBindings.PollRaEvent(_ctx, out var ev)) break;
+                events ??= [];
+                events.Add(ev);
+            }
+
+            if ((_frameCounter % 120) == 0)
+            {
+                string rp = NativeCoreBindings.GetRichPresence(_ctx);
+                if (!string.Equals(rp, _currentRichPresence, StringComparison.Ordinal))
+                {
+                    _currentRichPresence = rp;
+                    rpSnapshot = rp;
+                }
+            }
+        }
+
+        if (rpSnapshot != null)
+        {
+            RaRichPresenceUpdated?.Invoke(rpSnapshot);
+        }
+
+        if (events == null) return;
+
+        RaGameSessionInfo? session;
+        string gameHash;
+        lock (_raStateLock)
+        {
+            session = _activeRaSession;
+            gameHash = _activeGameHash;
+        }
+
+        foreach (var ev in events)
+        {
+            var type = (StormRaEventType)ev.type;
+            string fmt = ev.GetFormatted();
+            switch (type)
+            {
+                case StormRaEventType.AchTriggered:
+                {
+                    var ach = session?.Achievements.FirstOrDefault(a => a.Id == (int)ev.id)
+                        ?? new RaAchievementInfo((int)ev.id, $"Achievement #{ev.id}", string.Empty, 0, string.Empty, string.Empty, false, false);
+                    bool hc = _hardcoreMode;
+                    lock (_raStateLock)
+                    {
+                        _primedAchievements.Remove(ev.id);
+                    }
+                    RaChallengePrimedChanged?.Invoke(ev.id, ach.Title, false);
+                    RaAchievementUnlocked?.Invoke(ach, hc);
+                    _ = Task.Run(() => _raService.AwardAchievementAsync((int)ev.id, hc, gameHash));
+                    break;
+                }
+                case StormRaEventType.AchPrimed:
+                {
+                    string title = session?.Achievements.FirstOrDefault(a => a.Id == (int)ev.id)?.Title ?? $"Challenge #{ev.id}";
+                    lock (_raStateLock) _primedAchievements.Add(ev.id);
+                    RaChallengePrimedChanged?.Invoke(ev.id, title, true);
+                    break;
+                }
+                case StormRaEventType.AchUnprimed:
+                case StormRaEventType.AchReset:
+                {
+                    string title = session?.Achievements.FirstOrDefault(a => a.Id == (int)ev.id)?.Title ?? $"Challenge #{ev.id}";
+                    lock (_raStateLock) _primedAchievements.Remove(ev.id);
+                    RaChallengePrimedChanged?.Invoke(ev.id, title, false);
+                    break;
+                }
+                case StormRaEventType.AchMeasured:
+                {
+                    string title = session?.Achievements.FirstOrDefault(a => a.Id == (int)ev.id)?.Title ?? $"Achievement #{ev.id}";
+                    lock (_raStateLock)
+                    {
+                        _measuredProgress[ev.id] = (ev.value, ev.target, fmt);
+                    }
+                    RaMeasuredProgressUpdated?.Invoke(ev.id, title, ev.value, ev.target, fmt);
+                    break;
+                }
+                case StormRaEventType.LboardStarted:
+                case StormRaEventType.LboardUpdated:
+                case StormRaEventType.LboardCanceled:
+                case StormRaEventType.LboardTriggered:
+                {
+                    string title = session?.Leaderboards.FirstOrDefault(l => l.Id == (int)ev.id)?.Title ?? $"Leaderboard #{ev.id}";
+                    RaLeaderboardUpdated?.Invoke(ev.id, title, ev.value, fmt, type);
+                    if (type == StormRaEventType.LboardTriggered && _hardcoreMode)
+                    {
+                        int score = ev.value;
+                        uint lbId = ev.id;
+                        _ = Task.Run(() => _raService.SubmitLeaderboardAsync((int)lbId, score, gameHash, true));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    private void StartRaPingTimer()
+    {
+        StopRaPingTimer();
+        _raPingTimer = new Timer(_ => _ = SendRaPingTickAsync(), null, TimeSpan.FromSeconds(5), TimeSpan.FromMinutes(2));
+    }
+
+    private void StopRaPingTimer()
+    {
+        _raPingTimer?.Dispose();
+        _raPingTimer = null;
+    }
+
+    private Task SendRaPingTickAsync()
+    {
+        var raService = _raService;
+        if (!_isRunning || raService == null || !raService.IsLoggedIn) return Task.CompletedTask;
+        RaGameSessionInfo? session;
+        string gameHash;
+        lock (_raStateLock)
+        {
+            session = _activeRaSession;
+            gameHash = _activeGameHash;
+        }
+        if (session == null || session.GameId <= 0) return Task.CompletedTask;
+
+        string rp = string.Empty;
+        lock (_coreLock)
+        {
+            if (_ctx != nint.Zero && _isRunning)
+            {
+                rp = NativeCoreBindings.GetRichPresence(_ctx);
+                _currentRichPresence = rp;
+            }
+        }
+        if (!string.IsNullOrEmpty(rp)) RaRichPresenceUpdated?.Invoke(rp);
+        return raService.SendPingAsync(session.GameId, gameHash, rp, _hardcoreMode);
     }
 
     private void RefreshVideoInfoLocked()

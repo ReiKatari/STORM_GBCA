@@ -12,14 +12,16 @@
 <p align="center">
   <a href="https://github.com/ReiKatari/STORM_GBCA">GitHub Repository</a> -
   <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.6.0">Релиз STORM GBCA 1.6.0</a> -
-  <a href="https://stormgamesworld.ru/programs?repo=STORM_GBCA">Страница на STORM GAMES WORLD</a>
+  <a href="https://stormgamesworld.ru/programs?repo=STORM_GBCA">Страница на STORM GAMES WORLD</a> -
+  <a href="PRIVACY_POLICY.md">Политика конфиденциальности (Privacy Policy)</a> -
+  <a href="THIRD_PARTY_LICENSES.md">Лицензии и компоненты (Third-Party Licenses)</a>
 </p>
 
 ---
 
 ## О проекте
 
-**STORM GBCA** - это современный гибридный эмулятор семейства портативных консолей **Nintendo Game Boy (DMG / Pocket / Light / Super Game Boy)**, **Nintendo Game Boy Color (GBC)** и **Nintendo Game Boy Advance (GBA / GBA SP / Game Boy Micro)** для **Android 8.0+ (API 26+)** и **Windows 10/11 (x64)**.
+**STORM GBCA** - это современный 100% бесплатный эмулятор с открытым исходным кодом (MPL-2.0, без рекламы, без платных подписок и без телеметрии) для семейства портативных консолей **Nintendo Game Boy (DMG / Pocket / Light / Super Game Boy)**, **Nintendo Game Boy Color (GBC)** и **Nintendo Game Boy Advance (GBA / GBA SP / Game Boy Micro)** для **Android 8.0+ (API 26+)** и **Windows 10/11 (x64)**.
 
 Проект выполнен в фирменном визуальном стиле экосистемы **STORM** (единая дизайн-система **Watermelon** на Android и **AuroraFluid** на Windows, полностью повторяющая эргономику **STORM DS** и **STORM 3DS**), открывается мгновенно в истинно полноэкранном режиме без системных панелей и стартовой заставки, полностью очищен от элементов Nintendo DS / 3DS и объединяет мощь ядер **mGBA** и **SameBoy** с поддержкой **Vulkan 1.1**, **шейдеров RetroArch (`.slangp` via `librashader`)**, внутреннего **апскейлинга `1x..4x`**, **40 аутентичных 3D-корпусов консолей**, **раздельных кнопок A/B и быстрых действий с полной настройкой расположения**, **полного сетевого и локального мультиплеера (Link Cable / Wireless RFU / IR / Dolphin JoyBus / GB Printer)** и **живого сканера читов в RAM**.
 
@@ -140,7 +142,15 @@ dotnet publish windows/src/StormGbca.Desktop/StormGbca.Desktop.csproj -c Release
 - **[ares](https://github.com/ares-emulator/ares)** (**Near** и команда ares) - идеи динамического контроля частоты аудио (Dynamic Rate Control) и упреждения кадров Run-Ahead.
 - **[Gambatte-libretro](https://github.com/libretro/gambatte-libretro)** (**sinamas** и команда libretro) - вдохновение и коллекция классических цветовых палитр DMG / GBC / SGB / TWB64.
 - **[VisualBoyAdvance-M](https://github.com/visualboyadvance-m/visualboyadvance-m)**, **[MesenCE](https://github.com/nesdev-org/MesenCE)** (**Sour**) и **[GBE+](https://github.com/shonumi/gbe-plus)** (**Shonumi**) - вдохновение для универсального парсера чит-кодов, поканального 6-канального аудиомикшера, RAM Cheat Finder и работы с периферией и датчиками.
-- **[RetroAchievements / rcheevos](https://github.com/RetroAchievements/rcheevos)** (**Jamiras** и сообщество RetroAchievements) - официальная C-библиотека хеширования ROM и достижений.
+- **[RetroAchievements / rcheevos](https://github.com/RetroAchievements/rcheevos)** (**Jamiras** и сообщество RetroAchievements) - официальная C-библиотека хеширования ROM, живого исполнения достижений, таблиц лидеров, Rich Presence и 100% соответствия режиму **Hardcore** (проверенные HTTP POST запросы, 3-сегментный User-Agent, блокировка загрузки состояний, перемотки, читов, RAM Finder, разгона, замедления и покадрового шага в Hardcore с сохранением возможности сохранения состояний для отладки, а также офлайн-очередь синхронизации).
 - **[Google Oboe](https://github.com/google/oboe)** - библиотека низколатентного вывода аудио AAudio / OpenSL ES для Android.
 - **[WatermelonDS](https://github.com/SapphireRhodonite/WatermelonDS)** (**SapphireRhodonite**), **[STORM 3DS](https://github.com/ReiKatari/STORM_3DS)** и **[STORM DS](https://github.com/ReiKatari/STORM_DS)** (**STORM TEAM**) - фирменная визуальная дизайн-система STORM Watermelon / AuroraFluid, 3D-экран настройки клавиш, структура настроек и меню паузы, раздельные кнопки быстрых действий, процедурные 3D-скины и двойное зеркало обновлений.
 - **[Avalonia UI](https://avaloniaui.net/)**, **[SkiaSharp](https://github.com/mono/SkiaSharp)**, **Jetpack Compose**, **Coil** и **[Libretro Thumbnails](https://github.com/libretro-thumbnails)** - UI-фреймворки, процедурный 2D/3D-рендеринг и официальная база обложек игр.
+
+---
+
+## Лицензия, конфиденциальность и раскрытие монетизации
+
+- **Монетизация:** STORM GBCA полностью бесплатен и распространяется с открытым исходным кодом (**MPL-2.0**) без платных версий, встроенных покупок, подписок, рекламы и телеметрии.
+- **Политика конфиденциальности:** [PRIVACY_POLICY.md](PRIVACY_POLICY.md) (ноль телеметрии, хранение только локальных файлов и токена RA при явном входе, подробная таблица всех необязательных внешних подключений и прав GDPR).
+- **Сторонние лицензии:** [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) (полный перечень версий, лицензий и исходных репозиториев mGBA, SameBoy, rcheevos, librashader, Oboe, Avalonia UI, SkiaSharp и библиотек Android).

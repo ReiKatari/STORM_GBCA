@@ -147,8 +147,8 @@
     <string name="ra_encore_sub">Reativar conquistas já desbloqueadas nesta sessão</string>
     <string name="ra_unofficial">Conquistas não oficiais</string>
     <string name="ra_unofficial_sub">Incluir conjuntos de teste e não oficiais</string>
-    <string name="ra_offline_softcore">Fila Softcore offline</string>
-    <string name="ra_offline_softcore_sub">Guardar conquistas offline e sincronizar depois</string>
+    <string name="ra_offline_casual">Fila Casual offline</string>
+    <string name="ra_offline_casual_sub">Guardar conquistas offline e sincronizar depois</string>
     <string name="ra_challenge_ind">Indicadores de desafio ativo</string>
     <string name="ra_progress_ind">Indicadores de progresso</string>
     <string name="ra_lb_ind">Indicadores de placar</string>
@@ -415,4 +415,24 @@
     <string name="ctrl_section_gb">Game Boy (GB)</string>
     <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
     <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
+    <string name="ra_mode_hardcore">Hardcore</string>
+    <string name="ra_mode_casual">Casual</string>
+    <string name="ra_banner_hardcore">RetroAchievements - Hardcore</string>
+    <string name="ra_banner_casual">RetroAchievements - Casual</string>
+    <string name="ra_hardcore_blocked_load_state">Carregamento de estado bloqueado no modo Hardcore</string>
+    <string name="ra_hardcore_blocked_rewind">Retrocesso desativado no modo Hardcore</string>
+    <string name="ra_hardcore_blocked_cheats">Trapacas desativadas no modo Hardcore</string>
+    <string name="ra_hardcore_blocked_ram_finder">Buscador de RAM desativado no modo Hardcore</string>
+    <string name="ra_hardcore_blocked_patch">Patch em sessao bloqueado no modo Hardcore</string>
+    <string name="ra_hardcore_blocked_overclock">Overclock de CPU travado em 100% no modo Hardcore</string>
+    <string name="ra_switch_to_hardcore_title">Mudar para o modo Hardcore?</string>
+    <string name="ra_switch_to_hardcore_msg">Mudar para o modo Hardcore no meio da sessao reiniciara completamente o console e limpara trapacas e retrocesso. Continuar?</string>
+    <string name="ra_switched_casual_toast">Modo Casual ativado</string>
+    <string name="ra_switched_hardcore_toast">Modo Hardcore ativo - console reiniciado</string>
+    <string name="ra_lb_submitted_fmt">Ranking enviado: %1$s (%2$s)</string>
+    <string name="about_legal_section">Legal e Privacidade</string>
+    <string name="about_privacy_policy">Politica de Privacidade</string>
+    <string name="about_privacy_policy_sub">Ver politica de privacidade do STORM GBCA no GitHub</string>
+    <string name="about_third_party_licenses">Licencas de Terceiros (FOSS)</string>
+    <string name="about_third_party_licenses_sub">Licencas de mGBA, SameBoy, rcheevos, librashader e Oboe</string>
 </resources>

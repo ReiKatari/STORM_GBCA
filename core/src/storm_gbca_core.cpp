@@ -411,6 +411,8 @@ struct StormGbcaContext {
     int frame_skip_counter = 0;
     int optimization_profile = STORM_OPT_BALANCED;
     storm::MultiplayerManager mp;
+    bool hardcore_mode = false;
+    storm::StormRaState* ra_state = nullptr;
 };
 
 namespace {
@@ -656,7 +658,7 @@ static int init_core_with_loaded_rom(StormGbcaContext* ctx) {
                                   ctx->rom_virtual_name.c_str(), "mGBA", &ctx->rom_info);
     }
 
-    ctx->rewind.configure(ctx->cfg.rewind_enabled != 0,
+    ctx->rewind.configure(ctx->cfg.rewind_enabled != 0 && !ctx->hardcore_mode,
                           ctx->cfg.rewind_buffer_mb,
                           ctx->cfg.rewind_interval);
     ctx->rewind.reset();
@@ -780,6 +782,7 @@ STORM_GBCA_API StormGbcaContext* storm_gbca_create(void) {
     auto* ctx = new StormGbcaContext();
     storm_gbca_get_default_config(&ctx->cfg);
     init_peripherals(ctx);
+    ctx->ra_state = storm::ra_create();
     return ctx;
 }
 
@@ -788,6 +791,8 @@ STORM_GBCA_API void storm_gbca_destroy(StormGbcaContext* ctx) {
     {
         std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
         unload_active_cores(ctx);
+        storm::ra_destroy(ctx->ra_state);
+        ctx->ra_state = nullptr;
     }
     delete ctx;
 }
@@ -808,6 +813,7 @@ STORM_GBCA_API void storm_gbca_reset(StormGbcaContext* ctx) {
         ctx->audio_dsp.reset();
     }
     ctx->video_pp.reset();
+    storm_gbca_ra_reset(ctx);
 }
 
 STORM_GBCA_API int storm_gbca_set_config(StormGbcaContext* ctx, const StormGbcaConfig* cfg) {
@@ -821,7 +827,8 @@ STORM_GBCA_API int storm_gbca_set_config(StormGbcaContext* ctx, const StormGbcaC
     ctx->cfg = *cfg;
     ctx->cfg.run_ahead_frames = std::clamp(ctx->cfg.run_ahead_frames, 0, 2);
     ctx->cfg.lcd_ghosting = std::clamp(ctx->cfg.lcd_ghosting, 0, 100);
-    ctx->rewind.configure(ctx->cfg.rewind_enabled != 0, ctx->cfg.rewind_buffer_mb, ctx->cfg.rewind_interval);
+    ctx->rewind.configure(ctx->cfg.rewind_enabled != 0 && !ctx->hardcore_mode,
+                          ctx->cfg.rewind_buffer_mb, ctx->cfg.rewind_interval);
 
     if (ctx->rom_loaded) {
         if (core_choice_changed) {
@@ -885,6 +892,7 @@ STORM_GBCA_API void storm_gbca_unload_rom(StormGbcaContext* ctx) {
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
     ctx->has_runahead_fb = false;
     unload_active_cores(ctx);
+    storm_gbca_ra_clear_all(ctx);
     ctx->rom_data.clear();
     ctx->rom_virtual_name.clear();
     std::memset(&ctx->rom_info, 0, sizeof(ctx->rom_info));
@@ -916,6 +924,7 @@ STORM_GBCA_API int storm_gbca_get_rom_info(const StormGbcaContext* ctx, StormGbc
 STORM_GBCA_API int storm_gbca_apply_patch_file(StormGbcaContext* ctx, const char* patch_path) {
     if (!ctx || !patch_path) return -1;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode) return STORM_ERR_HARDCORE_BLOCKED;
     if (!ctx->rom_loaded) return -1;
     std::vector<uint8_t> patch;
     if (!read_file_bytes(patch_path, patch)) return -1;
@@ -1000,17 +1009,20 @@ STORM_GBCA_API int storm_gbca_run_frame(StormGbcaContext* ctx) {
         }
     }
 
-    if (ctx->rewind.should_capture_frame()) {
+    if (!ctx->hardcore_mode && ctx->rewind.should_capture_frame()) {
         if (save_raw_state(ctx, ctx->scratch_state)) {
             ctx->rewind.push_state(ctx->scratch_state.data(), ctx->scratch_state.size());
         }
     }
     ctx->mp.tick_frame();
+    storm::ra_do_frame(ctx->ra_state, ctx);
     return 0;
 }
 
 STORM_GBCA_API void storm_gbca_set_fast_forward(StormGbcaContext* ctx, float mult) {
     if (!ctx) return;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode && mult < 1.0f) mult = 1.0f;
     ctx->fast_forward.store(std::clamp(mult, 0.25f, 16.0f), std::memory_order_release);
 }
 
@@ -1099,6 +1111,7 @@ STORM_GBCA_API int storm_gbca_save_state_buffer(StormGbcaContext* ctx, void* dst
 STORM_GBCA_API int storm_gbca_load_state_buffer(StormGbcaContext* ctx, const void* src, size_t size) {
     if (!ctx || !src || size == 0) return -1;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode) return STORM_ERR_HARDCORE_BLOCKED;
     if (!ctx->rom_loaded) return -1;
     ctx->has_runahead_fb = false;
     return load_raw_state(ctx, static_cast<const uint8_t*>(src), size) ? 0 : -1;
@@ -1116,6 +1129,7 @@ STORM_GBCA_API int storm_gbca_save_state_file(StormGbcaContext* ctx, const char*
 STORM_GBCA_API int storm_gbca_load_state_file(StormGbcaContext* ctx, const char* path) {
     if (!ctx || !path) return -1;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode) return STORM_ERR_HARDCORE_BLOCKED;
     if (!ctx->rom_loaded) return -1;
     std::vector<uint8_t> tmp;
     if (!read_file_bytes(path, tmp)) return -1;
@@ -1201,6 +1215,7 @@ STORM_GBCA_API int storm_gbca_is_sram_dirty(const StormGbcaContext* ctx) {
 STORM_GBCA_API int storm_gbca_rewind_step(StormGbcaContext* ctx) {
     if (!ctx) return -1;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode) return STORM_ERR_HARDCORE_BLOCKED;
     if (!ctx->rom_loaded) return -1;
     std::vector<uint8_t> state;
     if (!ctx->rewind.pop_state(state)) return -1;
@@ -1257,6 +1272,7 @@ STORM_GBCA_API void storm_gbca_cheats_clear(StormGbcaContext* ctx) {
 STORM_GBCA_API int storm_gbca_cheat_add(StormGbcaContext* ctx, const char* name, const char* code, int enabled) {
     if (!ctx || !code) return -1;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode) return STORM_ERR_HARDCORE_BLOCKED;
     CheatEntry entry;
     entry.name = name ? name : "Cheat";
     entry.raw_code = code;
@@ -1368,6 +1384,7 @@ STORM_GBCA_API int storm_gbca_compute_ra_hash_buffer(const void* data, size_t si
 STORM_GBCA_API int storm_gbca_write_memory(StormGbcaContext* ctx, int region, uint32_t addr, const uint8_t* src, size_t len) {
     if (!ctx || !src || len == 0) return -1;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode) return STORM_ERR_HARDCORE_BLOCKED;
     if (!ctx->rom_loaded) return -1;
     if (ctx->using_sameboy && ctx->sb) {
         uint32_t base = 0;
@@ -1495,6 +1512,7 @@ STORM_GBCA_API int storm_gbca_copy_upscaled_frame(StormGbcaContext* ctx, uint32_
 STORM_GBCA_API void storm_gbca_set_performance(StormGbcaContext* ctx, int cpu_overclock_pct, int frame_skip) {
     if (!ctx) return;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode) cpu_overclock_pct = 100;
     ctx->cpu_overclock_pct = std::clamp(cpu_overclock_pct, 50, 400);
     ctx->frame_skip = std::clamp(frame_skip, 0, 4);
     if (!ctx->using_sameboy && ctx->mgba) {
@@ -1523,6 +1541,7 @@ static size_t read_region_snapshot(const StormGbcaContext* ctx, int region, std:
 STORM_GBCA_API int storm_gbca_mem_search_reset(StormGbcaContext* ctx, int region, int value_size_bytes) {
     if (!ctx) return -1;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode) return STORM_ERR_HARDCORE_BLOCKED;
     if (!ctx->rom_loaded) return -1;
     std::vector<uint8_t> snap;
     size_t got = read_region_snapshot(ctx, region, snap);
@@ -1534,6 +1553,7 @@ STORM_GBCA_API int storm_gbca_mem_search_reset(StormGbcaContext* ctx, int region
 STORM_GBCA_API int storm_gbca_mem_search_filter(StormGbcaContext* ctx, int cmp_op, uint32_t target_value) {
     if (!ctx) return -1;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode) return STORM_ERR_HARDCORE_BLOCKED;
     if (!ctx->rom_loaded || !ctx->mem_search.initialized()) return -1;
     std::vector<uint8_t> snap;
     size_t got = read_region_snapshot(ctx, ctx->mem_search.region(), snap);
@@ -1584,7 +1604,7 @@ STORM_GBCA_API void storm_gbca_set_optimization_profile(StormGbcaContext* ctx, i
             ctx->cfg.rewind_interval = 1;
             break;
     }
-    ctx->rewind.configure(ctx->cfg.rewind_enabled != 0, ctx->cfg.rewind_buffer_mb, ctx->cfg.rewind_interval);
+    ctx->rewind.configure(ctx->cfg.rewind_enabled != 0 && !ctx->hardcore_mode, ctx->cfg.rewind_buffer_mb, ctx->cfg.rewind_interval);
     if (ctx->rom_loaded) {
         if (ctx->using_sameboy) apply_sameboy_config(ctx);
         else apply_mgba_config(ctx);
@@ -1638,4 +1658,135 @@ STORM_GBCA_API int storm_gbca_printer_poll_image(StormGbcaContext* ctx, uint32_t
     return ctx->mp.poll_printer_image(dst_rgba, max_pixels, out_w, out_h);
 }
 
+STORM_GBCA_API int storm_gbca_set_hardcore_mode(StormGbcaContext* ctx, int enabled) {
+    if (!ctx) return -1;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    bool want = (enabled != 0);
+    bool was = ctx->hardcore_mode;
+    ctx->hardcore_mode = want;
+    if (want) {
+        storm_gbca_cheats_clear(ctx);
+        ctx->rewind.configure(false, ctx->cfg.rewind_buffer_mb, ctx->cfg.rewind_interval);
+        ctx->rewind.reset();
+        if (ctx->fast_forward.load(std::memory_order_acquire) < 1.0f) {
+            ctx->fast_forward.store(1.0f, std::memory_order_release);
+        }
+        ctx->cpu_overclock_pct = 100;
+        ctx->mem_search = storm::MemSearchSession{};
+        if (!was && ctx->rom_loaded) {
+            storm_gbca_reset(ctx);
+            return 1;
+        }
+    } else {
+        ctx->rewind.configure(ctx->cfg.rewind_enabled != 0, ctx->cfg.rewind_buffer_mb, ctx->cfg.rewind_interval);
+    }
+    return 0;
+}
+
+STORM_GBCA_API int storm_gbca_get_hardcore_mode(const StormGbcaContext* ctx) {
+    if (!ctx) return 0;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    return ctx->hardcore_mode ? 1 : 0;
+}
+
 } // extern "C"
+
+namespace storm {
+
+StormRaState* ra_state_from_ctx(const StormGbcaContext* ctx) {
+    return ctx ? ctx->ra_state : nullptr;
+}
+
+std::recursive_mutex& core_mutex_from_ctx(const StormGbcaContext* ctx) {
+    return ctx->core_mu;
+}
+
+bool is_hardcore_from_ctx(const StormGbcaContext* ctx) {
+    return ctx ? ctx->hardcore_mode : false;
+}
+
+uint32_t ra_peek_core_memory(const StormGbcaContext* ctx, uint32_t address, uint8_t* buffer, uint32_t num_bytes) {
+    if (!ctx || !ctx->rom_loaded || !buffer || num_bytes == 0) return 0;
+    std::memset(buffer, 0, num_bytes);
+
+    if (ctx->rom_info.platform == STORM_PLATFORM_GBA) {
+        if (!ctx->mgba) return 0;
+        struct mCore* core = ctx->mgba;
+        size_t iwram_sz = 0, ewram_sz = 0, sram_sz = 0;
+        const uint8_t* iwram = static_cast<const uint8_t*>(core->getMemoryBlock(core, GBA_REGION_IWRAM, &iwram_sz));
+        const uint8_t* ewram = static_cast<const uint8_t*>(core->getMemoryBlock(core, GBA_REGION_EWRAM, &ewram_sz));
+        const uint8_t* sram = static_cast<const uint8_t*>(core->getMemoryBlock(core, GBA_REGION_SRAM, &sram_sz));
+
+        for (uint32_t i = 0; i < num_bytes; ++i) {
+            uint32_t addr = address + i;
+            if (addr <= 0x007FFFu) {
+                if (iwram && addr < iwram_sz) buffer[i] = iwram[addr];
+            } else if (addr >= 0x008000u && addr <= 0x047FFFu) {
+                uint32_t off = addr - 0x008000u;
+                if (ewram && off < ewram_sz) buffer[i] = ewram[off];
+            } else if (addr >= 0x048000u && addr <= 0x057FFFu) {
+                uint32_t off = addr - 0x048000u;
+                if (sram && off < sram_sz) buffer[i] = sram[off];
+            }
+        }
+        return num_bytes;
+    }
+
+    // GB / SGB / GBC memory layout matching rcheevos rc_consoleinfo.c
+    const bool is_gbc = (ctx->rom_info.platform == STORM_PLATFORM_GBC);
+    if (ctx->using_sameboy && ctx->sb) {
+        for (uint32_t i = 0; i < num_bytes; ++i) {
+            uint32_t addr = address + i;
+            uint8_t val = 0;
+            if (addr <= 0x9FFFu || (addr >= 0xFE00u && addr <= 0xFE9Fu) || (addr >= 0xFF00u && addr <= 0xFFFFu)) {
+                storm_sb_read_memory(ctx->sb, STORM_MEM_SYSTEM_BUS, addr, &val, 1);
+            } else if (addr >= 0xA000u && addr <= 0xBFFFu) {
+                if (storm_sb_read_memory(ctx->sb, STORM_MEM_CART_RAM, addr - 0xA000u, &val, 1) == 0) {
+                    storm_sb_read_memory(ctx->sb, STORM_MEM_SYSTEM_BUS, addr, &val, 1);
+                }
+            } else if (addr >= 0xC000u && addr <= 0xDFFFu) {
+                storm_sb_read_memory(ctx->sb, STORM_MEM_WRAM, addr - 0xC000u, &val, 1);
+            } else if (addr >= 0xE000u && addr <= 0xFDFFu) {
+                storm_sb_read_memory(ctx->sb, STORM_MEM_WRAM, addr - 0xE000u, &val, 1);
+            } else if (is_gbc && addr >= 0x10000u && addr <= 0x15FFFu) {
+                storm_sb_read_memory(ctx->sb, STORM_MEM_WRAM, 0x2000u + (addr - 0x10000u), &val, 1);
+            } else if (addr >= 0x16000u && addr <= 0x33FFFu) {
+                storm_sb_read_memory(ctx->sb, STORM_MEM_CART_RAM, 0x2000u + (addr - 0x16000u), &val, 1);
+            }
+            buffer[i] = val;
+        }
+        return num_bytes;
+    }
+
+    if (!ctx->mgba) return 0;
+    struct mCore* core = ctx->mgba;
+    size_t wram_sz = 0, sram_sz = 0;
+    const uint8_t* wram = static_cast<const uint8_t*>(core->getMemoryBlock(core, GB_REGION_WORKING_RAM_BANK0, &wram_sz));
+    const uint8_t* sram = static_cast<const uint8_t*>(core->getMemoryBlock(core, GB_REGION_EXTERNAL_RAM, &sram_sz));
+
+    for (uint32_t i = 0; i < num_bytes; ++i) {
+        uint32_t addr = address + i;
+        if (addr <= 0x9FFFu || (addr >= 0xFE00u && addr <= 0xFE9Fu) || (addr >= 0xFF00u && addr <= 0xFFFFu)) {
+            buffer[i] = static_cast<uint8_t>(core->busRead8(core, addr));
+        } else if (addr >= 0xA000u && addr <= 0xBFFFu) {
+            uint32_t off = addr - 0xA000u;
+            if (sram && off < sram_sz) buffer[i] = sram[off];
+            else buffer[i] = static_cast<uint8_t>(core->busRead8(core, addr));
+        } else if (addr >= 0xC000u && addr <= 0xDFFFu) {
+            uint32_t off = addr - 0xC000u;
+            if (wram && off < wram_sz) buffer[i] = wram[off];
+        } else if (addr >= 0xE000u && addr <= 0xFDFFu) {
+            uint32_t off = addr - 0xE000u;
+            if (wram && off < wram_sz) buffer[i] = wram[off];
+        } else if (is_gbc && addr >= 0x10000u && addr <= 0x15FFFu) {
+            uint32_t off = 0x2000u + (addr - 0x10000u);
+            if (wram && off < wram_sz) buffer[i] = wram[off];
+        } else if (addr >= 0x16000u && addr <= 0x33FFFu) {
+            uint32_t off = 0x2000u + (addr - 0x16000u);
+            if (sram && off < sram_sz) buffer[i] = sram[off];
+        }
+    }
+    return num_bytes;
+}
+
+} // namespace storm

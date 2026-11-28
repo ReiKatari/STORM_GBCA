@@ -147,8 +147,8 @@
     <string name="ra_encore_sub">이미 달성한 도전과제를 세션 중 다시 트리거</string>
     <string name="ra_unofficial">비공식 도전과제</string>
     <string name="ra_unofficial_sub">테스트 및 비공식 도전과제 세트 포함</string>
-    <string name="ra_offline_softcore">오프라인 소프트코어 대기열</string>
-    <string name="ra_offline_softcore_sub">오프라인 달성 기록 저장 후 나중에 자동 동기화</string>
+    <string name="ra_offline_casual">오프라인 소프트코어 대기열</string>
+    <string name="ra_offline_casual_sub">오프라인 달성 기록 저장 후 나중에 자동 동기화</string>
     <string name="ra_challenge_ind">활성 챌린지 표시기</string>
     <string name="ra_progress_ind">진행률 표시기</string>
     <string name="ra_lb_ind">리더보드 표시기</string>
@@ -415,4 +415,24 @@
     <string name="ctrl_section_gb">Game Boy (GB)</string>
     <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
     <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
+    <string name="ra_mode_hardcore">Hardcore</string>
+    <string name="ra_mode_casual">Casual</string>
+    <string name="ra_banner_hardcore">RetroAchievements - Hardcore</string>
+    <string name="ra_banner_casual">RetroAchievements - Casual</string>
+    <string name="ra_hardcore_blocked_load_state">하드코어 모드에서는 상태 불러오기가 차단됩니다</string>
+    <string name="ra_hardcore_blocked_rewind">하드코어 모드에서는 되감기가 비활성화됩니다</string>
+    <string name="ra_hardcore_blocked_cheats">하드코어 모드에서는 치트가 비활성화됩니다</string>
+    <string name="ra_hardcore_blocked_ram_finder">하드코어 모드에서는 RAM 검색이 비활성화됩니다</string>
+    <string name="ra_hardcore_blocked_patch">하드코어 모드에서는 세션 중 패치 적용이 차단됩니다</string>
+    <string name="ra_hardcore_blocked_overclock">하드코어 모드에서는 CPU 오버클럭이 100%로 고정됩니다</string>
+    <string name="ra_switch_to_hardcore_title">하드코어 모드로 전환할까요?</string>
+    <string name="ra_switch_to_hardcore_msg">플레이 중 하드코어 모드로 전환하면 콘솔이 완전히 재설정되고 활성 치트와 되감기 기록이 초기화됩니다. 계속할까요?</string>
+    <string name="ra_switched_casual_toast">캐주얼 모드로 전환되었습니다</string>
+    <string name="ra_switched_hardcore_toast">하드코어 모드 활성 - 콘솔 재설정됨</string>
+    <string name="ra_lb_submitted_fmt">리더보드 제출됨: %1$s (%2$s)</string>
+    <string name="about_legal_section">법적 고지 및 개인정보</string>
+    <string name="about_privacy_policy">개인정보 처리방침</string>
+    <string name="about_privacy_policy_sub">GitHub에서 STORM GBCA 개인정보 처리방침 보기</string>
+    <string name="about_third_party_licenses">오픈소스 라이선스 (FOSS)</string>
+    <string name="about_third_party_licenses_sub">mGBA, SameBoy, rcheevos, librashader, Oboe 라이선스</string>
 </resources>

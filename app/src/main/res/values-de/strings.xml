@@ -147,8 +147,8 @@
     <string name="ra_encore_sub">Bereits freigeschaltete Erfolge in der Sitzung erneut auslösen</string>
     <string name="ra_unofficial">Inoffizielle Erfolge</string>
     <string name="ra_unofficial_sub">Test- und Community-Sets anzeigen</string>
-    <string name="ra_offline_softcore">Offline-Softcore-Warteschlange</string>
-    <string name="ra_offline_softcore_sub">Softcore-Erfolge offline speichern und später synchronisieren</string>
+    <string name="ra_offline_casual">Offline-Casual-Warteschlange</string>
+    <string name="ra_offline_casual_sub">Casual-Erfolge offline speichern und später synchronisieren</string>
     <string name="ra_challenge_ind">Aktive Herausforderungs-Indikatoren</string>
     <string name="ra_progress_ind">Fortschritts-Indikatoren</string>
     <string name="ra_lb_ind">Bestenlisten-Indikatoren</string>
@@ -415,4 +415,24 @@
     <string name="ctrl_section_gb">Game Boy (GB)</string>
     <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
     <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
+    <string name="ra_mode_hardcore">Hardcore</string>
+    <string name="ra_mode_casual">Casual</string>
+    <string name="ra_banner_hardcore">RetroAchievements - Hardcore</string>
+    <string name="ra_banner_casual">RetroAchievements - Casual</string>
+    <string name="ra_hardcore_blocked_load_state">Laden von Spielstaenden ist im Hardcore-Modus gesperrt</string>
+    <string name="ra_hardcore_blocked_rewind">Ruecklauf ist im Hardcore-Modus deaktiviert</string>
+    <string name="ra_hardcore_blocked_cheats">Cheats sind im Hardcore-Modus deaktiviert</string>
+    <string name="ra_hardcore_blocked_ram_finder">RAM-Suche ist im Hardcore-Modus deaktiviert</string>
+    <string name="ra_hardcore_blocked_patch">Soft-Patching waehrend der Sitzung ist im Hardcore-Modus gesperrt</string>
+    <string name="ra_hardcore_blocked_overclock">CPU-Uebertaktung ist im Hardcore-Modus auf 100% gesperrt</string>
+    <string name="ra_switch_to_hardcore_title">In den Hardcore-Modus wechseln?</string>
+    <string name="ra_switch_to_hardcore_msg">Der Wechsel in den Hardcore-Modus fuehrt einen vollstaendigen Konsolen-Reset durch und loescht aktive Cheats und den Ruecklauf. Fortfahren?</string>
+    <string name="ra_switched_casual_toast">Casual-Modus aktiv</string>
+    <string name="ra_switched_hardcore_toast">Hardcore-Modus aktiv - Konsole zurueckgesetzt</string>
+    <string name="ra_lb_submitted_fmt">Bestenliste gesendet: %1$s (%2$s)</string>
+    <string name="about_legal_section">Rechtliches &amp; Datenschutz</string>
+    <string name="about_privacy_policy">Datenschutzerklaerung</string>
+    <string name="about_privacy_policy_sub">STORM GBCA Datenschutzerklaerung auf GitHub ansehen</string>
+    <string name="about_third_party_licenses">Drittanbieter-Lizenzen (FOSS)</string>
+    <string name="about_third_party_licenses_sub">mGBA, SameBoy, rcheevos, librashader, Oboe und Open-Source-Lizenzen</string>
 </resources>

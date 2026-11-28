@@ -117,6 +117,20 @@ public sealed class StormGbcaUiState
         RetroAchievements.IsUnofficialEnabled = Settings.RetroAchievementsUnofficial;
         RetroAchievements.NotificationsEnabled = Settings.RetroAchievementsNotifications;
         RetroAchievements.LeaderboardsEnabled = Settings.RetroAchievementsLeaderboards;
+        RetroAchievements.ShowLeaderboardPopups = Settings.RetroAchievementsShowLeaderboardPopups;
+    }
+
+    public void SetHardcoreModeFromUi(bool enabled)
+    {
+        Settings.RetroAchievementsHardcoreMode = enabled;
+        RetroAchievements.IsHardcoreMode = enabled;
+        GbcaSettingsStore.Save(Settings);
+        if (IsEmulationActive)
+        {
+            Emulator.SetHardcoreMode(enabled, Settings, Cheats, RetroAchievements);
+        }
+        SettingsSaved?.Invoke();
+        StateChanged?.Invoke();
     }
 
     public void SaveSettings(bool notify = false)
@@ -217,9 +231,18 @@ public sealed class StormGbcaUiState
         {
             target.RaHash = RetroAchievements.ComputeRomHash(target.FilePath, target.Platform);
         }
-        if (RetroAchievements.IsLoggedIn && !string.IsNullOrWhiteSpace(target.RaHash))
+        if (RetroAchievements.IsEnabled && RetroAchievements.IsLoggedIn && !string.IsNullOrWhiteSpace(target.RaHash))
         {
-            _ = RetroAchievements.StartSessionAndFetchSummaryAsync(target.RaHash);
+            string raHash = target.RaHash;
+            _ = Task.Run(async () =>
+            {
+                var session = await RetroAchievements.FetchGameSessionAsync(raHash).ConfigureAwait(false);
+                if (session != null && IsEmulationActive)
+                {
+                    await Emulator.ActivateRaSessionAsync(session, raHash).ConfigureAwait(false);
+                    NotifyStatus($"RetroAchievements: {session.GameTitle} ({session.UnlockedCount}/{session.TotalCount} | {session.EarnedPoints} pts)");
+                }
+            });
         }
 
         GbcaSettingsStore.Save(Settings);
@@ -283,7 +306,7 @@ public sealed class StormGbcaUiState
     public void ApplyLiveCheats()
     {
         if (!IsEmulationActive || Emulator.NativeContext == nint.Zero) return;
-        bool allowed = RetroAchievements.IsFeatureAllowedInCurrentMode("cheats");
+        bool allowed = !Emulator.IsHardcoreMode && RetroAchievements.IsFeatureAllowedInCurrentMode("cheats");
         Cheats.ApplyToNative(Emulator.NativeContext, allowed);
     }
 

@@ -147,8 +147,8 @@
     <string name="ra_encore_sub">Attiva nuovamente obiettivi già sbloccati in sessione</string>
     <string name="ra_unofficial">Obiettivi non ufficiali</string>
     <string name="ra_unofficial_sub">Includi set di test e non ufficiali</string>
-    <string name="ra_offline_softcore">Coda Softcore offline</string>
-    <string name="ra_offline_softcore_sub">Salva gli obiettivi offline e sincronizza in seguito</string>
+    <string name="ra_offline_casual">Coda Casual offline</string>
+    <string name="ra_offline_casual_sub">Salva gli obiettivi offline e sincronizza in seguito</string>
     <string name="ra_challenge_ind">Indicatori sfida attiva</string>
     <string name="ra_progress_ind">Indicatori di progresso</string>
     <string name="ra_lb_ind">Indicatori classifiche</string>
@@ -415,4 +415,24 @@
     <string name="ctrl_section_gb">Game Boy (GB)</string>
     <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
     <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
+    <string name="ra_mode_hardcore">Hardcore</string>
+    <string name="ra_mode_casual">Casual</string>
+    <string name="ra_banner_hardcore">RetroAchievements - Hardcore</string>
+    <string name="ra_banner_casual">RetroAchievements - Casual</string>
+    <string name="ra_hardcore_blocked_load_state">Caricamento stato bloccato in modalita Hardcore</string>
+    <string name="ra_hardcore_blocked_rewind">Riavvolgimento disattivato in modalita Hardcore</string>
+    <string name="ra_hardcore_blocked_cheats">Trucchi disattivati in modalita Hardcore</string>
+    <string name="ra_hardcore_blocked_ram_finder">Ricerca RAM disattivata in modalita Hardcore</string>
+    <string name="ra_hardcore_blocked_patch">Patch in sessione bloccata in modalita Hardcore</string>
+    <string name="ra_hardcore_blocked_overclock">Overclock CPU bloccato al 100% in modalita Hardcore</string>
+    <string name="ra_switch_to_hardcore_title">Passare alla modalita Hardcore?</string>
+    <string name="ra_switch_to_hardcore_msg">Il passaggio alla modalita Hardcore durante la partita eseguira un reset completo della console cancellando trucchi e riavvolgimento. Continuare?</string>
+    <string name="ra_switched_casual_toast">Modalita Casual attiva</string>
+    <string name="ra_switched_hardcore_toast">Modalita Hardcore attiva - console resettata</string>
+    <string name="ra_lb_submitted_fmt">Classifica inviata: %1$s (%2$s)</string>
+    <string name="about_legal_section">Note legali e privacy</string>
+    <string name="about_privacy_policy">Informativa sulla privacy</string>
+    <string name="about_privacy_policy_sub">Visualizza la privacy policy di STORM GBCA su GitHub</string>
+    <string name="about_third_party_licenses">Licenze di terze parti (FOSS)</string>
+    <string name="about_third_party_licenses_sub">Licenze mGBA, SameBoy, rcheevos, librashader e Oboe</string>
 </resources>

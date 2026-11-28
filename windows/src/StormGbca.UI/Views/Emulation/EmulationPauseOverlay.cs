@@ -33,7 +33,9 @@ public class EmulationPauseOverlay : Border
     private readonly TextBlock _bannerGameTitle;
     private readonly TextBlock _bannerTelemetry;
     private readonly List<Border> _bottomPills = [];
+    private readonly Border _bottomRewindBtn;
     private int _activeTab;
+    private bool _pendingHardcoreConfirm;
     private DateTime _sessionOpenedUtc = DateTime.UtcNow;
 
     public event Action? ResumeRequested;
@@ -97,6 +99,7 @@ public class EmulationPauseOverlay : Border
         AddTab(4, GbcaLoc.T("PauseTabLink"));
         AddTab(5, GbcaLoc.T("PauseTabSensors"));
         AddTab(6, GbcaLoc.T("PauseTabRam"));
+        AddTab(7, "RetroAchievements");
         root.Children.Add(_tabBar);
         Grid.SetRow(_tabBar, 1);
 
@@ -114,7 +117,12 @@ public class EmulationPauseOverlay : Border
         // Bottom bar (WrapPanel-safe)
         var bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 12, 0, 0), ColumnSpacing = 8 };
         var leftBottom = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        var rwBtn = CreateActionPill("Перемотка назад", Color.Parse("#38BDF8"), () => RewindRequested?.Invoke());
+        var rwBtn = CreateActionPill("Перемотка назад", Color.Parse("#38BDF8"), () =>
+        {
+            if (StormGbcaUiState.Instance.Emulator.IsHardcoreMode) return;
+            RewindRequested?.Invoke();
+        });
+        _bottomRewindBtn = rwBtn;
         rwBtn.Margin = new Thickness(0, 0, 8, 4);
         var rstBtn = CreateActionPill("Перезапуск", Color.Parse("#F59E0B"), () => ResetRequested?.Invoke());
         rstBtn.Margin = new Thickness(0, 0, 8, 4);
@@ -152,11 +160,13 @@ public class EmulationPauseOverlay : Border
 
     public void RefreshOnOpen()
     {
+        _pendingHardcoreConfirm = false;
         var rom = StormGbcaUiState.Instance.SelectedRom;
         _bannerGameTitle.Text = rom?.GetDisplayTitle() ?? "STORM GBCA";
         var link = StormGbcaUiState.Instance.Emulator.GetLinkStatus();
         string linkTag = link.Mode == StormLinkMode.None ? "" : $"  |  LINK: {link.Mode} ({link.PlayerCount}P)";
-        _bannerTelemetry.Text = $"{DateTime.Now:HH:mm}  |  {StormGbcaUiState.Instance.Emulator.ActivePlatform}  |  ESC: {GbcaLoc.T("MenuResume")}{linkTag}";
+        string hcTag = StormGbcaUiState.Instance.Emulator.IsHardcoreMode ? "  |  RA HARDCORE" : "";
+        _bannerTelemetry.Text = $"{DateTime.Now:HH:mm}  |  {StormGbcaUiState.Instance.Emulator.ActivePlatform}  |  ESC: {GbcaLoc.T("MenuResume")}{hcTag}{linkTag}";
         RefreshTab();
     }
 
@@ -195,6 +205,11 @@ public class EmulationPauseOverlay : Border
             }
         }
 
+        bool hc = StormGbcaUiState.Instance.Emulator.IsHardcoreMode;
+        _bottomRewindBtn.IsEnabled = !hc;
+        _bottomRewindBtn.Opacity = hc ? 0.42 : 1.0;
+        ToolTip.SetTip(_bottomRewindBtn, hc ? "Перемотка отключена в режиме Hardcore RetroAchievements" : null);
+
         _bodyPanel.Children.Clear();
         switch (_activeTab)
         {
@@ -205,11 +220,33 @@ public class EmulationPauseOverlay : Border
             case 4: BuildLinkTab(); break;
             case 5: BuildSensorsCoreTab(); break;
             case 6: BuildRamFinderTab(); break;
+            case 7: BuildRetroAchievementsTab(); break;
         }
     }
 
     private void BuildSlotsTab()
     {
+        bool hc = StormGbcaUiState.Instance.Emulator.IsHardcoreMode;
+        if (hc)
+        {
+            _bodyPanel.Children.Add(new Border
+            {
+                Padding = new Thickness(10, 7),
+                CornerRadius = new CornerRadius(8),
+                Background = new SolidColorBrush(Color.FromArgb(40, 250, 204, 21)),
+                BorderBrush = new SolidColorBrush(Color.Parse("#FACC15")),
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = "Режим Hardcore: сохранение состояний разрешено для отладки, загрузка состояний заблокирована.",
+                    FontSize = 11.5,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = StormThemeBrushes.PrimaryText,
+                    TextWrapping = TextWrapping.Wrap
+                }
+            });
+        }
+
         string romKey = StormGbcaUiState.Instance.Emulator.ActiveRomKey;
         var grid = new UniformGrid { Columns = 2 };
 
@@ -263,7 +300,17 @@ public class EmulationPauseOverlay : Border
                 SaveSlotRequested?.Invoke(slot);
                 RefreshTab();
             }));
-            btns.Children.Add(CreateMiniBtn("Загрузить", Color.Parse("#38BDF8"), () => LoadSlotRequested?.Invoke(slot)));
+            var loadBtn = CreateMiniBtn("Загрузить", Color.Parse("#38BDF8"), () =>
+            {
+                if (!hc) LoadSlotRequested?.Invoke(slot);
+            });
+            if (hc)
+            {
+                loadBtn.IsEnabled = false;
+                loadBtn.Opacity = 0.42;
+                ToolTip.SetTip(loadBtn, "Загрузка состояний отключена в режиме Hardcore");
+            }
+            btns.Children.Add(loadBtn);
             row.Children.Add(btns);
             Grid.SetColumn(btns, 2);
 
@@ -358,11 +405,20 @@ public class EmulationPauseOverlay : Border
             if (s.UpscaleMode != StormUpscaleMode.None && s.ResolutionScale < 2) s.ResolutionScale = 2;
             StormGbcaUiState.Instance.SaveSettings();
         }));
-        _bodyPanel.Children.Add(CreateSlider("Разгон процессора (CPU Overclock):", 50, 400, s.CpuOverclockPct, "%", v =>
+        bool hc = StormGbcaUiState.Instance.Emulator.IsHardcoreMode;
+        var ocSlider = CreateSlider(hc ? "Разгон процессора (Hardcore 100%):" : "Разгон процессора (CPU Overclock):", 50, 400, hc ? 100 : s.CpuOverclockPct, "%", v =>
         {
+            if (hc) return;
             s.CpuOverclockPct = Math.Clamp(((int)v / 25) * 25, 50, 400);
             StormGbcaUiState.Instance.SaveSettings();
-        }));
+        });
+        if (hc)
+        {
+            ocSlider.IsEnabled = false;
+            ocSlider.Opacity = 0.45;
+            ToolTip.SetTip(ocSlider, "Разгон заблокирован в режиме Hardcore RetroAchievements");
+        }
+        _bodyPanel.Children.Add(ocSlider);
         _bodyPanel.Children.Add(CreateCombo("Пропуск кадров (Frame Skip):", ["Выкл (0)", "1", "2", "3", "4"], Math.Clamp(s.FrameSkip, 0, 4), idx =>
         {
             s.FrameSkip = idx;
@@ -486,9 +542,11 @@ public class EmulationPauseOverlay : Border
             StormGbcaUiState.Instance.SaveSettings();
         }));
 
+        bool hc = StormGbcaUiState.Instance.Emulator.IsHardcoreMode;
         var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
         var patchPill = CreateActionPill("Применить патч IPS/UPS/BPS...", Color.Parse("#8B5CF6"), async () =>
         {
+            if (hc) return;
             var top = TopLevel.GetTopLevel(this);
             if (top?.StorageProvider == null) return;
             var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
@@ -501,14 +559,27 @@ public class EmulationPauseOverlay : Border
             if (!string.IsNullOrWhiteSpace(path)) emu.ApplyPatchFile(path);
         });
         patchPill.Margin = new Thickness(0, 0, 8, 6);
+        if (hc)
+        {
+            patchPill.IsEnabled = false;
+            patchPill.Opacity = 0.42;
+            ToolTip.SetTip(patchPill, "Применение патчей во время игры отключено в режиме Hardcore");
+        }
         row.Children.Add(patchPill);
 
         var cheatPill = CreateActionPill("Менеджер читов", Color.Parse("#10B981"), () =>
         {
+            if (hc) return;
             var rom = StormGbcaUiState.Instance.SelectedRom;
             if (rom != null) StormGbcaUiState.Instance.RequestRomModal(rom, 1);
         });
         cheatPill.Margin = new Thickness(0, 0, 8, 6);
+        if (hc)
+        {
+            cheatPill.IsEnabled = false;
+            cheatPill.Opacity = 0.42;
+            ToolTip.SetTip(cheatPill, "Читы отключены в режиме Hardcore");
+        }
         row.Children.Add(cheatPill);
         _bodyPanel.Children.Add(row);
     }
@@ -523,6 +594,26 @@ public class EmulationPauseOverlay : Border
     private void BuildRamFinderTab()
     {
         var emu = StormGbcaUiState.Instance.Emulator;
+        if (emu.IsHardcoreMode)
+        {
+            _bodyPanel.Children.Add(new Border
+            {
+                Padding = new Thickness(12, 10),
+                CornerRadius = new CornerRadius(10),
+                Background = new SolidColorBrush(Color.FromArgb(40, 250, 204, 21)),
+                BorderBrush = new SolidColorBrush(Color.Parse("#FACC15")),
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = "Поиск и изменение памяти (RAM Finder) полностью заблокированы в режиме Hardcore RetroAchievements.",
+                    FontSize = 12,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = StormThemeBrushes.PrimaryText,
+                    TextWrapping = TextWrapping.Wrap
+                }
+            });
+            return;
+        }
         bool isGba = emu.ActivePlatform == StormPlatform.Gba;
         StormMemoryRegion[] regions = isGba
             ? [StormMemoryRegion.Iwram, StormMemoryRegion.Ewram, StormMemoryRegion.CartRam]
@@ -619,6 +710,201 @@ public class EmulationPauseOverlay : Border
         _ramHits = StormGbcaUiState.Instance.Emulator.MemSearchGetResults(48);
         _ramStatus = $"Найдено совпадений: {n}";
         RefreshTab();
+    }
+
+    private void BuildRetroAchievementsTab()
+    {
+        var emu = StormGbcaUiState.Instance.Emulator;
+        var ra = StormGbcaUiState.Instance.RetroAchievements;
+        bool hc = emu.IsHardcoreMode;
+
+        Color modeColor = hc ? Color.Parse("#FACC15") : Color.Parse("#38BDF8");
+        var modeBanner = new Border
+        {
+            Padding = new Thickness(12, 9),
+            CornerRadius = new CornerRadius(10),
+            Background = new SolidColorBrush(Color.FromArgb(35, modeColor.R, modeColor.G, modeColor.B)),
+            BorderBrush = new SolidColorBrush(modeColor),
+            BorderThickness = new Thickness(1)
+        };
+        var modeGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 10 };
+        var modeCol = new StackPanel { Spacing = 2 };
+        modeCol.Children.Add(new TextBlock
+        {
+            Text = hc ? "Режим: RetroAchievements - Hardcore" : "Режим: RetroAchievements - Casual",
+            FontSize = 13,
+            FontWeight = FontWeight.Bold,
+            Foreground = new SolidColorBrush(modeColor)
+        });
+        modeCol.Children.Add(new TextBlock
+        {
+            Text = hc
+                ? "Загрузка состояний, перемотка, читы, RAM Finder, разгон и замедление отключены. Сохранение состояний разрешено для отладки."
+                : "Стандартный режим Casual: все функции эмулятора доступны.",
+            FontSize = 11,
+            Foreground = StormThemeBrushes.SecondaryText,
+            TextWrapping = TextWrapping.Wrap
+        });
+        modeGrid.Children.Add(modeCol);
+
+        var toggleBtn = CreateActionPill(
+            hc ? "Перейти в Casual" : "Включить Hardcore",
+            hc ? Color.Parse("#38BDF8") : Color.Parse("#FACC15"),
+            () =>
+            {
+                if (hc)
+                {
+                    StormGbcaUiState.Instance.SetHardcoreModeFromUi(false);
+                    _pendingHardcoreConfirm = false;
+                    RefreshOnOpen();
+                }
+                else
+                {
+                    _pendingHardcoreConfirm = true;
+                    RefreshTab();
+                }
+            });
+        modeGrid.Children.Add(toggleBtn);
+        Grid.SetColumn(toggleBtn, 1);
+        modeBanner.Child = modeGrid;
+        _bodyPanel.Children.Add(modeBanner);
+
+        if (_pendingHardcoreConfirm && !hc)
+        {
+            var confirmCard = new Border
+            {
+                Padding = new Thickness(12, 9),
+                CornerRadius = new CornerRadius(10),
+                Background = new SolidColorBrush(Color.FromArgb(45, 245, 158, 11)),
+                BorderBrush = new SolidColorBrush(Color.Parse("#F59E0B")),
+                BorderThickness = new Thickness(1)
+            };
+            var cStack = new StackPanel { Spacing = 8 };
+            cStack.Children.Add(new TextBlock
+            {
+                Text = "Включение режима Hardcore выполнит полный перезапуск консоли (сброс текущей сессии) и отключит читы, загрузку состояний, перемотку и разгон.",
+                FontSize = 11.5,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = StormThemeBrushes.PrimaryText,
+                TextWrapping = TextWrapping.Wrap
+            });
+            var cBtns = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            cBtns.Children.Add(CreateActionPill("Подтвердить и перезапустить", Color.Parse("#FACC15"), () =>
+            {
+                _pendingHardcoreConfirm = false;
+                StormGbcaUiState.Instance.SetHardcoreModeFromUi(true);
+                RefreshOnOpen();
+            }));
+            cBtns.Children.Add(CreateActionPill("Отмена", Color.Parse("#64748B"), () =>
+            {
+                _pendingHardcoreConfirm = false;
+                RefreshTab();
+            }));
+            cStack.Children.Add(cBtns);
+            confirmCard.Child = cStack;
+            _bodyPanel.Children.Add(confirmCard);
+        }
+
+        if (!string.IsNullOrWhiteSpace(emu.CurrentRichPresence))
+        {
+            _bodyPanel.Children.Add(new TextBlock
+            {
+                Text = $"Rich Presence: {emu.CurrentRichPresence}",
+                FontSize = 11.5,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = StormThemeBrushes.AccentSecondary,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        var session = ra.ActiveSession;
+        if (session == null)
+        {
+            _bodyPanel.Children.Add(new TextBlock
+            {
+                Text = ra.IsLoggedIn
+                    ? "Нет активного набора достижений для текущей игры."
+                    : "Войдите в аккаунт RetroAchievements в Настройках для отслеживания трофеев.",
+                FontSize = 12,
+                Foreground = StormThemeBrushes.SecondaryText,
+                TextWrapping = TextWrapping.Wrap
+            });
+            return;
+        }
+
+        _bodyPanel.Children.Add(new TextBlock
+        {
+            Text = $"{session.GameTitle}  |  {session.UnlockedCount}/{session.TotalCount} ({session.CompletionPercent}%)  |  {session.EarnedPoints}/{session.TotalPoints} pts",
+            FontSize = 12.5,
+            FontWeight = FontWeight.Bold,
+            Foreground = StormThemeBrushes.Accent,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        var measured = emu.GetMeasuredProgressSnapshot();
+        var primed = emu.GetPrimedAchievementsSnapshot();
+
+        foreach (var ach in session.Achievements)
+        {
+            bool earned = ach.Unlocked || ach.UnlockedHardcore;
+            bool isPrimed = primed.Contains((uint)ach.Id);
+            bool hasMeasured = measured.TryGetValue((uint)ach.Id, out var mInfo);
+
+            Color accent = ach.UnlockedHardcore
+                ? Color.Parse("#FACC15")
+                : (ach.Unlocked ? Color.Parse("#10B981") : (isPrimed ? Color.Parse("#F59E0B") : Color.Parse("#38BDF8")));
+
+            var card = new Border
+            {
+                Padding = new Thickness(10, 7),
+                CornerRadius = new CornerRadius(8),
+                Background = StormThemeBrushes.RowSurface,
+                BorderBrush = new SolidColorBrush(Color.FromArgb(earned || isPrimed ? (byte)185 : (byte)65, accent.R, accent.G, accent.B)),
+                BorderThickness = new Thickness(1)
+            };
+            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 10 };
+            var col = new StackPanel { Spacing = 2 };
+            string extraTag = isPrimed ? " [CHALLENGE ACTIVE]" : (hasMeasured ? $" [{(!string.IsNullOrWhiteSpace(mInfo.Formatted) ? mInfo.Formatted : $"{mInfo.Value}/{mInfo.Target}")}]" : string.Empty);
+            col.Children.Add(new TextBlock
+            {
+                Text = ach.Title + extraTag,
+                FontSize = 12,
+                FontWeight = FontWeight.Bold,
+                Foreground = StormThemeBrushes.PrimaryText,
+                TextWrapping = TextWrapping.Wrap
+            });
+            col.Children.Add(new TextBlock
+            {
+                Text = ach.Description,
+                FontSize = 11,
+                Foreground = StormThemeBrushes.SecondaryText,
+                TextWrapping = TextWrapping.Wrap
+            });
+            g.Children.Add(col);
+
+            var right = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+            right.Children.Add(new TextBlock
+            {
+                Text = $"{ach.Points} pts",
+                FontSize = 11,
+                FontWeight = FontWeight.Bold,
+                Foreground = new SolidColorBrush(Color.Parse("#FACC15")),
+                HorizontalAlignment = HorizontalAlignment.Right
+            });
+            right.Children.Add(new TextBlock
+            {
+                Text = ach.UnlockedHardcore ? "HARDCORE" : (ach.Unlocked ? "CASUAL" : "LOCKED"),
+                FontSize = 9.5,
+                FontWeight = FontWeight.Bold,
+                Foreground = new SolidColorBrush(accent),
+                HorizontalAlignment = HorizontalAlignment.Right
+            });
+            g.Children.Add(right);
+            Grid.SetColumn(right, 1);
+
+            card.Child = g;
+            _bodyPanel.Children.Add(card);
+        }
     }
 
     private static Border CreateMiniBtn(string text, Color accent, Action onClick)

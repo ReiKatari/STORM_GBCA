@@ -147,8 +147,8 @@
     <string name="ra_encore_sub">Volver a activar logros ya desbloqueados en la sesión</string>
     <string name="ra_unofficial">Logros no oficiales</string>
     <string name="ra_unofficial_sub">Incluir conjuntos de prueba y no oficiales</string>
-    <string name="ra_offline_softcore">Cola Softcore sin conexión</string>
-    <string name="ra_offline_softcore_sub">Guardar logros sin conexión y sincronizar después</string>
+    <string name="ra_offline_casual">Cola Casual sin conexión</string>
+    <string name="ra_offline_casual_sub">Guardar logros sin conexión y sincronizar después</string>
     <string name="ra_challenge_ind">Indicadores de desafío activo</string>
     <string name="ra_progress_ind">Indicadores de progreso</string>
     <string name="ra_lb_ind">Indicadores de marcadores</string>
@@ -415,4 +415,24 @@
     <string name="ctrl_section_gb">Game Boy (GB)</string>
     <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
     <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
+    <string name="ra_mode_hardcore">Hardcore</string>
+    <string name="ra_mode_casual">Casual</string>
+    <string name="ra_banner_hardcore">RetroAchievements - Hardcore</string>
+    <string name="ra_banner_casual">RetroAchievements - Casual</string>
+    <string name="ra_hardcore_blocked_load_state">La carga de estados esta bloqueada en modo Hardcore</string>
+    <string name="ra_hardcore_blocked_rewind">El rebobinado esta desactivado en modo Hardcore</string>
+    <string name="ra_hardcore_blocked_cheats">Los trucos estan desactivados en modo Hardcore</string>
+    <string name="ra_hardcore_blocked_ram_finder">El buscador de RAM esta desactivado en modo Hardcore</string>
+    <string name="ra_hardcore_blocked_patch">Los parches en sesion estan bloqueados en modo Hardcore</string>
+    <string name="ra_hardcore_blocked_overclock">El overclock de CPU esta bloqueado al 100% en modo Hardcore</string>
+    <string name="ra_switch_to_hardcore_title">Cambiar a modo Hardcore?</string>
+    <string name="ra_switch_to_hardcore_msg">Cambiar al modo Hardcore durante la partida reiniciara por completo la consola y borrara trucos e historial de rebobinado. Continuar?</string>
+    <string name="ra_switched_casual_toast">Modo Casual activado</string>
+    <string name="ra_switched_hardcore_toast">Modo Hardcore activo - consola reiniciada</string>
+    <string name="ra_lb_submitted_fmt">Clasificacion enviada: %1$s (%2$s)</string>
+    <string name="about_legal_section">Legal y privacidad</string>
+    <string name="about_privacy_policy">Politica de privacidad</string>
+    <string name="about_privacy_policy_sub">Ver politica de privacidad de STORM GBCA en GitHub</string>
+    <string name="about_third_party_licenses">Licencias de terceros (FOSS)</string>
+    <string name="about_third_party_licenses_sub">Licencias de mGBA, SameBoy, rcheevos, librashader y Oboe</string>
 </resources>

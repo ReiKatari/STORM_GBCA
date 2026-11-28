@@ -147,8 +147,8 @@
     <string name="ra_encore_sub">取得済み実績をセッション内で再トリガー</string>
     <string name="ra_unofficial">非公式実績</string>
     <string name="ra_unofficial_sub">テスト用・非公式の実績セットを含める</string>
-    <string name="ra_offline_softcore">オフラインソフトコアキュー</string>
-    <string name="ra_offline_softcore_sub">オフライン実績を保存し後で自動同期</string>
+    <string name="ra_offline_casual">オフラインソフトコアキュー</string>
+    <string name="ra_offline_casual_sub">オフライン実績を保存し後で自動同期</string>
     <string name="ra_challenge_ind">チャレンジ表示</string>
     <string name="ra_progress_ind">進捗インジケーター</string>
     <string name="ra_lb_ind">リーダーボード表示</string>
@@ -415,4 +415,24 @@
     <string name="ctrl_section_gb">Game Boy (GB)</string>
     <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
     <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
+    <string name="ra_mode_hardcore">Hardcore</string>
+    <string name="ra_mode_casual">Casual</string>
+    <string name="ra_banner_hardcore">RetroAchievements - Hardcore</string>
+    <string name="ra_banner_casual">RetroAchievements - Casual</string>
+    <string name="ra_hardcore_blocked_load_state">ハードコアモードではステートロードが禁止されています</string>
+    <string name="ra_hardcore_blocked_rewind">ハードコアモードでは巻き戻しは無効です</string>
+    <string name="ra_hardcore_blocked_cheats">ハードコアモードではチートは無効です</string>
+    <string name="ra_hardcore_blocked_ram_finder">ハードコアモードではRAM検索は無効です</string>
+    <string name="ra_hardcore_blocked_patch">ハードコアモードではプレイ中のパッチ適用は禁止されています</string>
+    <string name="ra_hardcore_blocked_overclock">ハードコアモードではCPUオーバークロックは100%に固定されます</string>
+    <string name="ra_switch_to_hardcore_title">ハードコアモードに切り替えますか？</string>
+    <string name="ra_switch_to_hardcore_msg">プレイ中にハードコアモードへ切り替えるとコンソールが完全リセットされ、チートや巻き戻し履歴が消去されます。続行しますか？</string>
+    <string name="ra_switched_casual_toast">カジュアルモードに切り替えました</string>
+    <string name="ra_switched_hardcore_toast">ハードコアモード有効 - リセットされました</string>
+    <string name="ra_lb_submitted_fmt">リーダーボード送信: %1$s (%2$s)</string>
+    <string name="about_legal_section">法的情報とプライバシー</string>
+    <string name="about_privacy_policy">プライバシーポリシー</string>
+    <string name="about_privacy_policy_sub">GitHubでSTORM GBCAプライバシーポリシーを表示</string>
+    <string name="about_third_party_licenses">サードパーティライセンス (FOSS)</string>
+    <string name="about_third_party_licenses_sub">mGBA, SameBoy, rcheevos, librashader, Oboe などのライセンス</string>
 </resources>

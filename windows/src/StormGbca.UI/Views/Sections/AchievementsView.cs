@@ -215,11 +215,11 @@ public class AchievementsView : ScrollViewer
             ? $"Connected: {ra.Username}"
             : "Not connected (Settings -> RetroAchievements)";
         _pointsSummaryText.Text = ra.IsLoggedIn
-            ? $"Hardcore: {ra.Points} pts  |  Softcore: {ra.SoftcorePoints} pts{(ra.Rank > 0 ? $"  |  Rank: #{ra.Rank}" : "")}  |  Queue: {ra.PendingOfflineCount}"
+            ? $"Hardcore: {ra.Points} pts  |  Casual: {ra.SoftcorePoints} pts{(ra.Rank > 0 ? $"  |  Rank: #{ra.Rank}" : "")}  |  Queue: {ra.PendingOfflineCount}"
             : "Points: 0 pts";
         _hardcoreStatusText.Text = ra.IsHardcoreMode
-            ? "Mode: Hardcore (save state load, rewind & cheats disabled)"
-            : "Mode: Softcore (standard)";
+            ? "Mode: Hardcore (save state load, rewind, cheats, RAM finder, overclock & slowdown disabled)"
+            : "Mode: Casual (standard)";
 
         RenderSessionDetails(ra.ActiveSession);
 
@@ -272,7 +272,7 @@ public class AchievementsView : ScrollViewer
             });
             _selectedGameStack.Children.Add(new TextBlock
             {
-                Text = "Select any game below or launch it to inspect Hardcore/Softcore trophies, missable flags, and leaderboards.",
+                Text = "Select any game below or launch it to inspect Hardcore/Casual trophies, missable flags, and leaderboards.",
                 FontSize = 12,
                 Foreground = StormThemeBrushes.SecondaryText
             });
@@ -400,7 +400,7 @@ public class AchievementsView : ScrollViewer
 
             var right = new StackPanel { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
             right.Children.Add(new TextBlock { Text = $"{ach.Points} pts", FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(amber), HorizontalAlignment = HorizontalAlignment.Right });
-            right.Children.Add(new TextBlock { Text = ach.UnlockedHardcore ? "HARDCORE" : (ach.Unlocked ? "SOFTCORE" : "LOCKED"), FontSize = 9.5, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(accent), HorizontalAlignment = HorizontalAlignment.Right });
+            right.Children.Add(new TextBlock { Text = ach.UnlockedHardcore ? "HARDCORE" : (ach.Unlocked ? "CASUAL" : "LOCKED"), FontSize = 9.5, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(accent), HorizontalAlignment = HorizontalAlignment.Right });
             g.Children.Add(right);
             Grid.SetColumn(right, 1);
 

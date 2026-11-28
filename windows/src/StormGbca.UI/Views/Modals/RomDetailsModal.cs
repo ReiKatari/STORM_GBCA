@@ -174,11 +174,32 @@ public class RomDetailsModal : AuroraGlassCard
 
     private void BuildCheatsTab(StackPanel stack)
     {
+        bool cheatsBlocked = StormGbcaUiState.Instance.IsEmulationActive && StormGbcaUiState.Instance.Emulator.IsHardcoreMode;
+        if (cheatsBlocked)
+        {
+            stack.Children.Add(new Border
+            {
+                Padding = new Thickness(10, 7),
+                CornerRadius = new CornerRadius(8),
+                Background = new SolidColorBrush(Color.FromArgb(40, 250, 204, 21)),
+                BorderBrush = new SolidColorBrush(Color.Parse("#FACC15")),
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = "Режим Hardcore RetroAchievements активен: читы заблокированы.",
+                    FontSize = 11.5,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = StormThemeBrushes.PrimaryText,
+                    TextWrapping = TextWrapping.Wrap
+                }
+            });
+        }
+
         string romKey = !string.IsNullOrWhiteSpace(_rom.FileName) ? _rom.FileName : _rom.GameCode;
         var cheats = StormGbcaUiState.Instance.Cheats;
         cheats.LoadCheatsForRom(romKey);
 
-        var listPanel = new StackPanel { Spacing = 6 };
+        var listPanel = new StackPanel { Spacing = 6, IsEnabled = !cheatsBlocked };
         void RebuildList()
         {
             listPanel.Children.Clear();
@@ -227,9 +248,9 @@ public class RomDetailsModal : AuroraGlassCard
         RebuildList();
         stack.Children.Add(listPanel);
 
-        var nameBox = new TextBox { PlaceholderText = "Название чита", Height = 32 };
-        var codeBox = new TextBox { PlaceholderText = "Код (GameShark, ActionReplay или GameGenie)", Height = 54, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
-        var addBtn = new AuroraVolumetricButton { Height = 32, Width = 180, HorizontalAlignment = HorizontalAlignment.Left };
+        var nameBox = new TextBox { PlaceholderText = "Название чита", Height = 32, IsEnabled = !cheatsBlocked };
+        var codeBox = new TextBox { PlaceholderText = "Код (GameShark, ActionReplay или GameGenie)", Height = 54, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, IsEnabled = !cheatsBlocked };
+        var addBtn = new AuroraVolumetricButton { Height = 32, Width = 180, HorizontalAlignment = HorizontalAlignment.Left, IsEnabled = !cheatsBlocked };
         addBtn.Content = new TextBlock { Text = "Добавить чит-код", FontSize = 11.5, FontWeight = FontWeight.SemiBold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         addBtn.Click += (_, _) =>
         {
