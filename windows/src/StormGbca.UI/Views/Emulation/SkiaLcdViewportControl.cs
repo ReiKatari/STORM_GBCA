@@ -29,6 +29,7 @@ public sealed class SkiaLcdViewportControl : Control
 
     private static readonly SKSamplingOptions s_nearestSampling = new(SKFilterMode.Nearest);
     private static readonly SKSamplingOptions s_linearSampling = new(SKFilterMode.Linear);
+    private static readonly SKSamplingOptions s_catmullRomSampling = new(SKCubicResampler.CatmullRom);
 
     private static readonly object s_shaderLock = new();
     private static bool s_shadersInitialized;
@@ -42,6 +43,7 @@ public sealed class SkiaLcdViewportControl : Control
     private static SKRuntimeEffect? s_crtScanlinesEffect;
     private static SKRuntimeEffect? s_xbrzLiteEffect;
 
+    private readonly object _stateLock = new();
     private byte[] _prevBgra = [];
     private byte[] _currBgra = [];
     private int _srcWidth;
@@ -54,14 +56,15 @@ public sealed class SkiaLcdViewportControl : Control
     private int _fsrSharpness = 65;
     private int _fsrQualityMode;
     private bool _frameGeneration;
+    private volatile bool _pendingHistoryReset;
 
     private nint _lastGrHandle;
     private SKImage? _fsr3History;
     private int _fsr3HistW;
     private int _fsr3HistH;
 
-    public int SourceWidth => _srcWidth;
-    public int SourceHeight => _srcHeight;
+    public int SourceWidth { get { lock (_stateLock) return _srcWidth; } }
+    public int SourceHeight { get { lock (_stateLock) return _srcHeight; } }
 
     public SkiaLcdViewportControl()
     {
@@ -103,30 +106,38 @@ public sealed class SkiaLcdViewportControl : Control
         int fsrQualityMode,
         bool frameGeneration)
     {
-        if (!emu.CopyFramePairBgra(ref _prevBgra, ref _currBgra, out int w, out int h, out long seq, out float progress))
+        lock (_stateLock)
         {
-            return;
-        }
+            if (!emu.CopyFramePairBgra(ref _prevBgra, ref _currBgra, out int w, out int h, out long seq, out float progress))
+            {
+                return;
+            }
 
-        if (seq != _lastCountedSeq)
-        {
-            _lastCountedSeq = seq;
-            _haltonIndex = (_haltonIndex + 1) & 31u;
-        }
+            if (seq != _lastCountedSeq)
+            {
+                _lastCountedSeq = seq;
+                _haltonIndex = (_haltonIndex + 1) & 31u;
+            }
 
-        _srcWidth = w;
-        _srcHeight = h;
-        _frameSeq = seq;
-        _fgProgress = progress;
-        _filter = filter;
-        _fsrSharpness = Math.Clamp(fsrSharpness, 0, 100);
-        _fsrQualityMode = Math.Clamp(fsrQualityMode, 0, 3);
-        _frameGeneration = frameGeneration;
+            _srcWidth = w;
+            _srcHeight = h;
+            _frameSeq = seq;
+            _fgProgress = progress;
+            _filter = filter;
+            _fsrSharpness = Math.Clamp(fsrSharpness, 0, 100);
+            _fsrQualityMode = Math.Clamp(fsrQualityMode, 0, 3);
+            _frameGeneration = frameGeneration;
+        }
 
         InvalidateVisual();
     }
 
     public void ResetHistory()
+    {
+        _pendingHistoryReset = true;
+    }
+
+    private void DisposeHistoryOnRenderThread()
     {
         _fsr3History?.Dispose();
         _fsr3History = null;
@@ -149,45 +160,112 @@ public sealed class SkiaLcdViewportControl : Control
 
     private void RenderSkiaFrame(SKCanvas canvas, GRContext? gr, Rect bounds)
     {
-        int srcW = _srcWidth;
-        int srcH = _srcHeight;
-        int need = srcW * srcH * 4;
-        if (srcW <= 0 || srcH <= 0 || _currBgra.Length < need)
+        if (_pendingHistoryReset)
         {
-            canvas.Clear(SKColors.Black);
-            return;
+            _pendingHistoryReset = false;
+            DisposeHistoryOnRenderThread();
         }
 
         nint grHandle = gr?.Handle ?? nint.Zero;
         if (grHandle != _lastGrHandle)
         {
-            ResetHistory();
+            DisposeHistoryOnRenderThread();
             _lastGrHandle = grHandle;
         }
 
-        EnsureShadersCompiled();
+        int srcW;
+        int srcH;
+        long frameSeq;
+        uint haltonIndex;
+        float fgProgress;
+        StormVideoFilter filter;
+        int fsrSharpness;
+        int fsrQualityMode;
+        bool frameGen;
+        SKImage? currImage = null;
+        SKImage? prevImage = null;
 
-        var srcInfo = new SKImageInfo(srcW, srcH, SKColorType.Bgra8888, SKAlphaType.Premul);
-        using var currImage = SKImage.FromPixelCopy(srcInfo, _currBgra.AsSpan(0, need), srcW * 4);
-        if (currImage == null)
+        lock (_stateLock)
         {
-            canvas.Clear(SKColors.Black);
-            return;
+            srcW = _srcWidth;
+            srcH = _srcHeight;
+            int need = srcW * srcH * 4;
+            if (srcW <= 0 || srcH <= 0 || _currBgra.Length < need)
+            {
+                canvas.Clear(SKColors.Black);
+                return;
+            }
+
+            frameSeq = _frameSeq;
+            haltonIndex = _haltonIndex;
+            fgProgress = _fgProgress;
+            filter = _filter;
+            fsrSharpness = _fsrSharpness;
+            fsrQualityMode = _fsrQualityMode;
+            frameGen = _frameGeneration;
+
+            var srcInfo = new SKImageInfo(srcW, srcH, SKColorType.Bgra8888, SKAlphaType.Premul);
+            currImage = SKImage.FromPixelCopy(srcInfo, _currBgra.AsSpan(0, need), srcW * 4);
+            if (currImage == null)
+            {
+                canvas.Clear(SKColors.Black);
+                return;
+            }
+
+            bool needPrev = gr != null && (
+                (frameGen && fgProgress > 0.05f && fgProgress < 0.95f && frameSeq >= 2 && _prevBgra.Length >= need)
+                || (filter == StormVideoFilter.Fsr3 && _prevBgra.Length >= need));
+            if (needPrev)
+            {
+                prevImage = SKImage.FromPixelCopy(srcInfo, _prevBgra.AsSpan(0, need), srcW * 4);
+            }
         }
 
-        bool needPrev = (_frameGeneration && _fgProgress > 0.05f && _fgProgress < 0.95f && _frameSeq >= 2 && _prevBgra.Length >= need)
-                        || (_filter == StormVideoFilter.Fsr3 && _prevBgra.Length >= need);
-        using var prevImage = needPrev
-            ? SKImage.FromPixelCopy(srcInfo, _prevBgra.AsSpan(0, need), srcW * 4)
-            : null;
+        EnsureShadersCompiled();
 
         SKImage? fgImage = null;
         SKImage workingImage = currImage;
 
         try
         {
-            // Pass 0: Optional Optical-Flow Midpoint Frame Generation (60 -> 120 FPS)
-            if (_frameGeneration && _fgProgress > 0.05f && _fgProgress < 0.95f && _frameSeq >= 2 &&
+            var dstRect = SKRect.Create(0, 0, (float)bounds.Width, (float)bounds.Height);
+            var totalMat = canvas.TotalMatrix;
+            float scaleX = MathF.Sqrt(totalMat.ScaleX * totalMat.ScaleX + totalMat.SkewY * totalMat.SkewY);
+            float scaleY = MathF.Sqrt(totalMat.SkewX * totalMat.SkewX + totalMat.ScaleY * totalMat.ScaleY);
+            int outW = Math.Clamp((int)Math.Round(bounds.Width * Math.Max(1f, scaleX)), srcW, 3840);
+            int outH = Math.Clamp((int)Math.Round(bounds.Height * Math.Max(1f, scaleY)), srcH, 2160);
+
+            // Software CPU Guard: never execute multi-pass offscreen CPU SKSurface FrameGen/FSR3/FSR1 at 1080p/1440p
+            if (gr == null)
+            {
+                DisposeHistoryOnRenderThread();
+                if ((long)outW * outH <= 960L * 640L)
+                {
+                    if (filter is StormVideoFilter.Fsr1 or StormVideoFilter.Fsr3)
+                    {
+                        if (DrawRcasPass(canvas, workingImage, srcW, srcH, dstRect, fsrSharpness, fsrQualityMode))
+                        {
+                            return;
+                        }
+                    }
+                    else if (DrawSinglePassEffect(canvas, workingImage, srcW, srcH, dstRect, filter))
+                    {
+                        return;
+                    }
+                }
+
+                var cpuSampling = filter switch
+                {
+                    StormVideoFilter.Nearest or StormVideoFilter.LcdGrid or StormVideoFilter.RgbSubpixel => s_nearestSampling,
+                    StormVideoFilter.Bilinear => s_linearSampling,
+                    _ => s_catmullRomSampling,
+                };
+                canvas.DrawImage(workingImage, dstRect, cpuSampling, null);
+                return;
+            }
+
+            // Pass 0: Optional Optical-Flow Midpoint Frame Generation (60 -> 120 FPS, GPU only)
+            if (frameGen && fgProgress > 0.05f && fgProgress < 0.95f && frameSeq >= 2 &&
                 prevImage != null && s_frameGenEffect != null)
             {
                 using var fgSurface = CreateOffscreenSurface(gr, srcW, srcH);
@@ -198,7 +276,7 @@ public sealed class SkiaLcdViewportControl : Control
                     using var uniforms = new SKRuntimeEffectUniforms(s_frameGenEffect)
                     {
                         ["uSrcSize"] = new SKPoint(srcW, srcH),
-                        ["uProgress"] = _fgProgress,
+                        ["uProgress"] = fgProgress,
                     };
                     using var children = new SKRuntimeEffectChildren(s_frameGenEffect)
                     {
@@ -220,72 +298,72 @@ public sealed class SkiaLcdViewportControl : Control
                 }
             }
 
-            var dstRect = SKRect.Create(0, 0, (float)bounds.Width, (float)bounds.Height);
-            var totalMat = canvas.TotalMatrix;
-            float scaleX = MathF.Sqrt(totalMat.ScaleX * totalMat.ScaleX + totalMat.SkewY * totalMat.SkewY);
-            float scaleY = MathF.Sqrt(totalMat.SkewX * totalMat.SkewX + totalMat.ScaleY * totalMat.ScaleY);
-            int outW = Math.Clamp((int)Math.Round(bounds.Width * Math.Max(1f, scaleX)), srcW, 3840);
-            int outH = Math.Clamp((int)Math.Round(bounds.Height * Math.Max(1f, scaleY)), srcH, 2160);
-
-            if (_filter == StormVideoFilter.Fsr1)
+            if (filter == StormVideoFilter.Fsr1)
             {
-                if (RenderFsr1(canvas, gr, workingImage, srcW, srcH, outW, outH, dstRect))
+                if (RenderFsr1(canvas, gr, workingImage, srcW, srcH, outW, outH, dstRect, fsrSharpness, fsrQualityMode))
                 {
                     return;
                 }
             }
-            else if (_filter == StormVideoFilter.Fsr3)
+            else if (filter == StormVideoFilter.Fsr3)
             {
-                if (RenderFsr3(canvas, gr, workingImage, prevImage ?? workingImage, srcW, srcH, outW, outH, dstRect))
+                if (RenderFsr3(canvas, gr, workingImage, prevImage ?? workingImage, srcW, srcH, outW, outH, dstRect, haltonIndex, fsrSharpness, fsrQualityMode))
                 {
                     return;
                 }
             }
             else
             {
-                ResetHistory();
-                SKRuntimeEffect? effect = _filter switch
+                DisposeHistoryOnRenderThread();
+                if (DrawSinglePassEffect(canvas, workingImage, srcW, srcH, dstRect, filter))
                 {
-                    StormVideoFilter.SharpBilinear => s_sharpBilinearEffect,
-                    StormVideoFilter.LcdGrid => s_lcdGridEffect,
-                    StormVideoFilter.RgbSubpixel => s_rgbSubpixelEffect,
-                    StormVideoFilter.CrtScanlines => s_crtScanlinesEffect,
-                    StormVideoFilter.XbrzLite => s_xbrzLiteEffect,
-                    _ => null,
-                };
-
-                if (effect != null)
-                {
-                    var childSampling = _filter == StormVideoFilter.SharpBilinear ? s_linearSampling : s_nearestSampling;
-                    using var texShader = workingImage.ToShader(SKShaderTileMode.Clamp, SKShaderTileMode.Clamp, childSampling);
-                    using var uniforms = new SKRuntimeEffectUniforms(effect)
-                    {
-                        ["uSrcSize"] = new SKPoint(srcW, srcH),
-                        ["uDstSize"] = new SKPoint(dstRect.Width, dstRect.Height),
-                    };
-                    using var children = new SKRuntimeEffectChildren(effect)
-                    {
-                        ["uTex"] = texShader,
-                    };
-                    using var shader = effect.ToShader(uniforms, children);
-                    if (shader != null)
-                    {
-                        using var paint = new SKPaint { Shader = shader };
-                        canvas.DrawRect(dstRect, paint);
-                        return;
-                    }
+                    return;
                 }
             }
 
-            var fallbackSampling = _filter is StormVideoFilter.Nearest or StormVideoFilter.LcdGrid or StormVideoFilter.RgbSubpixel
+            var fallbackSampling = filter is StormVideoFilter.Nearest or StormVideoFilter.LcdGrid or StormVideoFilter.RgbSubpixel
                 ? s_nearestSampling
-                : s_linearSampling;
+                : s_catmullRomSampling;
             canvas.DrawImage(workingImage, dstRect, fallbackSampling, null);
         }
         finally
         {
             fgImage?.Dispose();
+            prevImage?.Dispose();
+            currImage.Dispose();
         }
+    }
+
+    private static bool DrawSinglePassEffect(SKCanvas canvas, SKImage workingImage, int srcW, int srcH, SKRect dstRect, StormVideoFilter filter)
+    {
+        SKRuntimeEffect? effect = filter switch
+        {
+            StormVideoFilter.SharpBilinear => s_sharpBilinearEffect,
+            StormVideoFilter.LcdGrid => s_lcdGridEffect,
+            StormVideoFilter.RgbSubpixel => s_rgbSubpixelEffect,
+            StormVideoFilter.CrtScanlines => s_crtScanlinesEffect,
+            StormVideoFilter.XbrzLite => s_xbrzLiteEffect,
+            _ => null,
+        };
+        if (effect == null) return false;
+
+        var childSampling = filter == StormVideoFilter.SharpBilinear ? s_linearSampling : s_nearestSampling;
+        using var texShader = workingImage.ToShader(SKShaderTileMode.Clamp, SKShaderTileMode.Clamp, childSampling);
+        using var uniforms = new SKRuntimeEffectUniforms(effect)
+        {
+            ["uSrcSize"] = new SKPoint(srcW, srcH),
+            ["uDstSize"] = new SKPoint(dstRect.Width, dstRect.Height),
+        };
+        using var children = new SKRuntimeEffectChildren(effect)
+        {
+            ["uTex"] = texShader,
+        };
+        using var shader = effect.ToShader(uniforms, children);
+        if (shader == null) return false;
+
+        using var paint = new SKPaint { Shader = shader };
+        canvas.DrawRect(dstRect, paint);
+        return true;
     }
 
     private bool RenderFsr1(
@@ -296,12 +374,14 @@ public sealed class SkiaLcdViewportControl : Control
         int srcH,
         int outW,
         int outH,
-        SKRect dstRect)
+        SKRect dstRect,
+        int fsrSharpness,
+        int fsrQualityMode)
     {
-        ResetHistory();
+        DisposeHistoryOnRenderThread();
         if (s_fsr1EasuEffect == null || s_rcasEffect == null) return false;
 
-        ComputeQualityTargetSize(srcW, srcH, outW, outH, out int pass1W, out int pass1H);
+        ComputeQualityTargetSize(srcW, srcH, outW, outH, fsrQualityMode, out int pass1W, out int pass1H);
         using var pass1Surface = CreateOffscreenSurface(gr, pass1W, pass1H);
         if (pass1Surface == null) return false;
 
@@ -327,7 +407,7 @@ public sealed class SkiaLcdViewportControl : Control
         using var pass1Image = pass1Surface.Snapshot();
         if (pass1Image == null) return false;
 
-        return DrawRcasPass(canvas, pass1Image, pass1W, pass1H, dstRect);
+        return DrawRcasPass(canvas, pass1Image, pass1W, pass1H, dstRect, fsrSharpness, fsrQualityMode);
     }
 
     private bool RenderFsr3(
@@ -339,19 +419,22 @@ public sealed class SkiaLcdViewportControl : Control
         int srcH,
         int outW,
         int outH,
-        SKRect dstRect)
+        SKRect dstRect,
+        uint haltonIndex,
+        int fsrSharpness,
+        int fsrQualityMode)
     {
         if (s_fsr3TemporalEffect == null || s_rcasEffect == null) return false;
 
-        ComputeQualityTargetSize(srcW, srcH, outW, outH, out int pass1W, out int pass1H);
+        ComputeQualityTargetSize(srcW, srcH, outW, outH, fsrQualityMode, out int pass1W, out int pass1H);
         using var pass1Surface = CreateOffscreenSurface(gr, pass1W, pass1H);
         if (pass1Surface == null) return false;
 
         bool hasHistory = _fsr3History != null && _fsr3HistW == pass1W && _fsr3HistH == pass1H;
         SKImage historySource = hasHistory ? _fsr3History! : currImage;
 
-        float jx = (Halton((int)_haltonIndex + 1, 2) - 0.5f) * 0.35f;
-        float jy = (Halton((int)_haltonIndex + 1, 3) - 0.5f) * 0.35f;
+        float jx = (Halton((int)haltonIndex + 1, 2) - 0.5f) * 0.35f;
+        float jy = (Halton((int)haltonIndex + 1, 3) - 0.5f) * 0.35f;
 
         using var currShader = currImage.ToShader(SKShaderTileMode.Clamp, SKShaderTileMode.Clamp, s_nearestSampling);
         using var prevShader = prevImage.ToShader(SKShaderTileMode.Clamp, SKShaderTileMode.Clamp, s_linearSampling);
@@ -387,15 +470,22 @@ public sealed class SkiaLcdViewportControl : Control
         _fsr3HistW = pass1W;
         _fsr3HistH = pass1H;
 
-        return DrawRcasPass(canvas, nextHistory, pass1W, pass1H, dstRect);
+        return DrawRcasPass(canvas, nextHistory, pass1W, pass1H, dstRect, fsrSharpness, fsrQualityMode);
     }
 
-    private bool DrawRcasPass(SKCanvas canvas, SKImage pass1Image, int pass1W, int pass1H, SKRect dstRect)
+    private static bool DrawRcasPass(
+        SKCanvas canvas,
+        SKImage pass1Image,
+        int pass1W,
+        int pass1H,
+        SKRect dstRect,
+        int fsrSharpness,
+        int fsrQualityMode)
     {
         if (s_rcasEffect == null) return false;
 
-        float sharpness = Math.Clamp(_fsrSharpness / 100f, 0f, 1f);
-        float qualityBias = _fsrQualityMode switch
+        float sharpness = Math.Clamp(fsrSharpness / 100f, 0f, 1f);
+        float qualityBias = fsrQualityMode switch
         {
             1 => 0.08f,
             2 => 0.16f,
@@ -423,9 +513,9 @@ public sealed class SkiaLcdViewportControl : Control
         return true;
     }
 
-    private void ComputeQualityTargetSize(int srcW, int srcH, int outW, int outH, out int pass1W, out int pass1H)
+    private static void ComputeQualityTargetSize(int srcW, int srcH, int outW, int outH, int fsrQualityMode, out int pass1W, out int pass1H)
     {
-        float scale = _fsrQualityMode switch
+        float scale = fsrQualityMode switch
         {
             1 => 0.59f,
             2 => 0.50f,
@@ -445,13 +535,17 @@ public sealed class SkiaLcdViewportControl : Control
 
     private static SKSurface? CreateOffscreenSurface(GRContext? gr, int width, int height)
     {
-        var info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        var bgraInfo = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
         if (gr != null)
         {
-            var gpuSurf = SKSurface.Create(gr, false, info);
+            var gpuSurf = SKSurface.Create(gr, false, bgraInfo);
+            if (gpuSurf != null) return gpuSurf;
+
+            var rgbaInfo = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
+            gpuSurf = SKSurface.Create(gr, false, rgbaInfo);
             if (gpuSurf != null) return gpuSurf;
         }
-        return SKSurface.Create(info);
+        return SKSurface.Create(bgraInfo);
     }
 
     private static float Halton(int index, int radix)
@@ -563,55 +657,32 @@ float3 sampleCurr(float2 p) {
 }
 
 half4 main(float2 fragCoord) {
-    float Ixx = 0.0;
-    float Iyy = 0.0;
-    float Ixy = 0.0;
-    float Ixt = 0.0;
-    float Iyt = 0.0;
-    float diffSum = 0.0;
+    // 8-tap optical flow: center + 4-neighbor luma gradients -> 1-step flow -> symmetric warp
+    float3 rPrev = samplePrev(fragCoord);
+    float3 rCurr = sampleCurr(fragCoord);
+    float lL = luma(sampleCurr(fragCoord + float2(-1.0, 0.0)));
+    float lR = luma(sampleCurr(fragCoord + float2(1.0, 0.0)));
+    float lU = luma(sampleCurr(fragCoord + float2(0.0, -1.0)));
+    float lD = luma(sampleCurr(fragCoord + float2(0.0, 1.0)));
 
-    for (int dy = -1; dy <= 1; dy++) {
-        for (int dx = -1; dx <= 1; dx++) {
-            float2 p = fragCoord + float2(float(dx), float(dy));
-            float l0 = luma(samplePrev(p));
-            float l1 = luma(sampleCurr(p));
-            float lx0 = luma(samplePrev(p + float2(1.0, 0.0))) - luma(samplePrev(p - float2(1.0, 0.0)));
-            float lx1 = luma(sampleCurr(p + float2(1.0, 0.0))) - luma(sampleCurr(p - float2(1.0, 0.0)));
-            float ly0 = luma(samplePrev(p + float2(0.0, 1.0))) - luma(samplePrev(p - float2(0.0, 1.0)));
-            float ly1 = luma(sampleCurr(p + float2(0.0, 1.0))) - luma(sampleCurr(p - float2(0.0, 1.0)));
-            float Ix = 0.25 * (lx0 + lx1);
-            float Iy = 0.25 * (ly0 + ly1);
-            float It = l1 - l0;
-            Ixx += Ix * Ix;
-            Iyy += Iy * Iy;
-            Ixy += Ix * Iy;
-            Ixt += Ix * It;
-            Iyt += Iy * It;
-            diffSum += abs(It);
-        }
-    }
-
-    float reg = 0.02;
-    float a = Ixx + reg;
-    float d = Iyy + reg;
-    float det = max(a * d - Ixy * Ixy, 0.0001);
-    float2 flow = float2(-(d * Ixt - Ixy * Iyt), -(a * Iyt - Ixy * Ixt)) / det;
+    float Ix = 0.5 * (lR - lL);
+    float Iy = 0.5 * (lD - lU);
+    float It = luma(rCurr) - luma(rPrev);
+    float denom = Ix * Ix + Iy * Iy + 0.02;
+    float2 flow = -(It / denom) * float2(Ix, Iy);
     float flowLen = length(flow);
-    if (flowLen > 6.0) {
-        flow *= 6.0 / flowLen;
+    if (flowLen > 4.0) {
+        flow *= 4.0 / flowLen;
     }
 
     float3 wPrev = samplePrev(fragCoord - flow * uProgress);
     float3 wCurr = sampleCurr(fragCoord + flow * (1.0 - uProgress));
-    float3 rPrev = samplePrev(fragCoord);
-    float3 rCurr = sampleCurr(fragCoord);
     float3 rawBlend = mix(rPrev, rCurr, uProgress);
     float3 warpedBlend = mix(wPrev, wCurr, uProgress);
 
-    float avgDiff = diffSum / 9.0;
     float warpErr = length(wPrev - wCurr);
     float disocc = smoothstep(0.10, 0.36, warpErr);
-    float sceneCut = smoothstep(0.28, 0.45, avgDiff);
+    float sceneCut = smoothstep(0.28, 0.45, abs(It));
     float3 cutFrame = uProgress < 0.5 ? rPrev : rCurr;
     float3 res = mix(warpedBlend, rawBlend, disocc);
     res = mix(res, cutFrame, sceneCut);
@@ -764,98 +835,55 @@ float3 samplePrevLin(float2 p) {
     return float3(uPrev.eval(clamp(p, float2(0.5), uSrcSize - float2(0.5))).rgb);
 }
 
-float catmullWeight(float x) {
-    float ax = abs(x);
-    if (ax < 1.0) {
-        return 1.5 * ax * ax * ax - 2.5 * ax * ax + 1.0;
-    }
-    if (ax < 2.0) {
-        return -0.5 * ax * ax * ax + 2.5 * ax * ax - 4.0 * ax + 2.0;
-    }
-    return 0.0;
-}
-
-float3 sampleCatmullRom(float2 pp) {
-    float2 fp = floor(pp);
-    float2 f = pp - fp;
-    float3 sum = float3(0.0);
-    float wSum = 0.0;
-    for (int dy = -1; dy <= 2; dy++) {
-        float wy = catmullWeight(float(dy) - f.y);
-        for (int dx = -1; dx <= 2; dx++) {
-            float wx = catmullWeight(float(dx) - f.x);
-            float w = wx * wy;
-            sum += tapCurr(fp + float2(float(dx), float(dy))) * w;
-            wSum += w;
-        }
-    }
-    float3 c00 = tapCurr(fp);
-    float3 c10 = tapCurr(fp + float2(1.0, 0.0));
-    float3 c01 = tapCurr(fp + float2(0.0, 1.0));
-    float3 c11 = tapCurr(fp + float2(1.0, 1.0));
-    float3 mn = min(min(c00, c10), min(c01, c11));
-    float3 mx = max(max(c00, c10), max(c01, c11));
-    return clamp(sum / max(wSum, 0.0001), mn, mx);
-}
-
 half4 main(float2 fragCoord) {
+    // 10-tap FSR 3 Temporal: 5-tap sharp bicubic + 5-tap YCoCg cross variance clipping (gamma=1.25) + 4-tap luma optical flow + 1 history sample
     float2 srcCoord = fragCoord * (uSrcSize / uDstSize);
     float2 pp = srcCoord - float2(0.5) + uJitter;
-    float3 currRgb = sampleCatmullRom(pp);
+    float2 centerIp = floor(pp + float2(0.5));
+    float2 d = pp - centerIp;
+
+    float3 c = tapCurr(centerIp);
+    float3 n = tapCurr(centerIp + float2(0.0, -1.0));
+    float3 s = tapCurr(centerIp + float2(0.0, 1.0));
+    float3 w = tapCurr(centerIp + float2(-1.0, 0.0));
+    float3 e = tapCurr(centerIp + float2(1.0, 0.0));
+
+    float3 currBic = c
+        + 0.5 * (e - w) * d.x
+        + 0.5 * (s - n) * d.y
+        + 0.5 * (e + w - 2.0 * c) * (d.x * d.x)
+        + 0.5 * (s + n - 2.0 * c) * (d.y * d.y);
+    float3 mn5 = min(c, min(min(n, s), min(w, e)));
+    float3 mx5 = max(c, max(max(n, s), max(w, e)));
+    float3 currRgb = clamp(currBic, mn5, mx5);
 
     if (uHasHistory < 0.5) {
         return half4(half3(currRgb), 1.0);
     }
 
-    // 3x3 YCoCg variance clipping (gamma = 1.25) + 3x3 optical flow reprojection
-    float3 m1 = float3(0.0);
-    float3 m2 = float3(0.0);
-    float Ixx = 0.0;
-    float Iyy = 0.0;
-    float Ixy = 0.0;
-    float Ixt = 0.0;
-    float Iyt = 0.0;
-    float diffSum = 0.0;
-    float2 centerIp = floor(srcCoord);
-
-    for (int dy = -1; dy <= 1; dy++) {
-        for (int dx = -1; dx <= 1; dx++) {
-            float2 ip = centerIp + float2(float(dx), float(dy));
-            float3 c = tapCurr(ip);
-            float3 ycc = rgbToYCoCg(c);
-            m1 += ycc;
-            m2 += ycc * ycc;
-
-            float2 p = ip + float2(0.5);
-            float l0 = luma(samplePrevLin(p));
-            float l1 = luma(c);
-            float lx0 = luma(samplePrevLin(p + float2(1.0, 0.0))) - luma(samplePrevLin(p - float2(1.0, 0.0)));
-            float lx1 = luma(tapCurr(ip + float2(1.0, 0.0))) - luma(tapCurr(ip - float2(1.0, 0.0)));
-            float ly0 = luma(samplePrevLin(p + float2(0.0, 1.0))) - luma(samplePrevLin(p - float2(0.0, 1.0)));
-            float ly1 = luma(tapCurr(ip + float2(0.0, 1.0))) - luma(tapCurr(ip - float2(0.0, 1.0)));
-            float Ix = 0.25 * (lx0 + lx1);
-            float Iy = 0.25 * (ly0 + ly1);
-            float It = l1 - l0;
-            Ixx += Ix * Ix;
-            Iyy += Iy * Iy;
-            Ixy += Ix * Iy;
-            Ixt += Ix * It;
-            Iyt += Iy * It;
-            diffSum += abs(It);
-        }
-    }
-
-    m1 /= 9.0;
-    m2 /= 9.0;
+    float3 yC = rgbToYCoCg(c);
+    float3 yN = rgbToYCoCg(n);
+    float3 yS = rgbToYCoCg(s);
+    float3 yW = rgbToYCoCg(w);
+    float3 yE = rgbToYCoCg(e);
+    float3 m1 = (yC + yN + yS + yW + yE) * 0.2;
+    float3 m2 = (yC * yC + yN * yN + yS * yS + yW * yW + yE * yE) * 0.2;
     float3 sigma = sqrt(max(m2 - m1 * m1, float3(0.0)));
     float3 boxMin = m1 - 1.25 * sigma;
     float3 boxMax = m1 + 1.25 * sigma;
 
-    float reg = 0.025;
-    float a = Ixx + reg;
-    float d = Iyy + reg;
-    float det = max(a * d - Ixy * Ixy, 0.0001);
-    float2 flowSrc = float2(-(d * Ixt - Ixy * Iyt), -(a * Iyt - Ixy * Ixt)) / det;
+    float2 p = centerIp + float2(0.5);
+    float lL0 = luma(samplePrevLin(p + float2(-1.0, 0.0)));
+    float lR0 = luma(samplePrevLin(p + float2(1.0, 0.0)));
+    float lU0 = luma(samplePrevLin(p + float2(0.0, -1.0)));
+    float lD0 = luma(samplePrevLin(p + float2(0.0, 1.0)));
+    float l0 = 0.25 * (lL0 + lR0 + lU0 + lD0);
+    float l1 = luma(c);
+    float Ix = 0.25 * ((lR0 - lL0) + (luma(e) - luma(w)));
+    float Iy = 0.25 * ((lD0 - lU0) + (luma(s) - luma(n)));
+    float It = l1 - l0;
+    float denom = Ix * Ix + Iy * Iy + 0.025;
+    float2 flowSrc = -(It / denom) * float2(Ix, Iy);
     float flowLen = length(flowSrc);
     if (flowLen > 4.0) {
         flowSrc *= 4.0 / flowLen;
@@ -867,8 +895,7 @@ half4 main(float2 fragCoord) {
     float3 histYcc = clamp(rgbToYCoCg(histRgb), boxMin, boxMax);
     float3 clippedHist = yCoCgToRgb(histYcc);
 
-    float avgDiff = diffSum / 9.0;
-    float disocc = smoothstep(0.06, 0.28, avgDiff);
+    float disocc = smoothstep(0.06, 0.28, abs(It));
     float histWeight = mix(0.84, 0.14, disocc) * uHasHistory;
     float3 res = mix(currRgb, clippedHist, histWeight);
     return half4(half3(clamp(res, 0.0, 1.0)), 1.0);

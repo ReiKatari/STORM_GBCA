@@ -126,46 +126,22 @@ void main() {
     vec3 p0_center = texture(u_prev_tex, v_uv).rgb;
     vec3 p1_center = texture(u_cur_tex,  v_uv).rgb;
 
-    float sum_ix2 = 0.0;
-    float sum_iy2 = 0.0;
-    float sum_ixiy = 0.0;
-    float sum_ixit = 0.0;
-    float sum_iyit = 0.0;
-    float sum_it_abs = 0.0;
+    float l0_c = luma(p0_center);
+    float l1_c = luma(p1_center);
+    float it = l1_c - l0_c;
 
-    for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
-            vec2 uv = v_uv + vec2(float(x), float(y)) * u_texel_size;
-            float l0_c = luma(texture(u_prev_tex, uv).rgb);
-            float l1_c = luma(texture(u_cur_tex,  uv).rgb);
-            float l0_r = luma(texture(u_prev_tex, uv + vec2( u_texel_size.x, 0.0)).rgb);
-            float l0_l = luma(texture(u_prev_tex, uv + vec2(-u_texel_size.x, 0.0)).rgb);
-            float l0_d = luma(texture(u_prev_tex, uv + vec2(0.0,  u_texel_size.y)).rgb);
-            float l0_u = luma(texture(u_prev_tex, uv + vec2(0.0, -u_texel_size.y)).rgb);
-            float l1_r = luma(texture(u_cur_tex,  uv + vec2( u_texel_size.x, 0.0)).rgb);
-            float l1_l = luma(texture(u_cur_tex,  uv + vec2(-u_texel_size.x, 0.0)).rgb);
-            float l1_d = luma(texture(u_cur_tex,  uv + vec2(0.0,  u_texel_size.y)).rgb);
-            float l1_u = luma(texture(u_cur_tex,  uv + vec2(0.0, -u_texel_size.y)).rgb);
-
-            float ix = 0.25 * ((l0_r - l0_l) + (l1_r - l1_l));
-            float iy = 0.25 * ((l0_d - l0_u) + (l1_d - l1_u));
-            float it = l1_c - l0_c;
-
-            sum_ix2  += ix * ix;
-            sum_iy2  += iy * iy;
-            sum_ixiy += ix * iy;
-            sum_ixit += ix * it;
-            sum_iyit += iy * it;
-            sum_it_abs += abs(it);
-        }
-    }
+    // 4-neighbor luma gradients + 1-step Lucas-Kanade (<= 8 fetches total)
+    float l1_r = luma(texture(u_cur_tex, clamp(v_uv + vec2( u_texel_size.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
+    float l1_l = luma(texture(u_cur_tex, clamp(v_uv + vec2(-u_texel_size.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
+    float l1_d = luma(texture(u_cur_tex, clamp(v_uv + vec2(0.0,  u_texel_size.y), vec2(0.0), vec2(1.0))).rgb);
+    float l1_u = luma(texture(u_cur_tex, clamp(v_uv + vec2(0.0, -u_texel_size.y), vec2(0.0), vec2(1.0))).rgb);
 
     vec2 mv = vec2(0.0);
-    if (sum_it_abs > 0.025) {
-        float det = sum_ix2 * sum_iy2 - sum_ixiy * sum_ixiy + 0.0025;
-        mv.x = (-sum_iy2 * sum_ixit + sum_ixiy * sum_iyit) / det;
-        mv.y = (-sum_ix2 * sum_iyit + sum_ixiy * sum_ixit) / det;
-        mv = clamp(mv, vec2(-4.0), vec2(4.0));
+    if (abs(it) > 0.02) {
+        float ix = 0.5 * (l1_r - l1_l);
+        float iy = 0.5 * (l1_d - l1_u);
+        float grad2 = ix * ix + iy * iy + 0.004;
+        mv = clamp(vec2(-it * ix, -it * iy) / grad2, vec2(-3.0), vec2(3.0));
     }
 
     vec2 uv0 = clamp(v_uv - mv * u_texel_size * u_alpha, vec2(0.0), vec2(1.0));
@@ -179,7 +155,6 @@ void main() {
     vec3 linear_mix = mix(p0_center, p1_center, u_alpha);
     vec3 warped_mix = mix(w0, w1, u_alpha);
 
-    // Scene-cut and disocclusion fallback to prevent motion glitches
     float disocc_blend = smoothstep(0.12, 0.36, warped_sad);
     float cut_blend = smoothstep(0.40, 0.65, raw_sad);
     vec3 hard_cut = (u_alpha >= 0.5) ? p1_center : p0_center;
@@ -343,15 +318,6 @@ float luma(vec3 c) {
     return dot(c, vec3(0.299, 0.587, 0.114));
 }
 
-vec3 fetch_cur(vec2 uv) {
-    vec3 c = texture(u_tex, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
-    if (u_ghosting > 0.001) {
-        vec3 p = texture(u_prev_tex, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
-        c = mix(c, p, clamp(u_ghosting * 0.55, 0.0, 0.65));
-    }
-    return c;
-}
-
 vec3 rgb_to_ycocg(vec3 c) {
     float y  = dot(c, vec3( 0.25, 0.50,  0.25));
     float co = dot(c, vec3( 0.50, 0.00, -0.50));
@@ -377,99 +343,56 @@ vec3 clip_aabb(vec3 aabb_min, vec3 aabb_max, vec3 hist) {
     return hist;
 }
 
-vec4 catmull_weights(float t) {
-    float t2 = t * t;
-    float t3 = t2 * t;
-    return vec4(
-        -0.5 * t + t2 - 0.5 * t3,
-         1.0 - 2.5 * t2 + 1.5 * t3,
-         0.5 * t + 2.0 * t2 - 1.5 * t3,
-        -0.5 * t2 + 0.5 * t3
-    );
-}
-
-vec3 sample_catmull_rom_16(vec2 uv) {
-    vec2 pos = uv * u_src_size - 0.5;
-    vec2 f = fract(pos);
-    vec2 base = (floor(pos) + 0.5) * u_inv_src_size;
-    vec4 wx = catmull_weights(f.x);
-    vec4 wy = catmull_weights(f.y);
-
-    vec3 sum = vec3(0.0);
-    vec3 nmin = vec3(1.0);
-    vec3 nmax = vec3(0.0);
-    for (int j = -1; j <= 2; ++j) {
-        float w_y = (j == -1) ? wy.x : ((j == 0) ? wy.y : ((j == 1) ? wy.z : wy.w));
-        vec3 row = vec3(0.0);
-        for (int i = -1; i <= 2; ++i) {
-            float w_x = (i == -1) ? wx.x : ((i == 0) ? wx.y : ((i == 1) ? wx.z : wx.w));
-            vec3 s = fetch_cur(base + vec2(float(i), float(j)) * u_inv_src_size);
-            row += s * w_x;
-            if (j >= 0 && j <= 1 && i >= 0 && i <= 1) {
-                nmin = min(nmin, s);
-                nmax = max(nmax, s);
-            }
-        }
-        sum += row * w_y;
-    }
-    return clamp(sum, nmin, nmax);
-}
-
 void main() {
-    vec2 jittered_uv = v_uv + u_jitter * u_inv_src_size;
-    vec3 current_rgb = sample_catmull_rom_16(jittered_uv);
+    // 5-tap cross shared across sharp bicubic, YCoCg cross variance clipping, and 4-tap luma optical flow (<= 7 fetches total)
+    vec2 jittered_uv = clamp(v_uv + u_jitter * u_inv_src_size, vec2(0.0), vec2(1.0));
+    vec2 pos = jittered_uv * u_src_size;
+    vec2 tex_center = (floor(pos) + 0.5) * u_inv_src_size;
+    vec2 d = clamp(pos - (floor(pos) + 0.5), vec2(-0.5), vec2(0.5));
+
+    vec3 s_c = texture(u_tex, clamp(tex_center, vec2(0.0), vec2(1.0))).rgb;
+    vec3 s_l = texture(u_tex, clamp(tex_center + vec2(-u_inv_src_size.x, 0.0), vec2(0.0), vec2(1.0))).rgb;
+    vec3 s_r = texture(u_tex, clamp(tex_center + vec2( u_inv_src_size.x, 0.0), vec2(0.0), vec2(1.0))).rgb;
+    vec3 s_u = texture(u_tex, clamp(tex_center + vec2(0.0, -u_inv_src_size.y), vec2(0.0), vec2(1.0))).rgb;
+    vec3 s_d = texture(u_tex, clamp(tex_center + vec2(0.0,  u_inv_src_size.y), vec2(0.0), vec2(1.0))).rgb;
+
+    vec3 p_c = texture(u_prev_tex, clamp(v_uv, vec2(0.0), vec2(1.0))).rgb;
+    if (u_ghosting > 0.001) {
+        s_c = mix(s_c, p_c, clamp(u_ghosting * 0.55, 0.0, 0.65));
+    }
+
+    vec3 wx = vec3(0.5 * d.x * (d.x - 1.0), 1.0 - d.x * d.x, 0.5 * d.x * (d.x + 1.0));
+    vec3 wy = vec3(0.5 * d.y * (d.y - 1.0), 1.0 - d.y * d.y, 0.5 * d.y * (d.y + 1.0));
+    vec3 nmin = min(s_c, min(min(s_l, s_r), min(s_u, s_d)));
+    vec3 nmax = max(s_c, max(max(s_l, s_r), max(s_u, s_d)));
+    vec3 current_rgb = clamp(s_c * (wx.y + wy.y - 1.0) + s_l * wx.x + s_r * wx.z + s_u * wy.x + s_d * wy.z, nmin, nmax);
 
     if (u_reset_history > 0.5) {
         frag_color = vec4(current_rgb, 1.0);
         return;
     }
 
-    // 3x3 YCoCg variance clipping (gamma = 1.25)
-    vec3 m1 = vec3(0.0);
-    vec3 m2 = vec3(0.0);
-    for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
-            vec3 s = fetch_cur(v_uv + vec2(float(x), float(y)) * u_inv_src_size);
-            vec3 ycc = rgb_to_ycocg(s);
-            m1 += ycc;
-            m2 += ycc * ycc;
-        }
-    }
-    vec3 mu = m1 / 9.0;
-    vec3 sigma = sqrt(max(m2 / 9.0 - mu * mu, vec3(0.0)));
+    // 5-tap YCoCg cross variance clipping (gamma = 1.25)
+    vec3 ycc_c = rgb_to_ycocg(s_c);
+    vec3 ycc_l = rgb_to_ycocg(s_l);
+    vec3 ycc_r = rgb_to_ycocg(s_r);
+    vec3 ycc_u = rgb_to_ycocg(s_u);
+    vec3 ycc_d = rgb_to_ycocg(s_d);
+    vec3 m1 = ycc_c + ycc_l + ycc_r + ycc_u + ycc_d;
+    vec3 m2 = ycc_c * ycc_c + ycc_l * ycc_l + ycc_r * ycc_r + ycc_u * ycc_u + ycc_d * ycc_d;
+    vec3 mu = m1 * 0.2;
+    vec3 sigma = sqrt(max(m2 * 0.2 - mu * mu, vec3(0.0)));
     vec3 aabb_min = mu - 1.25 * sigma;
     vec3 aabb_max = mu + 1.25 * sigma;
 
-    // Luma-gradient optical flow reprojection from previous source frame to current
-    float sum_ix2 = 0.0, sum_iy2 = 0.0, sum_ixiy = 0.0, sum_ixit = 0.0, sum_iyit = 0.0;
-    float sum_it_abs = 0.0;
-    for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
-            vec2 uv = v_uv + vec2(float(x), float(y)) * u_inv_src_size;
-            float l0 = luma(texture(u_prev_tex, clamp(uv, vec2(0.0), vec2(1.0))).rgb);
-            float l1 = luma(texture(u_tex,      clamp(uv, vec2(0.0), vec2(1.0))).rgb);
-            float l1_r = luma(texture(u_tex, clamp(uv + vec2( u_inv_src_size.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
-            float l1_l = luma(texture(u_tex, clamp(uv + vec2(-u_inv_src_size.x, 0.0), vec2(0.0), vec2(1.0))).rgb);
-            float l1_d = luma(texture(u_tex, clamp(uv + vec2(0.0,  u_inv_src_size.y), vec2(0.0), vec2(1.0))).rgb);
-            float l1_u = luma(texture(u_tex, clamp(uv + vec2(0.0, -u_inv_src_size.y), vec2(0.0), vec2(1.0))).rgb);
-            float ix = 0.5 * (l1_r - l1_l);
-            float iy = 0.5 * (l1_d - l1_u);
-            float it = l1 - l0;
-            sum_ix2  += ix * ix;
-            sum_iy2  += iy * iy;
-            sum_ixiy += ix * iy;
-            sum_ixit += ix * it;
-            sum_iyit += iy * it;
-            sum_it_abs += abs(it);
-        }
-    }
-
+    // 4-tap luma optical flow reprojection
+    float it = luma(s_c) - luma(p_c);
     vec2 mv = vec2(0.0);
-    if (sum_it_abs > 0.02) {
-        float det = sum_ix2 * sum_iy2 - sum_ixiy * sum_ixiy + 0.0025;
-        mv.x = (-sum_iy2 * sum_ixit + sum_ixiy * sum_iyit) / det;
-        mv.y = (-sum_ix2 * sum_iyit + sum_ixiy * sum_ixit) / det;
-        mv = clamp(mv, vec2(-4.0), vec2(4.0));
+    if (abs(it) > 0.02) {
+        float ix = 0.5 * (luma(s_r) - luma(s_l));
+        float iy = 0.5 * (luma(s_d) - luma(s_u));
+        float grad2 = ix * ix + iy * iy + 0.004;
+        mv = clamp(vec2(-it * ix, -it * iy) / grad2, vec2(-3.0), vec2(3.0));
     }
 
     vec2 hist_uv = v_uv - mv * u_inv_src_size;
@@ -538,9 +461,9 @@ void main() {
     vec3 res = clamp((lobe * (b + d + f + h) + e) * rcpL, 0.0, 1.0);
 
     if (u_color_correction_strength > 0.001) {
-        vec3 lin = pow(max(res, vec3(0.0)), vec3(u_input_gamma));
+        vec3 lin = pow(max(res, vec3(1e-5)), vec3(u_input_gamma));
         vec3 corrected = lin.r * u_red_color + lin.g * u_green_color + lin.b * u_blue_color;
-        corrected = pow(clamp(corrected, 0.0, 1.0), vec3(1.0 / 2.2));
+        corrected = pow(clamp(corrected, 1e-5, 1.0), vec3(1.0 / 2.2));
         res = mix(res, corrected, u_color_correction_strength);
     }
 
@@ -652,8 +575,10 @@ public:
         loc_ghosting_ = glGetUniformLocation(prog_, "u_ghosting");
 
         cache_post_uniforms();
+        has_cur_ = false;
         has_prev_ = false;
         history_valid_ = false;
+        last_uploaded_seq_ = 0;
         fsr3_frame_idx_ = 0;
         return true;
     }
@@ -682,8 +607,10 @@ public:
         if (!rgba || w <= 0 || h <= 0 || vp_w <= 0 || vp_h <= 0) return;
 
         if (w != last_w_ || h != last_h_) {
+            has_cur_ = false;
             has_prev_ = false;
             history_valid_ = false;
+            last_uploaded_seq_ = 0;
             fsr3_frame_idx_ = 0;
             last_w_ = w;
             last_h_ = h;
@@ -694,11 +621,15 @@ public:
                                  post.frame_gen_alpha > 0.01f &&
                                  post.frame_gen_alpha < 0.99f;
 
-        if (!fg_midpoint || !has_prev_ || tex_w_[cur_tex_] != w || tex_h_[cur_tex_] != h) {
-            if (has_prev_) {
+        const uint64_t cur_seq = pp_get_frame_seq();
+        const bool need_upload = !has_cur_ || !has_prev_ || (last_uploaded_seq_ != cur_seq) ||
+                                 (tex_w_[cur_tex_] != w) || (tex_h_[cur_tex_] != h);
+        if (need_upload) {
+            if (has_cur_) {
                 cur_tex_ ^= 1;
             }
-            int prev = cur_tex_ ^ 1;
+            int prev_idx = cur_tex_ ^ 1;
+            glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, tex_[cur_tex_]);
             if (tex_w_[cur_tex_] != w || tex_h_[cur_tex_] != h) {
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
@@ -707,12 +638,14 @@ public:
             } else {
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
             }
-            if (!has_prev_ || tex_w_[prev] != w || tex_h_[prev] != h) {
-                glBindTexture(GL_TEXTURE_2D, tex_[prev]);
-                if (tex_w_[prev] != w || tex_h_[prev] != h) {
+            has_cur_ = true;
+            last_uploaded_seq_ = cur_seq;
+            if (!has_prev_ || tex_w_[prev_idx] != w || tex_h_[prev_idx] != h) {
+                glBindTexture(GL_TEXTURE_2D, tex_[prev_idx]);
+                if (tex_w_[prev_idx] != w || tex_h_[prev_idx] != h) {
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-                    tex_w_[prev] = w;
-                    tex_h_[prev] = h;
+                    tex_w_[prev_idx] = w;
+                    tex_h_[prev_idx] = h;
                 } else {
                     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
                 }
@@ -755,8 +688,14 @@ public:
 
         if ((eff_fsr == 1 || eff_fsr == 2) && prog_rcas_) {
             float q_scale = fsr_quality_scale(post.fsr_quality);
-            int st_w = std::clamp(static_cast<int>(std::lround(static_cast<float>(vp_w) * q_scale)), w, vp_w);
-            int st_h = std::clamp(static_cast<int>(std::lround(static_cast<float>(vp_h) * q_scale)), h, vp_h);
+            int max_w = std::max(w, vp_w);
+            int max_h = std::max(h, vp_h);
+            int min_w = std::min(w, vp_w);
+            int min_h = std::min(h, vp_h);
+            int desired_w = static_cast<int>(std::lround(static_cast<float>(vp_w) * q_scale));
+            int desired_h = static_cast<int>(std::lround(static_cast<float>(vp_h) * q_scale));
+            int st_w = std::max(1, std::clamp(desired_w, min_w, max_w));
+            int st_h = std::max(1, std::clamp(desired_h, min_h, max_h));
             float sharp = std::clamp(post.rcas_sharpness + fsr_quality_sharpness_bias(post.fsr_quality), 0.0f, 1.0f);
 
             if (eff_fsr == 1 && prog_easu_ && ensure_stage_fbos(st_w, st_h, false)) {
@@ -861,8 +800,10 @@ public:
         if (prog_temporal_) { glDeleteProgram(prog_temporal_); prog_temporal_ = 0; }
         if (prog_rcas_) { glDeleteProgram(prog_rcas_); prog_rcas_ = 0; }
         if (prog_) { glDeleteProgram(prog_); prog_ = 0; }
+        has_cur_ = false;
         has_prev_ = false;
         history_valid_ = false;
+        last_uploaded_seq_ = 0;
         fsr3_frame_idx_ = 0;
         last_w_ = 0;
         last_h_ = 0;
@@ -909,8 +850,10 @@ private:
     }
 
     static bool create_fbo_tex(GLuint& fbo, GLuint& tex, int w, int h, GLenum filter) {
+        if (w <= 0 || h <= 0) return false;
         if (!fbo) glGenFramebuffers(1, &fbo);
         if (!tex) glGenTextures(1, &tex);
+        glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, tex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
@@ -1011,8 +954,10 @@ private:
     int stage_w_ = 0, stage_h_ = 0;
 
     int cur_tex_ = 0;
+    bool has_cur_ = false;
     bool has_prev_ = false;
     bool history_valid_ = false;
+    uint64_t last_uploaded_seq_ = 0;
     int fsr3_frame_idx_ = 0;
     int last_w_ = 0;
     int last_h_ = 0;

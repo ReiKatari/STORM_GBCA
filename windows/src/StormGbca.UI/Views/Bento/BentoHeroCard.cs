@@ -202,6 +202,11 @@ public class BentoHeroCard : AuroraGlassCard
 
     private void UpdateWithRom(GbcaRomRecord? rom)
     {
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdateWithRom(rom));
+            return;
+        }
         _currentRom = rom;
         _badgesRow.Children.Clear();
 

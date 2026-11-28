@@ -43,6 +43,7 @@ object GbcaPrefs {
     val romFoldersState = mutableStateOf<List<String>>(emptyList())
     val raHardcoreState = mutableStateOf(false)
     val installedVulkanDriversState = mutableStateOf<List<InstalledVulkanDriver>>(emptyList())
+    val coverCacheGenState = mutableStateOf(0)
     private var romFoldersDirty: Boolean = false
 
     fun consumeRomFoldersDirty(): Boolean {

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 STORM TEAM. All rights reserved.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -183,7 +186,7 @@ public sealed class AuroraDualMirrorUpdater
 
     static AuroraDualMirrorUpdater()
     {
-        s_httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM_GBCA-AuroraFluid-Updater/1.9.0 (Windows; Android; Linux)");
+        s_httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM_GBCA-AuroraFluid-Updater/1.9.1 (Windows; Android; Linux)");
     }
 
     public const string DefaultGitHubOwner = "ReiKatari";

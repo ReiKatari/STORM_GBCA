@@ -199,8 +199,10 @@ class MainActivity : AppCompatActivity() {
                         }
                 }
 
-                // Re-evaluate covers whenever ROM list OR either cover toggle changes!
-                LaunchedEffect(romsState.value, coreCfg.showLibretroCovers, coreCfg.showRaCovers) {
+                // Re-evaluate covers whenever ROM list, cover toggles, or cache clear generation changes!
+                val coverCacheGen = GbcaPrefs.coverCacheGenState.value
+                LaunchedEffect(romsState.value, coreCfg.showLibretroCovers, coreCfg.showRaCovers, coverCacheGen) {
+                    if (coverCacheGen > 0) boxArtMap.clear()
                     preloadCovers(romsState.value, coreCfg.showLibretroCovers, coreCfg.showRaCovers)
                 }
 

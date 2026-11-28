@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -297,14 +298,15 @@ fun RomBrowserScreen(
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
             ) {
                 val updatesCount = gameUpdatesMap.size
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier
-                        .weight(1.02f)
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (updatesCount > 0) colors.green.copy(alpha = 0.16f) else colors.surface2)
                         .border(1.dp, if (updatesCount > 0) colors.green else colors.line, RoundedCornerShape(16.dp))
@@ -319,7 +321,7 @@ fun RomBrowserScreen(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
                     )
                     if (updatesCount > 0) {
                         Spacer(Modifier.width(4.dp))
@@ -337,6 +339,7 @@ fun RomBrowserScreen(
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 maxLines = 1,
+                                softWrap = false,
                             )
                         }
                     }
@@ -346,7 +349,6 @@ fun RomBrowserScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier
-                        .weight(1.08f)
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (favSelected) colors.green else colors.surface2)
                         .border(1.dp, if (favSelected) colors.green else colors.line, RoundedCornerShape(16.dp))
@@ -367,11 +369,11 @@ fun RomBrowserScreen(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
                     )
                 }
-                HeaderActionPill(Icons.Filled.FileOpen, stringResource(R.string.file_btn), onOpenSingleFile, Modifier.weight(0.88f))
-                HeaderActionPill(Icons.Filled.Refresh, stringResource(R.string.refresh_library), onRefresh, Modifier.weight(0.95f))
+                HeaderActionPill(Icons.Filled.FileOpen, stringResource(R.string.file_btn), onOpenSingleFile)
+                HeaderActionPill(Icons.Filled.Refresh, stringResource(R.string.refresh_library), onRefresh)
             }
         }
 
@@ -583,7 +585,7 @@ private fun HeaderActionPill(icon: ImageVector, label: String, onClick: () -> Un
             .background(colors.surface2)
             .border(1.dp, colors.line, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 6.dp, vertical = 6.dp),
     ) {
         Icon(icon, contentDescription = null, tint = colors.green, modifier = Modifier.size(13.5.dp))
         Spacer(Modifier.width(4.dp))
@@ -593,7 +595,7 @@ private fun HeaderActionPill(icon: ImageVector, label: String, onClick: () -> Un
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
         )
     }
 }

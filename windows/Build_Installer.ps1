@@ -15,7 +15,7 @@ $releasesDir = Join-Path $repoRoot "releases"
 if (-not (Test-Path $filesDir)) { New-Item -ItemType Directory -Path $filesDir | Out-Null }
 if (-not (Test-Path $releasesDir)) { New-Item -ItemType Directory -Path $releasesDir | Out-Null }
 
-$appVersion = "1.9.0"
+$appVersion = "1.9.1"
 try {
     [xml]$appProjXml = Get-Content $desktopProj
     $verFromProj = ($appProjXml.Project.PropertyGroup | ForEach-Object { $_.Version } | Where-Object { $_ } | Select-Object -First 1)

@@ -206,6 +206,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         lock (_coreLock)
         {
             NativeCoreBindings.storm_gbca_set_config(_ctx, &cfg);
+            NativeCoreBindings.storm_gbca_set_optimization_profile(_ctx, (int)settings.OptimizationProfile);
             NativeCoreBindings.storm_gbca_set_upscale(_ctx, Math.Clamp(settings.ResolutionScale, 1, 4), (int)settings.UpscaleMode);
             NativeCoreBindings.storm_gbca_set_performance(_ctx, effectiveOverclock, Math.Clamp(settings.FrameSkip, 0, 4));
             NativeCoreBindings.storm_gbca_set_solar_lux(_ctx, settings.SolarLuxLevel);

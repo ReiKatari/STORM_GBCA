@@ -2,8 +2,19 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 
 namespace storm {
+
+inline std::atomic<uint64_t> g_real_frame_seq{0};
+
+inline void pp_bump_frame_seq() {
+    g_real_frame_seq.fetch_add(1, std::memory_order_release);
+}
+
+inline uint64_t pp_get_frame_seq() {
+    return g_real_frame_seq.load(std::memory_order_acquire);
+}
 
 struct PostProcessParams {
     int   fsr_mode = 0;           // 0=off, 1=FSR1, 2=FSR3
@@ -35,6 +46,14 @@ inline PostProcessParams get_post_process_params() {
     p.frame_gen_enabled = s.frame_gen_enabled.load(std::memory_order_relaxed);
     p.frame_gen_alpha = std::clamp(s.frame_gen_alpha.load(std::memory_order_relaxed), 0.0f, 1.0f);
     return p;
+}
+
+inline int pp_get_fsr_mode() {
+    return std::clamp(post_process_state().fsr_mode.load(std::memory_order_relaxed), 0, 2);
+}
+
+inline bool pp_get_frame_gen() {
+    return post_process_state().frame_gen_enabled.load(std::memory_order_relaxed);
 }
 
 inline float fsr_quality_scale(int quality) {

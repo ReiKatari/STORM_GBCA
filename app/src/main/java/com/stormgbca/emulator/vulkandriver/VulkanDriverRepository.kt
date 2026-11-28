@@ -25,7 +25,7 @@ object VulkanDriverRepository {
     private const val CACHE_TTL_MS = 30L * 60L * 1000L
     private const val RELEASES_PER_PAGE = 10
     private const val MAX_CONCURRENT_REQUESTS = 4
-    const val USER_AGENT = "STORM-GBCA/1.9.0 (Android)"
+    const val USER_AGENT = "STORM-GBCA/1.9.1 (Android)"
 
     val STORM_DRIVER_MIRRORS: List<String> = listOf(
         "https://stormgamesworld.ru/uploads/programs/STORM_DRIVER/STORM_DRIVER_12.0.0.zip",
@@ -132,14 +132,12 @@ object VulkanDriverRepository {
     private val ADRENO_8XX_TOKEN_REGEX = Regex("(^|[^a-z0-9])(825|829|830|840|845|850|a830|a840|a8xx|gen8|8elite|sm8750|sm8850)([^a-z0-9]|$)")
 
     fun readGraphicsTelemetry(context: Context): GraphicsTelemetry {
-        val vkSupported = runCatching { NativeCore.nativeIsVulkanSupported() }.getOrDefault(false)
         val rawVk = runCatching { NativeCore.nativeGetVulkanInfo() }.getOrDefault("").trim()
         val parts = rawVk.split('|')
-        val parsedName = parts.getOrNull(0)?.trim().orEmpty()
+        val gpuName = parts.getOrNull(0)?.trim().orEmpty()
         val devApi = parts.getOrNull(1)?.trim().orEmpty()
         val instApi = parts.getOrNull(2)?.trim().orEmpty()
-        val fallbackName = runCatching { NativeCore.nativeGetVulkanDeviceName() }.getOrDefault("").trim()
-        val gpuName = parsedName.ifBlank { fallbackName }
+        val vkSupported = gpuName.isNotBlank() || devApi.isNotBlank()
 
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val amGles = am?.deviceConfigurationInfo?.glEsVersion?.trim().orEmpty()

@@ -57,9 +57,11 @@ public class SettingsView : Grid
     private string _mpFeedback = string.Empty;
     private bool _pendingHardcoreConfirm;
     private TextBlock? _videoRendererTitle;
+    private ScrollViewer? _activeTabScroll;
 
     public SettingsView()
     {
+        Focusable = true;
         Margin = new Thickness(16, 8, 16, 12);
         RowDefinitions = new RowDefinitions("Auto,*");
         ColumnDefinitions = new ColumnDefinitions("200,*");
@@ -289,7 +291,18 @@ public class SettingsView : Grid
                 tb.Text = GbcaLoc.T(item.Title);
             }
         }
-        LoadTab(_activeTabIndex);
+        LoadTab(_activeTabIndex, preserveScroll: true);
+    }
+
+    public void OpenTab(int index)
+    {
+        if (index is < 0 or > 8) return;
+        LoadTab(index, preserveScroll: false);
+    }
+
+    private void ReloadActiveTabPreservingScroll()
+    {
+        LoadTab(_activeTabIndex, preserveScroll: true);
     }
 
     private void AddTabHeader(int idx, AuroraIconKind icon, string title)
@@ -321,8 +334,9 @@ public class SettingsView : Grid
         _tabButtons.Add((idx, icon, title, btn));
     }
 
-    private void LoadTab(int index)
+    private void LoadTab(int index, bool preserveScroll = false)
     {
+        Vector savedOffset = preserveScroll && _activeTabScroll != null ? _activeTabScroll.Offset : default;
         _activeTabIndex = index;
         _inputBindingsGrid = null;
         var primary = StormThemeBrushes.AccentPrimaryColor;
@@ -340,6 +354,7 @@ public class SettingsView : Grid
         }
 
         var scroll = new ScrollViewer { Padding = new Thickness(18, 16, 22, 16), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        _activeTabScroll = scroll;
         var container = new StackPanel { Spacing = 12 };
         string q = _filterQuery.Trim();
 
@@ -386,6 +401,16 @@ public class SettingsView : Grid
 
         scroll.Content = container;
         _contentPresenter.Content = scroll;
+        if (preserveScroll && savedOffset != default)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_activeTabScroll == scroll)
+                {
+                    scroll.Offset = savedOffset;
+                }
+            }, DispatcherPriority.Loaded);
+        }
     }
 
     private static bool ControlContainsText(Control control, string query)
@@ -417,6 +442,11 @@ public class SettingsView : Grid
                 s.UpscaleMode = StormUpscaleMode.None;
                 s.RewindEnabled = false;
                 s.RunAheadFrames = 0;
+                s.FrameGeneration = false;
+                if (s.VideoFilter == StormVideoFilter.Fsr3) s.VideoFilter = StormVideoFilter.Bilinear;
+                if (s.GbOverlayProfile.LcdFilter == StormVideoFilter.Fsr3) s.GbOverlayProfile.LcdFilter = StormVideoFilter.Bilinear;
+                if (s.GbcOverlayProfile.LcdFilter == StormVideoFilter.Fsr3) s.GbcOverlayProfile.LcdFilter = StormVideoFilter.Bilinear;
+                if (s.GbaOverlayProfile.LcdFilter == StormVideoFilter.Fsr3) s.GbaOverlayProfile.LcdFilter = StormVideoFilter.Bilinear;
             }
             else if (s.OptimizationProfile == StormOptimizationProfile.Balanced)
             {
@@ -676,7 +706,11 @@ public class SettingsView : Grid
         ], (int)s.UpscaleMode, i =>
         {
             s.UpscaleMode = (StormUpscaleMode)i;
-            if (s.UpscaleMode != StormUpscaleMode.None && s.ResolutionScale < 2)
+            if (s.UpscaleMode == StormUpscaleMode.None)
+            {
+                s.ResolutionScale = 1;
+            }
+            else if (s.ResolutionScale < 2)
             {
                 s.ResolutionScale = 2;
             }
@@ -685,8 +719,8 @@ public class SettingsView : Grid
         bool hcVideo = StormGbcaUiState.Instance.IsEmulationActive && StormGbcaUiState.Instance.Emulator.IsHardcoreMode;
         var ocSlider = CreateSlider(hcVideo ? "Разгон процессора консоли (Hardcore 100%):" : "Разгон процессора консоли (CPU Overclock):", 50, 400, hcVideo ? 100 : s.CpuOverclockPct, "%", v =>
         {
-            if (!hcVideo) s.CpuOverclockPct = Math.Clamp(((int)v / 25) * 25, 50, 400);
-        });
+            if (!hcVideo) s.CpuOverclockPct = Math.Clamp((int)v, 50, 400);
+        }, v => Math.Clamp(Math.Round(v / 25.0) * 25.0, 50, 400));
         if (hcVideo)
         {
             ocSlider.IsEnabled = false;
@@ -1088,7 +1122,7 @@ public class SettingsView : Grid
                 AuroraTactileFeedbackService.Instance.PlayClick();
                 _listeningActionKey = b.Key;
                 Focus();
-                LoadTab(_activeTabIndex);
+                ReloadActiveTabPreservingScroll();
             };
             grid.Children.Add(row);
         }
@@ -1172,7 +1206,7 @@ public class SettingsView : Grid
         }
         _listeningActionKey = null;
         e.Handled = true;
-        LoadTab(_activeTabIndex);
+        LoadTab(_activeTabIndex, preserveScroll: true);
     }
 
     private void BuildRaTab(StackPanel p)
@@ -1415,9 +1449,9 @@ public class SettingsView : Grid
             btn.Click += (_, _) =>
             {
                 AuroraTactileFeedbackService.Instance.PlayClick();
-                AuroraThemeManager.Instance.ApplyTheme(t.Id);
                 s.Theme = t.Title;
                 CommitSave();
+                AuroraThemeManager.Instance.ApplyTheme(t.Id);
             };
             themesGrid.Children.Add(btn);
         }
@@ -1446,10 +1480,9 @@ public class SettingsView : Grid
             swatchBtn.Click += (_, _) =>
             {
                 AuroraTactileFeedbackService.Instance.PlayClick();
-                AuroraThemeManager.Instance.ApplyTheme(AuroraThemeManager.Instance.CurrentTheme.Id, kind);
                 s.AccentName = kind.ToString();
                 CommitSave();
-                RefreshTabLabelsAndContent(force: true);
+                AuroraThemeManager.Instance.ApplyTheme(AuroraThemeManager.Instance.CurrentTheme.Id, kind);
             };
             accentsWrap.Children.Add(swatchBtn);
         }
@@ -1475,10 +1508,9 @@ public class SettingsView : Grid
             fBtn.Click += (_, _) =>
             {
                 AuroraTactileFeedbackService.Instance.PlayClick();
-                AuroraThemeManager.Instance.ApplyTheme(AuroraThemeManager.Instance.CurrentTheme.Id, null, preset);
                 s.TypographyName = preset.ToString();
                 CommitSave();
-                RefreshTabLabelsAndContent(force: true);
+                AuroraThemeManager.Instance.ApplyTheme(AuroraThemeManager.Instance.CurrentTheme.Id, null, preset);
             };
             fontsGrid.Children.Add(fBtn);
         }
@@ -1580,16 +1612,18 @@ public class SettingsView : Grid
         return cb;
     }
 
-    private Grid CreateSlider(string label, double min, double max, double initial, string unit, Action<double> onChange)
+    private Grid CreateSlider(string label, double min, double max, double initial, string unit, Action<double> onChange, Func<double, double>? quantize = null)
     {
+        double initVal = quantize != null ? quantize(initial) : initial;
         var g = new Grid { Margin = new Thickness(0, 4), RowDefinitions = new RowDefinitions("Auto,Auto") };
-        var lbl = new TextBlock { Text = $"{label} {initial:0.##} {unit}", FontSize = 11, Foreground = StormThemeBrushes.BodyText, TextWrapping = TextWrapping.Wrap };
+        var lbl = new TextBlock { Text = $"{label} {initVal:0.##} {unit}", FontSize = 11, Foreground = StormThemeBrushes.BodyText, TextWrapping = TextWrapping.Wrap };
         g.Children.Add(lbl);
-        var slider = new AuroraVolumetricSlider { Minimum = min, Maximum = max, Value = Math.Clamp(initial, min, max), Height = 24 };
+        var slider = new AuroraVolumetricSlider { Minimum = min, Maximum = max, Value = Math.Clamp(initVal, min, max), Height = 24 };
         slider.ValueChanged += (_, val) =>
         {
-            lbl.Text = $"{label} {val:0.##} {unit}";
-            onChange(val);
+            double qv = quantize != null ? quantize(val) : val;
+            lbl.Text = $"{label} {qv:0.##} {unit}";
+            onChange(qv);
             ScheduleDebouncedSave();
         };
         g.Children.Add(slider);
@@ -1624,7 +1658,7 @@ public class SettingsView : Grid
                 CommitSave();
                 if (reloadAfter)
                 {
-                    LoadTab(_activeTabIndex);
+                    Dispatcher.UIThread.Post(ReloadActiveTabPreservingScroll);
                 }
             }
         };

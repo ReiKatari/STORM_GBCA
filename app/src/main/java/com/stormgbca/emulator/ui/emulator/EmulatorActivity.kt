@@ -95,6 +95,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import ru.stormgames.gbca.NativeCore
 import java.io.FileOutputStream
@@ -128,6 +129,10 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
     private val useVulkanState = androidx.compose.runtime.mutableStateOf(false)
     private val vulkanReady = AtomicBoolean(false)
+    private val pendingVkRender = AtomicBoolean(false)
+    @Volatile private var displayRefreshHz: Float = 60f
+    @Volatile private var activeGraphicsBackend: Int = 0
+    @Volatile private var activeCustomDriverPath: String = ""
 
     private val isPaused = AtomicBoolean(false)
     private val isRunning = AtomicBoolean(false)
@@ -219,14 +224,14 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         val initOverlay = GbcaPrefs.getOverlayProfile(activeSystem)
         NativeCore.nativeSetRetroArchShader(initOverlay.retroArchShaderPath)
 
-        val tel = com.stormgbca.emulator.vulkandriver.VulkanDriverRepository.readGraphicsTelemetry(this)
-        val wantVulkan = GbcaPrefs.coreConfigState.value.graphicsBackend == 1 && tel.vulkanSupported
+        refreshDisplayHz()
+        val initCfg = GbcaPrefs.coreConfigState.value
+        activeGraphicsBackend = initCfg.graphicsBackend
+        activeCustomDriverPath = initCfg.customVulkanDriverPath
+        val wantVulkan = initCfg.graphicsBackend == 1
         useVulkanState.value = wantVulkan
-        val vkLabel = tel.vulkanDeviceApi.ifBlank { tel.vulkanInstanceApi }.let { ver ->
-            if (ver.isNotBlank()) "Vulkan $ver" else "Vulkan"
-        }
-        val glesLabel = if (tel.glesVersion.isNotBlank()) "GLES ${tel.glesVersion}" else "GLES"
-        activeBackendLabelState.value = if (wantVulkan) vkLabel else glesLabel
+        activeBackendLabelState.value = if (wantVulkan) "Vulkan" else "GLES"
+        refreshTelemetryAsync(wantVulkan)
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -717,27 +722,30 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 val ok = vkLock.withLock {
                     NativeCore.nativeVkInit(holder.surface, driverPath)
                 }
-                val tel = com.stormgbca.emulator.vulkandriver.VulkanDriverRepository.readGraphicsTelemetry(this@EmulatorActivity)
                 if (ok) {
                     vulkanReady.set(true)
-                    val vkVer = tel.vulkanDeviceApi.ifBlank { tel.vulkanInstanceApi }
-                    activeBackendLabelState.value = if (vkVer.isNotBlank()) "Vulkan $vkVer" else "Vulkan"
+                    activeBackendLabelState.value = "Vulkan"
                     NativeCore.nativeSetRetroArchShader(GbcaPrefs.getOverlayProfile(activeSystem).retroArchShaderPath)
                     syncPostProcessConfig()
+                    pendingVkRender.set(true)
+                    refreshTelemetryAsync(true)
                 } else {
                     vulkanReady.set(false)
                     useVulkanState.value = false
-                    activeBackendLabelState.value = if (tel.glesVersion.isNotBlank()) "GLES ${tel.glesVersion}" else "GLES"
+                    activeBackendLabelState.value = "GLES"
                     showToast(getString(R.string.toast_vulkan_fallback))
+                    refreshTelemetryAsync(false)
                 }
             }
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
                 glSurfaceW = width.coerceAtLeast(1)
                 glSurfaceH = height.coerceAtLeast(1)
+                refreshDisplayHz()
                 if (vulkanReady.get()) {
                     vkLock.withLock { NativeCore.nativeVkResize(glSurfaceW, glSurfaceH) }
                     updateSurfaceFrameRateHint(GbcaPrefs.coreConfigState.value.frameGenerationEnabled)
+                    pendingVkRender.set(true)
                 }
             }
 
@@ -748,20 +756,58 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         })
     }
 
-    private fun requestVideoRender() {
-        if (useVulkanState.value) {
-            if (vulkanReady.get() && nativeHandle != 0L) {
-                val overlayProf = GbcaPrefs.getOverlayProfile(activeSystem)
-                val linear = overlayProf.shaderOverlay != NativeCore.FILTER_NEAREST
-                vkLock.withLock {
-                    if (vulkanReady.get()) {
-                        coreLock.withLock {
-                            if (nativeHandle != 0L) {
-                                NativeCore.nativeVkRender(nativeHandle, glVpX, vkVpY, glVpW, glVpH, linear, activeRotationDeg)
-                            }
-                        }
+    private fun refreshDisplayHz(): Float {
+        val hz = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                display?.refreshRate ?: 60f
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay?.refreshRate ?: 60f
+            }
+        }.getOrDefault(60f)
+        displayRefreshHz = hz
+        return hz
+    }
+
+    private fun refreshTelemetryAsync(expectVulkan: Boolean) {
+        activityScope.launch(Dispatchers.IO) {
+            val tel = com.stormgbca.emulator.vulkandriver.VulkanDriverRepository.readGraphicsTelemetry(this@EmulatorActivity)
+            val vkLabel = tel.vulkanDeviceApi.ifBlank { tel.vulkanInstanceApi }.let { ver ->
+                if (ver.isNotBlank()) "Vulkan $ver" else "Vulkan"
+            }
+            val glesLabel = if (tel.glesVersion.isNotBlank()) "GLES ${tel.glesVersion}" else "GLES"
+            withContext(Dispatchers.Main) {
+                if (expectVulkan && !tel.vulkanSupported) {
+                    useVulkanState.value = false
+                    activeBackendLabelState.value = glesLabel
+                } else {
+                    activeBackendLabelState.value = if (useVulkanState.value) vkLabel else glesLabel
+                }
+            }
+        }
+    }
+
+    private fun renderVulkanFrame() {
+        if (!vulkanReady.get() || nativeHandle == 0L) return
+        val overlayProf = GbcaPrefs.getOverlayProfile(activeSystem)
+        val linear = overlayProf.shaderOverlay != NativeCore.FILTER_NEAREST
+        vkLock.withLock {
+            if (vulkanReady.get()) {
+                coreLock.withLock {
+                    if (nativeHandle != 0L) {
+                        NativeCore.nativeVkRender(nativeHandle, glVpX, vkVpY, glVpW, glVpH, linear, activeRotationDeg)
                     }
                 }
+            }
+        }
+    }
+
+    private fun requestVideoRender() {
+        if (useVulkanState.value) {
+            if (Thread.currentThread() === emuThread) {
+                renderVulkanFrame()
+            } else {
+                pendingVkRender.set(true)
             }
         } else {
             glView?.requestRender()
@@ -971,7 +1017,6 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val targetRate = if (frameGenEnabled) 120f else 60f
         if (lastHintedFrameRate == targetRate) return
-        lastHintedFrameRate = targetRate
         runOnUiThread {
             val activeSurface = if (useVulkanState.value) {
                 vkView?.holder?.surface
@@ -981,6 +1026,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             if (activeSurface != null && activeSurface.isValid) {
                 runCatching {
                     activeSurface.setFrameRate(targetRate, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+                    lastHintedFrameRate = targetRate
                 }
             }
         }
@@ -1018,7 +1064,14 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
             while (isRunning.get()) {
                 if (isPaused.get() || nativeHandle == 0L) {
-                    Thread.sleep(16)
+                    if (nativeHandle != 0L && useVulkanState.value && pendingVkRender.compareAndSet(true, false)) {
+                        renderVulkanFrame()
+                    }
+                    try {
+                        Thread.sleep(16)
+                    } catch (_: InterruptedException) {
+                        break
+                    }
                     nextTickNs = System.nanoTime()
                     continue
                 }
@@ -1055,11 +1108,16 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 val skip = cfg.frameSkip.coerceIn(0, 4)
                 val thermalThrottle = isThermalThrottled.get()
                 val shouldRender = skip == 0 || (frameCounter % (skip + 1)) == 0
-                val frameGenActive = cfg.frameGenerationEnabled && !ff && !thermalThrottle && skip == 0
+                val canHalfFrameGen = !useVulkanState.value || displayRefreshHz >= 85f
+                val frameGenActive = cfg.frameGenerationEnabled && canHalfFrameGen && !ff && !thermalThrottle && skip == 0
 
                 if (shouldRender) {
+                    pendingVkRender.set(false)
                     NativeCore.nativeSetFrameGenAlpha(0.0f)
                     requestVideoRender()
+                } else if (useVulkanState.value && pendingVkRender.compareAndSet(true, false)) {
+                    NativeCore.nativeSetFrameGenAlpha(0.0f)
+                    renderVulkanFrame()
                 } else if (!frameGenActive) {
                     NativeCore.nativeSetFrameGenAlpha(0.0f)
                 }
@@ -1468,6 +1526,49 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         isActivityResumed = true
         supportActionBar?.hide()
         AppThemeManager.applyImmersiveFullscreen(this)
+        refreshDisplayHz()
+        val resumeCfg = GbcaPrefs.coreConfigState.value
+        val backendChanged = resumeCfg.graphicsBackend != activeGraphicsBackend
+        val driverChanged = resumeCfg.customVulkanDriverPath != activeCustomDriverPath
+        if (backendChanged || driverChanged) {
+            activeGraphicsBackend = resumeCfg.graphicsBackend
+            activeCustomDriverPath = resumeCfg.customVulkanDriverPath
+            if (resumeCfg.graphicsBackend == 1) {
+                if (!useVulkanState.value) {
+                    glView?.onPause()
+                    useVulkanState.value = true
+                    activeBackendLabelState.value = "Vulkan"
+                    refreshTelemetryAsync(true)
+                } else if (driverChanged) {
+                    val surface = vkView?.holder?.surface
+                    if (surface != null && surface.isValid) {
+                        val ok = vkLock.withLock {
+                            NativeCore.nativeVkDestroy()
+                            NativeCore.nativeVkInit(surface, resumeCfg.customVulkanDriverPath)
+                        }
+                        vulkanReady.set(ok)
+                        if (ok) {
+                            vkLock.withLock { NativeCore.nativeVkResize(glSurfaceW, glSurfaceH) }
+                            pendingVkRender.set(true)
+                            refreshTelemetryAsync(true)
+                        } else {
+                            useVulkanState.value = false
+                            activeBackendLabelState.value = "GLES"
+                            showToast(getString(R.string.toast_vulkan_fallback))
+                            refreshTelemetryAsync(false)
+                        }
+                    } else {
+                        showToast(getString(R.string.toast_vulkan_fallback))
+                    }
+                }
+            } else if (useVulkanState.value) {
+                vulkanReady.set(false)
+                vkLock.withLock { NativeCore.nativeVkDestroy() }
+                useVulkanState.value = false
+                activeBackendLabelState.value = "GLES"
+                refreshTelemetryAsync(false)
+            }
+        }
         if (!useVulkanState.value) glView?.onResume()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             registerThermalListenerApi29()
@@ -1521,7 +1622,12 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onDestroy() {
         isRunning.set(false)
-        emuThread?.join(500)
+        isPaused.set(false)
+        pendingVkRender.set(false)
+        val thread = emuThread
+        emuThread = null
+        thread?.interrupt()
+        runCatching { thread?.join(2000L) }
         flushSram()
         coreLock.withLock {
             if (nativeHandle != 0L) {
@@ -1531,7 +1637,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         }
         vulkanReady.set(false)
         vkLock.withLock { NativeCore.nativeVkDestroy() }
-        NativeCore.nativeGlesDestroy()
+        glView?.queueEvent { NativeCore.nativeGlesDestroy() }
         RetroAchievementsClient.currentCoreName = null
         activityScope.cancel()
         super.onDestroy()
@@ -1711,7 +1817,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         raPollJob?.cancel()
         raPingJob?.cancel()
 
-        raPollJob = activityScope.launch(Dispatchers.Main) {
+        raPollJob = activityScope.launch(Dispatchers.Default) {
             while (isActive && isRunning.get()) {
                 delay(100L)
                 if (isPaused.get() || nativeHandle == 0L) continue
@@ -1726,11 +1832,15 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                         rpText = NativeCore.raGetRichPresence(nativeHandle)
                     }
                 }
-                if (rpText.isNotBlank()) {
-                    raRichPresenceState.value = rpText
-                }
-                for (ev in events) {
-                    handleRaEvent(ev)
+                if (rpText.isNotBlank() || events.isNotEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        if (rpText.isNotBlank()) {
+                            raRichPresenceState.value = rpText
+                        }
+                        for (ev in events) {
+                            handleRaEvent(ev)
+                        }
+                    }
                 }
             }
         }

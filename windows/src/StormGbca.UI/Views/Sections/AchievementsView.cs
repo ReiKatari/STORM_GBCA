@@ -105,7 +105,7 @@ public class AchievementsView : ScrollViewer
         }));
         actionsRow.Children.Add(CreateBtn(AuroraIconKind.SettingsCore, GbcaLoc.T("RaAccountSettings"), () =>
         {
-            StormGbcaUiState.Instance.SetNavSection(NavSectionKind.Settings);
+            StormGbcaUiState.Instance.RequestSettingsTab(7);
         }));
         hStack.Children.Add(actionsRow);
         hStack.Children.Add(_actionResultText);
@@ -210,6 +210,7 @@ public class AchievementsView : ScrollViewer
             Dispatcher.UIThread.Post(RefreshData);
             return;
         }
+        if (!IsVisible) return;
         var ra = StormGbcaUiState.Instance.RetroAchievements;
         _accountStatusText.Text = ra.IsLoggedIn
             ? $"Connected: {ra.Username}"

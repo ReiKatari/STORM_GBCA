@@ -302,7 +302,11 @@ public class EmulationPauseOverlay : Border
             }));
             var loadBtn = CreateMiniBtn("Загрузить", Color.Parse("#38BDF8"), () =>
             {
-                if (!hc) LoadSlotRequested?.Invoke(slot);
+                if (!hc)
+                {
+                    LoadSlotRequested?.Invoke(slot);
+                    ResumeRequested?.Invoke();
+                }
             });
             if (hc)
             {
@@ -402,16 +406,17 @@ public class EmulationPauseOverlay : Border
         _bodyPanel.Children.Add(CreateCombo("Алгоритм апскейлинга:", ["Nearest", "xBRZ HD", "Scale2x / EPX", "MMPX Sharp", "LCD Subpixel HD", "CRT Scanlines HD"], (int)s.UpscaleMode, idx =>
         {
             s.UpscaleMode = (StormUpscaleMode)idx;
-            if (s.UpscaleMode != StormUpscaleMode.None && s.ResolutionScale < 2) s.ResolutionScale = 2;
+            if (s.UpscaleMode == StormUpscaleMode.None) s.ResolutionScale = 1;
+            else if (s.ResolutionScale < 2) s.ResolutionScale = 2;
             StormGbcaUiState.Instance.SaveSettings();
         }));
         bool hc = StormGbcaUiState.Instance.Emulator.IsHardcoreMode;
         var ocSlider = CreateSlider(hc ? "Разгон процессора (Hardcore 100%):" : "Разгон процессора (CPU Overclock):", 50, 400, hc ? 100 : s.CpuOverclockPct, "%", v =>
         {
             if (hc) return;
-            s.CpuOverclockPct = Math.Clamp(((int)v / 25) * 25, 50, 400);
+            s.CpuOverclockPct = Math.Clamp((int)v, 50, 400);
             StormGbcaUiState.Instance.SaveSettings();
-        });
+        }, v => Math.Clamp(Math.Round(v / 25.0) * 25.0, 50, 400));
         if (hc)
         {
             ocSlider.IsEnabled = false;
@@ -444,9 +449,9 @@ public class EmulationPauseOverlay : Border
         {
             var filter = (StormVideoFilter)idx;
             s.VideoFilter = filter;
-            var plat = StormGbcaUiState.Instance.Emulator.ActivePlatform;
-            if (plat == StormPlatform.None) plat = StormPlatform.Gba;
-            s.GetOverlayProfileForPlatform(plat).LcdFilter = filter;
+            s.GbOverlayProfile.LcdFilter = filter;
+            s.GbcOverlayProfile.LcdFilter = filter;
+            s.GbaOverlayProfile.LcdFilter = filter;
             StormGbcaUiState.Instance.SaveSettings();
         }));
         _bodyPanel.Children.Add(CreateCombo(GbcaLoc.T("FsrQualityLabel"),
@@ -548,13 +553,23 @@ public class EmulationPauseOverlay : Border
             p.Margin = new Thickness(0, 0, 8, 8);
             quickWrap.Children.Add(p);
         }
-        AddQuick("Host LAN Link (2P-4P)", Color.Parse("#10B981"), () => { emu.StartLink(StormLinkMode.LanHost, "", s.MultiplayerPort, 0, s.MultiplayerRoomName); RefreshTab(); });
-        AddQuick("Join LAN (" + s.MultiplayerLastHostIp + ")", Color.Parse("#38BDF8"), () => { emu.StartLink(StormLinkMode.LanClient, s.MultiplayerLastHostIp, s.MultiplayerPort, 0, s.MultiplayerRoomName); RefreshTab(); });
-        AddQuick("GBA Wireless Host (RFU)", Color.Parse("#8B5CF6"), () => { emu.StartLink(StormLinkMode.WirelessHost, "", s.MultiplayerPort, 0, s.MultiplayerRoomName); RefreshTab(); });
-        AddQuick("GBC IR Host", Color.Parse("#F59E0B"), () => { emu.StartLink(StormLinkMode.IrHost, "", s.MultiplayerPort, 0, s.MultiplayerRoomName); RefreshTab(); });
-        AddQuick("Dolphin JoyBus (GC)", Color.Parse("#06B6D4"), () => { emu.StartLink(StormLinkMode.DolphinJoyBus, s.DolphinIp, s.DolphinDataPort, s.DolphinClockPort, "Dolphin"); RefreshTab(); });
-        AddQuick("Game Boy Printer (PNG)", Color.Parse("#EC4899"), () => { emu.StartLink(StormLinkMode.GbPrinter, "", 0, 0, "GBPrinter"); RefreshTab(); });
-        AddQuick("Local Loopback", Color.Parse("#22C55E"), () => { emu.StartLink(StormLinkMode.LocalLoopback, "", 0, 0, "Loopback"); RefreshTab(); });
+        void AddQuickAsync(string label, Color col, Func<Task> act)
+        {
+            var p = CreateActionPill(label, col, async () =>
+            {
+                await act();
+                Avalonia.Threading.Dispatcher.UIThread.Post(RefreshTab);
+            });
+            p.Margin = new Thickness(0, 0, 8, 8);
+            quickWrap.Children.Add(p);
+        }
+        AddQuickAsync("Host LAN Link (2P-4P)", Color.Parse("#10B981"), () => emu.StartLinkAsync(StormLinkMode.LanHost, "", s.MultiplayerPort, 0, s.MultiplayerRoomName));
+        AddQuickAsync("Join LAN (" + s.MultiplayerLastHostIp + ")", Color.Parse("#38BDF8"), () => emu.StartLinkAsync(StormLinkMode.LanClient, s.MultiplayerLastHostIp, s.MultiplayerPort, 0, s.MultiplayerRoomName));
+        AddQuickAsync("GBA Wireless Host (RFU)", Color.Parse("#8B5CF6"), () => emu.StartLinkAsync(StormLinkMode.WirelessHost, "", s.MultiplayerPort, 0, s.MultiplayerRoomName));
+        AddQuickAsync("GBC IR Host", Color.Parse("#F59E0B"), () => emu.StartLinkAsync(StormLinkMode.IrHost, "", s.MultiplayerPort, 0, s.MultiplayerRoomName));
+        AddQuickAsync("Dolphin JoyBus (GC)", Color.Parse("#06B6D4"), () => emu.StartLinkAsync(StormLinkMode.DolphinJoyBus, s.DolphinIp, s.DolphinDataPort, s.DolphinClockPort, "Dolphin"));
+        AddQuickAsync("Game Boy Printer (PNG)", Color.Parse("#EC4899"), () => emu.StartLinkAsync(StormLinkMode.GbPrinter, "", 0, 0, "GBPrinter"));
+        AddQuickAsync("Local Loopback", Color.Parse("#22C55E"), () => emu.StartLinkAsync(StormLinkMode.LocalLoopback, "", 0, 0, "Loopback"));
         if (st.Mode != StormLinkMode.None)
         {
             AddQuick(GbcaLoc.T("MpBtnDisconnect"), Color.Parse("#EF4444"), () => { emu.StopLink(); RefreshTab(); });
@@ -1009,16 +1024,18 @@ public class EmulationPauseOverlay : Border
         return g;
     }
 
-    private static Grid CreateSlider(string label, double min, double max, double val, string unit, Action<double> onChanged)
+    private static Grid CreateSlider(string label, double min, double max, double val, string unit, Action<double> onChanged, Func<double, double>? quantize = null)
     {
+        double init = quantize != null ? quantize(val) : val;
         var g = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto"), Margin = new Thickness(0, 2) };
-        var lbl = new TextBlock { Text = $"{label} {val:0.##} {unit}", FontSize = 11, Foreground = StormThemeBrushes.BodyText };
+        var lbl = new TextBlock { Text = $"{label} {init:0.##} {unit}", FontSize = 11, Foreground = StormThemeBrushes.BodyText };
         g.Children.Add(lbl);
-        var sld = new AuroraVolumetricSlider { Minimum = min, Maximum = max, Value = Math.Clamp(val, min, max), Height = 22 };
+        var sld = new AuroraVolumetricSlider { Minimum = min, Maximum = max, Value = Math.Clamp(init, min, max), Height = 22 };
         sld.ValueChanged += (_, v) =>
         {
-            lbl.Text = $"{label} {v:0.##} {unit}";
-            onChanged(v);
+            double qv = quantize != null ? quantize(v) : v;
+            lbl.Text = $"{label} {qv:0.##} {unit}";
+            onChanged(qv);
         };
         g.Children.Add(sld);
         Grid.SetRow(sld, 1);

@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit
  */
 object BoxArtRepository {
     private const val TAG = "BoxArtRepository"
-    private const val USER_AGENT = "STORM-GBCA/1.9.0 (Android)"
+    private const val USER_AGENT = "STORM-GBCA/1.9.1 (Android)"
 
     private const val REPO_GB = "Nintendo_-_Game_Boy"
     private const val REPO_GBC = "Nintendo_-_Game_Boy_Color"

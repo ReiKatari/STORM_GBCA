@@ -6,12 +6,12 @@
 
 <p align="center">
   <strong>Флагманский кроссплатформенный эмулятор Nintendo Game Boy, Game Boy Color и Game Boy Advance для Android и Windows x64 (mGBA + SameBoy + Vulkan 1.1 + RetroArch librashader + 40 аутентичных 3D-скинов + Link Cable / Wireless RFU / Dolphin JoyBus / GB Printer + интерфейс STORM DS Watermelon / AuroraFluid)</strong><br />
-  Версия <code>1.9.0</code> | Платформы: <code>Android (arm64-v8a, armeabi-v7a, x86_64)</code> и <code>Windows x64</code>
+  Версия <code>1.9.1</code> | Платформы: <code>Android (arm64-v8a, armeabi-v7a, x86_64)</code> и <code>Windows x64</code>
 </p>
 
 <p align="center">
   <a href="https://github.com/ReiKatari/STORM_GBCA">GitHub Repository</a> -
-  <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.9.0">Релиз STORM GBCA 1.9.0</a> -
+  <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.9.1">Релиз STORM GBCA 1.9.1</a> -
   <a href="https://stormgamesworld.ru/programs?repo=STORM_GBCA">Страница на STORM GAMES WORLD</a> -
   <a href="PRIVACY_POLICY.md">Политика конфиденциальности (Privacy Policy)</a> -
   <a href="THIRD_PARTY_LICENSES.md">Лицензии и компоненты (Third-Party Licenses)</a>
@@ -27,7 +27,7 @@
 
 ---
 
-## Что нового в версии 1.9.0
+## Что нового в версии 1.9.1
 
 - **Встроенный каталог STORM GAMES WORLD (GB / GBC / GBA)**:
   - Полноценный каталог игр и официальных переводов прямо внутри **STORM GBCA** на Android и Windows (оформленный в стиле тем STORM GBCA, единый стандарт с **STORM SWITCH** и **STORM DS**), с поддержкой основного хоста `stormgamesworld.ru` и резервного зеркала `storm-games.world`, поиском, фильтрами по платформам (`GB`, `GBC`, `GBA`), живым прогрессом загрузки и безопасной распаковкой ZIP-архивов.
@@ -61,13 +61,13 @@
 
 ---
 
-## Релиз 1.9.0
+## Релиз 1.9.1
 
 | Файл релиза | Назначение | Ключевые возможности |
 | --- | --- | --- |
-| `STORM_GBCA_1.9.0.apk` | Подписанная универсальная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`) | Встроенный каталог **STORM GAMES WORLD** (GB / GBC / GBA), интеграция `/translations`, фоновая проверка обновлений игр с переносом сохранений, выбор источника обновлений (`STORM GAMES WORLD` / `GitHub`), шейдеры **AMD FSR 1** и **AMD FSR 3** |
-| `STORM_GBCA_1.9.0_Windows.zip` | Портативная сборка для Windows 10/11 (x64) | Автономный `STORM GBCA.exe` + нативное ядро `storm_gbca_core.dll`, встроенный каталог **STORM GAMES WORLD** и `/translations`, фоновая проверка обновлений ROM с переносом сохранений (`.sav`, слоты, `.raprog`, читы, избранное) и выбор источника обновлений (`STORM GAMES WORLD` / `GitHub`) |
-| `STORM_GBCA_1.9.0_Setup.exe` | Установщик для Windows 10/11 (x64) | Эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`), распаковка в `C:\Program Files\STORM GBCA`, создание ярлыков, регистрация в Windows и чистое удаление |
+| `STORM_GBCA_1.9.1.apk` | Подписанная универсальная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`) | Встроенный каталог **STORM GAMES WORLD** (GB / GBC / GBA), интеграция `/translations`, фоновая проверка обновлений игр с переносом сохранений, выбор источника обновлений (`STORM GAMES WORLD` / `GitHub`), шейдеры **AMD FSR 1** и **AMD FSR 3** |
+| `STORM_GBCA_1.9.1_Windows.zip` | Портативная сборка для Windows 10/11 (x64) | Автономный `STORM GBCA.exe` + нативное ядро `storm_gbca_core.dll`, встроенный каталог **STORM GAMES WORLD** и `/translations`, фоновая проверка обновлений ROM с переносом сохранений (`.sav`, слоты, `.raprog`, читы, избранное) и выбор источника обновлений (`STORM GAMES WORLD` / `GitHub`) |
+| `STORM_GBCA_1.9.1_Setup.exe` | Установщик для Windows 10/11 (x64) | Эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`), распаковка в `C:\Program Files\STORM GBCA`, создание ярлыков, регистрация в Windows и чистое удаление |
 
 ---
 
@@ -121,9 +121,9 @@ dotnet publish windows/src/StormGbca.Desktop/StormGbca.Desktop.csproj -c Release
 ./gradlew :app:assembleRelease --max-workers=3 -Dorg.gradle.priority=low
 ```
 Готовые артефакты релиза сохраняются в папку `releases/`:
-- `releases/STORM_GBCA_1.9.0.apk`
-- `releases/STORM_GBCA_1.9.0_Windows.zip`
-- `releases/STORM_GBCA_1.9.0_Setup.exe`
+- `releases/STORM_GBCA_1.9.1.apk`
+- `releases/STORM_GBCA_1.9.1_Windows.zip`
+- `releases/STORM_GBCA_1.9.1_Setup.exe`
 
 ---
 

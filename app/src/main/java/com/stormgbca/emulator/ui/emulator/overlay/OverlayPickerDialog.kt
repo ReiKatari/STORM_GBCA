@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +54,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.documentfile.provider.DocumentFile
 import com.stormgbca.emulator.R
 import com.stormgbca.emulator.data.GbcaPrefs
+import com.stormgbca.emulator.data.RetroArchShaderPreset
 import com.stormgbca.emulator.data.ShaderRepository
 import com.stormgbca.emulator.model.ConsoleSystem
 import com.stormgbca.emulator.model.OverlayLayoutPreset
@@ -62,7 +64,9 @@ import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.Theme
 import com.stormgbca.emulator.ui.theme.WatermelonMono
 import com.stormgbca.emulator.ui.theme.watermelon
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ru.stormgames.gbca.NativeCore
 
 private val SHADER_OPTIONS = listOf(
@@ -97,8 +101,20 @@ fun OverlayPickerDialog(
     var activeTab by remember { mutableStateOf(initialSystem) }
     var shaderListTick by remember { mutableIntStateOf(0) }
 
-    val raPresets = remember(shaderListTick) { ShaderRepository.listPresets(context) }
-    val librashaderReady = remember { runCatching { NativeCore.nativeIsLibrashaderAvailable() }.getOrDefault(false) }
+    var raPresets by remember { mutableStateOf<List<RetroArchShaderPreset>>(emptyList()) }
+    var librashaderReady by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        librashaderReady = withContext(Dispatchers.IO) {
+            runCatching { NativeCore.nativeIsLibrashaderAvailable() }.getOrDefault(false)
+        }
+    }
+
+    LaunchedEffect(shaderListTick) {
+        raPresets = withContext(Dispatchers.IO) {
+            ShaderRepository.listPresets(context)
+        }
+    }
 
     val shaderImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -421,8 +437,10 @@ fun OverlayPickerDialog(
                                     .background(if (selected) colors.greenDim else colors.surface2)
                                     .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(10.dp))
                                     .clickable {
-                                        GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(shaderOverlay = mode) }
+                                        GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(shaderOverlay = mode, retroArchShaderPath = "") }
                                         GbcaPrefs.updateCoreConfig { it.copy(videoFilter = mode) }
+                                        NativeCore.nativeSetRetroArchShader("")
+                                        onShaderChanged?.invoke(activeTab, "")
                                     }
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                             ) {

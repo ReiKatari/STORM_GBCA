@@ -411,6 +411,7 @@ struct StormGbcaContext {
     int frame_skip = 0;
     int frame_skip_counter = 0;
     int optimization_profile = STORM_OPT_BALANCED;
+    bool user_rewind_custom = false;
     storm::MultiplayerManager mp;
     bool hardcore_mode = false;
     storm::StormRaState* ra_state = nullptr;
@@ -452,20 +453,29 @@ static StormGbcaAudioConfig make_audio_cfg(const StormGbcaConfig& c) {
 static void apply_mgba_config(StormGbcaContext* ctx) {
     if (!ctx->mgba) return;
     struct mCore* core = ctx->mgba;
+    const int plat = ctx->rom_loaded
+        ? ctx->rom_info.platform
+        : detect_platform_from_buffer(ctx->rom_data.data(), ctx->rom_data.size(), ctx->rom_virtual_name.c_str());
+    bool has_platform_bios = false;
+    if (plat == STORM_PLATFORM_GBA) has_platform_bios = (ctx->cfg.bios_gba_path[0] != '\0');
+    else if (plat == STORM_PLATFORM_GBC) has_platform_bios = (ctx->cfg.bios_gbc_path[0] != '\0');
+    else if (plat == STORM_PLATFORM_SGB) has_platform_bios = (ctx->cfg.bios_sgb_path[0] != '\0');
+    else if (plat == STORM_PLATFORM_GB)  has_platform_bios = (ctx->cfg.bios_gb_path[0] != '\0');
+
     core->opts.skipBios = ctx->cfg.skip_bios_intro != 0;
-    core->opts.useBios = (ctx->cfg.bios_gba_path[0] || ctx->cfg.bios_gb_path[0] ||
-                          ctx->cfg.bios_gbc_path[0] || ctx->cfg.bios_sgb_path[0]);
+    core->opts.useBios = has_platform_bios;
     core->opts.sampleRate = 48000;
     core->opts.volume = static_cast<int>(std::clamp(ctx->cfg.master_volume, 0.0f, 2.0f) * 256.0f);
     core->opts.mute = false;
 
     mCoreConfigSetIntValue(&core->config, "sgb.borders", ctx->cfg.sgb_borders ? 1 : 0);
     mCoreConfigSetIntValue(&core->config, "skipBios", ctx->cfg.skip_bios_intro ? 1 : 0);
+    mCoreConfigSetIntValue(&core->config, "useBios", has_platform_bios ? 1 : 0);
 
-    if (ctx->cfg.bios_gba_path[0]) mCoreConfigSetValue(&core->config, "gba.bios", ctx->cfg.bios_gba_path);
-    if (ctx->cfg.bios_gb_path[0])  mCoreConfigSetValue(&core->config, "gb.bios", ctx->cfg.bios_gb_path);
-    if (ctx->cfg.bios_gbc_path[0]) mCoreConfigSetValue(&core->config, "gbc.bios", ctx->cfg.bios_gbc_path);
-    if (ctx->cfg.bios_sgb_path[0]) mCoreConfigSetValue(&core->config, "sgb.bios", ctx->cfg.bios_sgb_path);
+    mCoreConfigSetValue(&core->config, "gba.bios", ctx->cfg.bios_gba_path[0] ? ctx->cfg.bios_gba_path : "");
+    mCoreConfigSetValue(&core->config, "gb.bios",  ctx->cfg.bios_gb_path[0]  ? ctx->cfg.bios_gb_path  : "");
+    mCoreConfigSetValue(&core->config, "gbc.bios", ctx->cfg.bios_gbc_path[0] ? ctx->cfg.bios_gbc_path : "");
+    mCoreConfigSetValue(&core->config, "sgb.bios", ctx->cfg.bios_sgb_path[0] ? ctx->cfg.bios_sgb_path : "");
 
     if (core->platform(core) == mPLATFORM_GB) {
         uint32_t bg[4], obj0[4], obj1[4];
@@ -675,11 +685,13 @@ static int init_core_with_loaded_rom(StormGbcaContext* ctx) {
 static bool save_raw_state(StormGbcaContext* ctx, std::vector<uint8_t>& out) {
     if (!ctx->rom_loaded) return false;
     if (ctx->using_sameboy) {
+        if (!ctx->sb) return false;
         size_t sz = storm_sb_state_size(ctx->sb);
         if (sz == 0) return false;
         out.resize(sz);
         return storm_sb_save_state(ctx->sb, out.data(), sz) == 0;
     } else {
+        if (!ctx->mgba) return false;
         size_t sz = ctx->mgba->stateSize(ctx->mgba);
         if (sz == 0) return false;
         out.resize(sz);
@@ -690,10 +702,12 @@ static bool save_raw_state(StormGbcaContext* ctx, std::vector<uint8_t>& out) {
 static bool load_raw_state(StormGbcaContext* ctx, const uint8_t* data, size_t size) {
     if (!ctx->rom_loaded || !data || size == 0) return false;
     if (ctx->using_sameboy) {
+        if (!ctx->sb) return false;
         size_t expected = storm_sb_state_size(ctx->sb);
         if (size < expected) return false;
         return storm_sb_load_state(ctx->sb, data, expected) == 0;
     } else {
+        if (!ctx->mgba) return false;
         size_t expected = ctx->mgba->stateSize(ctx->mgba);
         if (size < expected) return false;
         return ctx->mgba->loadState(ctx->mgba, data);
@@ -703,6 +717,7 @@ static bool load_raw_state(StormGbcaContext* ctx, const uint8_t* data, size_t si
 static void run_single_core_frame(StormGbcaContext* ctx, bool collect_audio) {
     uint32_t keys = ctx->key_mask.load(std::memory_order_acquire);
     if (ctx->using_sameboy) {
+        if (!ctx->sb) return;
         apply_sameboy_frame_cheats(ctx);
         storm_sb_set_keys(ctx->sb, keys);
         storm_sb_run_frame(ctx->sb, collect_audio ? 1 : 0);
@@ -716,6 +731,7 @@ static void run_single_core_frame(StormGbcaContext* ctx, bool collect_audio) {
             }
         }
     } else {
+        if (!ctx->mgba) return;
         ctx->mgba->setKeys(ctx->mgba, map_storm_keys_to_mgba(keys));
         ctx->mgba->runFrame(ctx->mgba);
         struct mAudioBuffer* ab = ctx->mgba->getAudioBuffer(ctx->mgba);
@@ -828,6 +844,7 @@ STORM_GBCA_API int storm_gbca_set_config(StormGbcaContext* ctx, const StormGbcaC
     ctx->cfg = *cfg;
     ctx->cfg.run_ahead_frames = std::clamp(ctx->cfg.run_ahead_frames, 0, 2);
     ctx->cfg.lcd_ghosting = std::clamp(ctx->cfg.lcd_ghosting, 0, 100);
+    ctx->user_rewind_custom = (cfg->rewind_buffer_mb != 16 || cfg->rewind_interval != 1);
     ctx->rewind.configure(ctx->cfg.rewind_enabled != 0 && !ctx->hardcore_mode,
                           ctx->cfg.rewind_buffer_mb, ctx->cfg.rewind_interval);
 
@@ -1037,9 +1054,11 @@ STORM_GBCA_API int storm_gbca_get_video_info(const StormGbcaContext* ctx, int* o
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
     if (!ctx->rom_loaded) return -1;
     if (ctx->using_sameboy) {
+        if (!ctx->sb) return -1;
         storm_sb_get_video_size(ctx->sb, out_w, out_h, out_fps);
         return 0;
     }
+    if (!ctx->mgba) return -1;
     unsigned w = static_cast<unsigned>(ctx->mgba_w);
     unsigned h = static_cast<unsigned>(ctx->mgba_h);
     ctx->mgba->currentVideoSize(ctx->mgba, &w, &h);
@@ -1060,10 +1079,12 @@ STORM_GBCA_API int storm_gbca_get_raw_frame_rgba(const StormGbcaContext* ctx, co
         return 0;
     }
     if (ctx->using_sameboy) {
+        if (!ctx->sb) return -1;
         storm_sb_get_video_size(ctx->sb, out_w, out_h, nullptr);
         *out_ptr = storm_sb_get_pixels(ctx->sb);
         return *out_ptr ? 0 : -1;
     }
+    if (!ctx->mgba) return -1;
     unsigned w = static_cast<unsigned>(ctx->mgba_w);
     unsigned h = static_cast<unsigned>(ctx->mgba_h);
     ctx->mgba->currentVideoSize(ctx->mgba, &w, &h);
@@ -1148,12 +1169,14 @@ STORM_GBCA_API int storm_gbca_save_sram_file(StormGbcaContext* ctx, const char* 
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
     if (!ctx->rom_loaded) return -1;
     if (ctx->using_sameboy) {
+        if (!ctx->sb) return -1;
         size_t sz = storm_sb_sram_size(ctx->sb);
         if (sz == 0) return 0;
         std::vector<uint8_t> buf(sz);
         if (storm_sb_save_sram_buffer(ctx->sb, buf.data(), buf.size()) != 0) return -1;
         return write_file_bytes(path, buf.data(), buf.size()) ? 0 : -1;
     }
+    if (!ctx->mgba) return -1;
     void* sram = nullptr;
     size_t sz = ctx->mgba->savedataClone(ctx->mgba, &sram);
     if (!sram || sz == 0) return -1;
@@ -1171,10 +1194,12 @@ STORM_GBCA_API int storm_gbca_load_sram_file(StormGbcaContext* ctx, const char* 
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
     if (!ctx->rom_loaded) return -1;
     if (ctx->using_sameboy) {
+        if (!ctx->sb) return -1;
         std::vector<uint8_t> buf;
         if (!read_file_bytes(path, buf)) return -1;
         return storm_sb_load_sram_buffer(ctx->sb, buf.data(), buf.size());
     }
+    if (!ctx->mgba) return -1;
     std::vector<uint8_t> sram;
     if (!read_file_bytes(path, sram)) return -1;
     bool ok = ctx->mgba->savedataRestore(ctx->mgba, sram.data(), sram.size(), true);
@@ -1190,6 +1215,7 @@ STORM_GBCA_API int storm_gbca_is_sram_dirty(const StormGbcaContext* ctx) {
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
     if (!ctx->rom_loaded) return 0;
     if (ctx->using_sameboy) {
+        if (!ctx->sb) return 0;
         return storm_sb_is_sram_dirty(ctx->sb);
     }
     if (!ctx->mgba) return 0;
@@ -1213,6 +1239,17 @@ STORM_GBCA_API int storm_gbca_is_sram_dirty(const StormGbcaContext* ctx) {
     }
     ctx->sram_check_buf_.resize(sz);
     std::memcpy(ctx->sram_check_buf_.data(), sram_ptr, sz);
+    if (ctx->mgba_last_sram.empty()) {
+        bool all_zero = true;
+        bool all_ff = true;
+        for (size_t i = 0; i < sz; ++i) {
+            uint8_t b = ctx->sram_check_buf_[i];
+            if (b != 0x00) all_zero = false;
+            if (b != 0xFF) all_ff = false;
+            if (!all_zero && !all_ff) return 1;
+        }
+        return 0;
+    }
     bool dirty = (ctx->mgba_last_sram.size() != sz) ||
                  (std::memcmp(ctx->mgba_last_sram.data(), ctx->sram_check_buf_.data(), sz) != 0);
     return dirty ? 1 : 0;
@@ -1242,22 +1279,26 @@ STORM_GBCA_API void storm_gbca_set_solar_lux(StormGbcaContext* ctx, int lux_0_to
 
 STORM_GBCA_API void storm_gbca_set_tilt(StormGbcaContext* ctx, float x, float y) {
     if (!ctx) return;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
     ctx->rot_periph.tilt_x = std::clamp(x, -4.0f, 4.0f);
     ctx->rot_periph.tilt_y = std::clamp(y, -4.0f, 4.0f);
-    if (ctx->using_sameboy && ctx->sb) {
+    if (ctx->rom_loaded && ctx->using_sameboy && ctx->sb) {
         storm_sb_set_accelerometer(ctx->sb, ctx->rot_periph.tilt_x, ctx->rot_periph.tilt_y);
     }
 }
 
 STORM_GBCA_API void storm_gbca_set_gyro(StormGbcaContext* ctx, float z) {
     if (!ctx) return;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
     ctx->rot_periph.gyro_z = std::clamp(z, -4.0f, 4.0f);
 }
 
 STORM_GBCA_API float storm_gbca_get_rumble(const StormGbcaContext* ctx) {
-    if (!ctx || !ctx->rom_loaded) return 0.0f;
+    if (!ctx) return 0.0f;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (!ctx->rom_loaded) return 0.0f;
     if (ctx->using_sameboy) {
-        return storm_sb_get_rumble(ctx->sb);
+        return ctx->sb ? storm_sb_get_rumble(ctx->sb) : 0.0f;
     }
     return ctx->rumble_periph.current_level;
 }
@@ -1301,9 +1342,11 @@ STORM_GBCA_API size_t storm_gbca_read_memory(const StormGbcaContext* ctx, int re
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
     if (!ctx->rom_loaded) return 0;
     if (ctx->using_sameboy) {
+        if (!ctx->sb) return 0;
         return storm_sb_read_memory(ctx->sb, region, addr, dst, len);
     }
 
+    if (!ctx->mgba) return 0;
     struct mCore* core = ctx->mgba;
     if (region == STORM_MEM_SYSTEM_BUS) {
         for (size_t i = 0; i < len; ++i) {
@@ -1593,41 +1636,41 @@ STORM_GBCA_API void storm_gbca_set_optimization_profile(StormGbcaContext* ctx, i
     if (!ctx) return;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
     ctx->optimization_profile = std::clamp<int>(profile, STORM_OPT_LITE, STORM_OPT_HIGH_ACCURACY);
+
+    // Tune internal non-destructive hints only; preserve user-configured audio, run-ahead, ghosting, and upscale settings.
+    int rw_mb = ctx->cfg.rewind_buffer_mb;
+    int rw_interval = ctx->cfg.rewind_interval;
     switch (ctx->optimization_profile) {
         case STORM_OPT_LITE:
-            // Old / low-RAM / 32-bit devices: minimal memory footprint & lowest CPU overhead
-            ctx->cfg.run_ahead_frames = 0;
-            ctx->cfg.audio_interp_mode = STORM_AUDIO_INTERP_NEAREST;
-            ctx->cfg.audio_highpass_mode = STORM_AUDIO_HIGHPASS_REMOVE_DC;
-            ctx->cfg.rewind_buffer_mb = std::min(ctx->cfg.rewind_buffer_mb, 4);
-            ctx->cfg.rewind_interval = std::max(ctx->cfg.rewind_interval, 2);
-            ctx->cfg.lcd_ghosting = 0;
-            if (ctx->upscale_scale > 1) ctx->upscale_scale = 1;
+            ctx->cfg.drc_max_skew = 0.008f;
+            if (!ctx->user_rewind_custom) {
+                rw_mb = std::min(rw_mb, 4);
+                rw_interval = std::max(rw_interval, 2);
+            }
             break;
         case STORM_OPT_BALANCED:
-            ctx->cfg.audio_interp_mode = STORM_AUDIO_INTERP_LINEAR;
-            ctx->cfg.audio_highpass_mode = STORM_AUDIO_HIGHPASS_ACCURATE;
-            if (ctx->cfg.rewind_buffer_mb < 8) ctx->cfg.rewind_buffer_mb = 12;
-            ctx->cfg.rewind_interval = 1;
+            ctx->cfg.drc_max_skew = 0.005f;
+            if (!ctx->user_rewind_custom) {
+                if (rw_mb < 8) rw_mb = 12;
+                rw_interval = 1;
+            }
             break;
         case STORM_OPT_PERFORMANCE:
-            ctx->cfg.run_ahead_frames = 0;
-            ctx->cfg.audio_interp_mode = STORM_AUDIO_INTERP_LINEAR;
-            if (ctx->cfg.rewind_buffer_mb < 16) ctx->cfg.rewind_buffer_mb = 16;
-            ctx->cfg.rewind_interval = 1;
+            ctx->cfg.drc_max_skew = 0.006f;
+            if (!ctx->user_rewind_custom) {
+                if (rw_mb < 16) rw_mb = 16;
+                rw_interval = 1;
+            }
             break;
         case STORM_OPT_HIGH_ACCURACY:
-            ctx->cfg.audio_interp_mode = STORM_AUDIO_INTERP_HERMITE;
-            ctx->cfg.audio_highpass_mode = STORM_AUDIO_HIGHPASS_ACCURATE;
-            if (ctx->cfg.rewind_buffer_mb < 24) ctx->cfg.rewind_buffer_mb = 24;
-            ctx->cfg.rewind_interval = 1;
+            ctx->cfg.drc_max_skew = 0.003f;
+            if (!ctx->user_rewind_custom) {
+                if (rw_mb < 24) rw_mb = 24;
+                rw_interval = 1;
+            }
             break;
     }
-    ctx->rewind.configure(ctx->cfg.rewind_enabled != 0 && !ctx->hardcore_mode, ctx->cfg.rewind_buffer_mb, ctx->cfg.rewind_interval);
-    if (ctx->rom_loaded) {
-        if (ctx->using_sameboy) apply_sameboy_config(ctx);
-        else apply_mgba_config(ctx);
-    }
+    ctx->rewind.configure(ctx->cfg.rewind_enabled != 0 && !ctx->hardcore_mode, rw_mb, rw_interval);
 }
 
 STORM_GBCA_API int storm_gbca_link_start(StormGbcaContext* ctx, int mode, const char* host_ip,

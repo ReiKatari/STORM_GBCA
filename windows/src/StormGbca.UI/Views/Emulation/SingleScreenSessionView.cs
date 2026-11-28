@@ -42,6 +42,7 @@ public class SingleScreenSessionView : Grid
     private readonly EmulationPauseOverlay _pauseOverlay;
     private readonly DispatcherTimer _uiTimer;
     private bool _fgLoopActive;
+    private bool _fgLoopScheduled;
 
     // Live RetroAchievements HUD overlays
     private readonly Border _raBannerCard;
@@ -177,7 +178,8 @@ public class SingleScreenSessionView : Grid
 
         _overlayImage.PointerPressed += OnOverlayPointerPressed;
         _overlayImage.PointerMoved += OnOverlayPointerMoved;
-        _overlayImage.PointerReleased += (_, _) => ReleaseOverlayButtons();
+        _overlayImage.PointerReleased += OnOverlayPointerReleased;
+        _overlayImage.PointerCaptureLost += (_, _) => ReleaseOverlayButtons();
 
         _stageHost.Children.Add(_chassisImage);
         _stageHost.Children.Add(_lcdViewport);
@@ -401,6 +403,7 @@ public class SingleScreenSessionView : Grid
     private void OnEmulationStopped()
     {
         _fgLoopActive = false;
+        _fgLoopScheduled = false;
         _uiTimer.Stop();
         _lcdViewport.ResetHistory();
         _raBannerTimer.Stop();
@@ -513,7 +516,7 @@ public class SingleScreenSessionView : Grid
         var emu = StormGbcaUiState.Instance.Emulator;
         emu.PollRaEvents();
 
-        if (StormGbcaUiState.Instance.Settings.FrameGeneration)
+        if (ShouldRunFgLoop())
         {
             EnsureFrameGenLoop();
         }
@@ -522,7 +525,7 @@ public class SingleScreenSessionView : Grid
             _fgLoopActive = false;
         }
 
-        if (!_fgLoopActive)
+        if (!_fgLoopActive && !_fgLoopScheduled)
         {
             PushFrameToViewport();
         }
@@ -544,16 +547,25 @@ public class SingleScreenSessionView : Grid
         }
     }
 
+    private static bool ShouldRunFgLoop()
+    {
+        var st = StormGbcaUiState.Instance;
+        return st.Settings.FrameGeneration &&
+               st.IsEmulationActive &&
+               !st.IsPaused &&
+               st.Emulator.IsRunning &&
+               !st.Emulator.IsPaused;
+    }
+
     private void EnsureFrameGenLoop()
     {
-        if (!StormGbcaUiState.Instance.Settings.FrameGeneration ||
-            !StormGbcaUiState.Instance.IsEmulationActive)
+        if (!ShouldRunFgLoop())
         {
             _fgLoopActive = false;
             return;
         }
 
-        if (_fgLoopActive) return;
+        if (_fgLoopScheduled) return;
         if (TopLevel.GetTopLevel(this) == null) return;
 
         _fgLoopActive = true;
@@ -562,9 +574,8 @@ public class SingleScreenSessionView : Grid
 
     private void ScheduleNextFgFrame()
     {
-        if (!_fgLoopActive ||
-            !StormGbcaUiState.Instance.Settings.FrameGeneration ||
-            !StormGbcaUiState.Instance.IsEmulationActive)
+        if (_fgLoopScheduled) return;
+        if (!ShouldRunFgLoop())
         {
             _fgLoopActive = false;
             return;
@@ -577,20 +588,18 @@ public class SingleScreenSessionView : Grid
             return;
         }
 
+        _fgLoopScheduled = true;
         top.RequestAnimationFrame(_ =>
         {
-            if (!_fgLoopActive ||
-                !StormGbcaUiState.Instance.Settings.FrameGeneration ||
-                !StormGbcaUiState.Instance.IsEmulationActive)
+            _fgLoopScheduled = false;
+            if (!ShouldRunFgLoop())
             {
                 _fgLoopActive = false;
                 return;
             }
 
-            if (!StormGbcaUiState.Instance.IsPaused)
-            {
-                PushFrameToViewport();
-            }
+            _fgLoopActive = true;
+            PushFrameToViewport();
             ScheduleNextFgFrame();
         });
     }
@@ -599,12 +608,7 @@ public class SingleScreenSessionView : Grid
     {
         var emu = StormGbcaUiState.Instance.Emulator;
         var settings = StormGbcaUiState.Instance.Settings;
-        var plat = emu.ActivePlatform;
-        if (plat == StormPlatform.None) plat = StormPlatform.Gba;
-        var activeProf = settings.GetOverlayProfileForPlatform(plat);
-        var effectiveFilter = activeProf.LcdFilter != StormVideoFilter.LcdGrid
-            ? activeProf.LcdFilter
-            : settings.VideoFilter;
+        var effectiveFilter = settings.VideoFilter;
 
         _lcdViewport.UpdateFromSession(
             emu,
@@ -625,6 +629,7 @@ public class SingleScreenSessionView : Grid
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _fgLoopActive = false;
+        _fgLoopScheduled = false;
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -701,12 +706,22 @@ public class SingleScreenSessionView : Grid
     {
         Focus();
         _isPointerDownOnOverlay = true;
+        e.Pointer.Capture(_overlayImage);
         UpdatePointerHit(e.GetPosition(_overlayImage));
     }
 
     private void OnOverlayPointerMoved(object? sender, PointerEventArgs e)
     {
         if (_isPointerDownOnOverlay) UpdatePointerHit(e.GetPosition(_overlayImage));
+    }
+
+    private void OnOverlayPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (e.Pointer.Captured == _overlayImage)
+        {
+            e.Pointer.Capture(null);
+        }
+        ReleaseOverlayButtons();
     }
 
     private void ReleaseOverlayButtons()
@@ -742,6 +757,10 @@ public class SingleScreenSessionView : Grid
         {
             TogglePauseMenu();
             e.Handled = true;
+            return;
+        }
+        if (_pauseOverlay.IsVisible || e.Source is TextBox || TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox)
+        {
             return;
         }
         var settings = StormGbcaUiState.Instance.Settings;
@@ -793,6 +812,10 @@ public class SingleScreenSessionView : Grid
 
     private void OnViewKeyUp(object? sender, KeyEventArgs e)
     {
+        if (_pauseOverlay.IsVisible || e.Source is TextBox || TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox)
+        {
+            return;
+        }
         var settings = StormGbcaUiState.Instance.Settings;
         if (MatchesBinding(e.Key, settings.KeyBindings, "FastForward"))
         {
@@ -890,9 +913,23 @@ public class SingleScreenSessionView : Grid
     private void SetPauseOverlay(bool open)
     {
         _pauseOverlay.IsVisible = open;
+        if (open)
+        {
+            _keyboardMask = 0;
+            _pointerOverlayMask = 0;
+            PushMasks();
+        }
         StormGbcaUiState.Instance.SetPaused(open);
-        if (open) _pauseOverlay.RefreshOnOpen();
-        else Focus();
+        if (open)
+        {
+            _fgLoopActive = false;
+            _pauseOverlay.RefreshOnOpen();
+        }
+        else
+        {
+            EnsureFrameGenLoop();
+            Focus();
+        }
     }
 
     private void PerformQuickSave(int slot)
@@ -921,8 +958,15 @@ public class SingleScreenSessionView : Grid
             return;
         }
         _activeSlot = slot;
-        StormGbcaUiState.Instance.Emulator.LoadState(slot);
-        AuroraTactileFeedbackService.Instance.PlayClick();
+        if (StormGbcaUiState.Instance.Emulator.LoadState(slot))
+        {
+            PushFrameToViewport();
+            if (_pauseOverlay.IsVisible)
+            {
+                SetPauseOverlay(false);
+            }
+            AuroraTactileFeedbackService.Instance.PlayClick();
+        }
     }
 
     private void PerformRewind()
@@ -935,6 +979,7 @@ public class SingleScreenSessionView : Grid
         }
         if (StormGbcaUiState.Instance.Emulator.RewindStep())
         {
+            PushFrameToViewport();
             StormGbcaUiState.Instance.NotifyStatus("Перемотка назад выполнена");
         }
     }

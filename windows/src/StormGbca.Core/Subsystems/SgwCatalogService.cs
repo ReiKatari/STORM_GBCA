@@ -145,7 +145,7 @@ public sealed class SgwCatalogService
     public SgwCatalogService()
     {
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.9.0 (Windows; Desktop)");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.9.1 (Windows; Desktop)");
     }
 
     public async Task<IReadOnlyList<SgwCatalogGame>> GetCatalogAsync(bool forceRefresh = false, CancellationToken ct = default)

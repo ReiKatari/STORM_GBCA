@@ -57,11 +57,14 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,6 +86,7 @@ import com.stormgbca.emulator.R
 import com.stormgbca.emulator.data.BoxArtRepository
 import com.stormgbca.emulator.data.GbcaPrefs
 import com.stormgbca.emulator.data.RetroAchievementsClient
+import com.stormgbca.emulator.data.RetroArchShaderPreset
 import com.stormgbca.emulator.data.RomRepository
 import com.stormgbca.emulator.data.ShaderRepository
 import com.stormgbca.emulator.model.ConsoleSystem
@@ -108,11 +112,15 @@ import com.stormgbca.emulator.update.StormUpdateDialog
 import com.stormgbca.emulator.update.StormUpdateMirrorClient
 import com.stormgbca.emulator.update.UpdateCheckResult
 import com.stormgbca.emulator.update.UpdateDownloadState
+import com.stormgbca.emulator.vulkandriver.GraphicsTelemetry
 import com.stormgbca.emulator.vulkandriver.VulkanDriverManager
 import com.stormgbca.emulator.vulkandriver.VulkanDriverManagerSheet
 import com.stormgbca.emulator.vulkandriver.VulkanDriverRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ru.stormgames.gbca.NativeCore
+import kotlin.math.roundToInt
 
 private enum class SettingsPage {
     HOME,
@@ -278,7 +286,10 @@ private fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val cfg = GbcaPrefs.coreConfigState.value
 
-    var currentPage by remember { mutableStateOf(SettingsPage.HOME) }
+    var currentPageName by rememberSaveable { mutableStateOf(SettingsPage.HOME.name) }
+    val currentPage = remember(currentPageName) {
+        runCatching { SettingsPage.valueOf(currentPageName) }.getOrDefault(SettingsPage.HOME)
+    }
     var skinDialogSystem by remember { mutableStateOf<ConsoleSystem?>(null) }
     var overlayDialogSystem by remember { mutableStateOf<ConsoleSystem?>(null) }
     var shaderTabSystem by remember { mutableStateOf(ConsoleSystem.GBA) }
@@ -287,21 +298,47 @@ private fun SettingsScreen(
     var downloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
 
-    val gfxTelemetry = remember { VulkanDriverRepository.readGraphicsTelemetry(context) }
+    var gfxTelemetry by remember {
+        mutableStateOf(
+            GraphicsTelemetry(
+                vulkanSupported = false,
+                gpuName = "",
+                vulkanDeviceApi = "",
+                vulkanInstanceApi = "",
+                glesVersion = "3.0",
+            )
+        )
+    }
+    var librashaderReady by remember { mutableStateOf(false) }
+    var shaderPresets by remember { mutableStateOf<List<RetroArchShaderPreset>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        val (tel, libra) = withContext(Dispatchers.IO) {
+            VulkanDriverRepository.readGraphicsTelemetry(context) to
+                runCatching { NativeCore.nativeIsLibrashaderAvailable() }.getOrDefault(false)
+        }
+        gfxTelemetry = tel
+        librashaderReady = libra
+    }
+
+    LaunchedEffect(shaderTick) {
+        shaderPresets = withContext(Dispatchers.IO) {
+            ShaderRepository.listPresets(context)
+        }
+    }
+
     val vkSupported = gfxTelemetry.vulkanSupported
     val vkGpuName = gfxTelemetry.gpuName
-    val librashaderReady = remember { runCatching { NativeCore.nativeIsLibrashaderAvailable() }.getOrDefault(false) }
-    val shaderPresets = remember(shaderTick) { ShaderRepository.listPresets(context) }
 
     val handleBack: () -> Unit = {
         if (awaitingAction != null) {
             onCancelBindKey()
         } else if (currentPage == SettingsPage.GAMEPAD) {
-            currentPage = SettingsPage.CONTROLS
+            currentPageName = SettingsPage.CONTROLS.name
         } else if (currentPage == SettingsPage.HOME) {
             onCloseActivity()
         } else {
-            currentPage = SettingsPage.HOME
+            currentPageName = SettingsPage.HOME.name
         }
     }
 
@@ -363,19 +400,19 @@ private fun SettingsScreen(
                     WatermelonSectionLabel(stringResource(R.string.cat_emulation_hardware))
                     WatermelonCard {
                         SettingsNavRow(Icons.Filled.Memory, stringResource(R.string.set_system_title), stringResource(R.string.set_system_summary)) {
-                            currentPage = SettingsPage.SYSTEM
+                            currentPageName = SettingsPage.SYSTEM.name
                         }
                         WatermelonRowSeparator()
                         SettingsNavRow(Icons.Filled.Videocam, stringResource(R.string.set_video_title), stringResource(R.string.set_video_summary)) {
-                            currentPage = SettingsPage.VIDEO
+                            currentPageName = SettingsPage.VIDEO.name
                         }
                         WatermelonRowSeparator()
                         SettingsNavRow(Icons.Filled.GraphicEq, stringResource(R.string.set_audio_title), stringResource(R.string.set_audio_summary)) {
-                            currentPage = SettingsPage.AUDIO
+                            currentPageName = SettingsPage.AUDIO.name
                         }
                         WatermelonRowSeparator()
                         SettingsNavRow(Icons.Filled.Gamepad, stringResource(R.string.set_controls_title), stringResource(R.string.set_controls_summary)) {
-                            currentPage = SettingsPage.CONTROLS
+                            currentPageName = SettingsPage.CONTROLS.name
                         }
                     }
 
@@ -383,7 +420,7 @@ private fun SettingsScreen(
                     WatermelonSectionLabel(stringResource(R.string.cat_features_tools))
                     WatermelonCard {
                         SettingsNavRow(Icons.Filled.Cable, stringResource(R.string.set_multiplayer_title), stringResource(R.string.set_multiplayer_summary)) {
-                            currentPage = SettingsPage.MULTIPLAYER
+                            currentPageName = SettingsPage.MULTIPLAYER.name
                         }
                         WatermelonRowSeparator()
                         val raUser = GbcaPrefs.getRaUsername()
@@ -393,7 +430,7 @@ private fun SettingsScreen(
                             stringResource(R.string.ra_not_connected)
                         }
                         SettingsNavRow(Icons.Filled.EmojiEvents, stringResource(R.string.set_ra_title), raSub, Color(0xFFFACC15)) {
-                            currentPage = SettingsPage.RETROACHIEVEMENTS
+                            currentPageName = SettingsPage.RETROACHIEVEMENTS.name
                         }
                     }
 
@@ -401,7 +438,7 @@ private fun SettingsScreen(
                     WatermelonSectionLabel(stringResource(R.string.cat_library_data))
                     WatermelonCard {
                         SettingsNavRow(Icons.Filled.Folder, stringResource(R.string.set_library_title), stringResource(R.string.set_library_summary)) {
-                            currentPage = SettingsPage.LIBRARY
+                            currentPageName = SettingsPage.LIBRARY.name
                         }
                     }
 
@@ -409,11 +446,11 @@ private fun SettingsScreen(
                     WatermelonSectionLabel(stringResource(R.string.cat_app_system))
                     WatermelonCard {
                         SettingsNavRow(Icons.Filled.Palette, stringResource(R.string.set_general_title), stringResource(R.string.set_general_summary)) {
-                            currentPage = SettingsPage.GENERAL
+                            currentPageName = SettingsPage.GENERAL.name
                         }
                         WatermelonRowSeparator()
                         SettingsNavRow(Icons.Filled.Info, stringResource(R.string.set_about_title), stringResource(R.string.set_about_summary)) {
-                            currentPage = SettingsPage.ABOUT
+                            currentPageName = SettingsPage.ABOUT.name
                         }
                     }
                 }
@@ -491,7 +528,14 @@ private fun SettingsScreen(
                             }
 
                             val raHardcoreLocked = RetroAchievementsClient.isLoggedIn() && RetroAchievementsClient.isHardcore()
-                            val displayOverclock = if (raHardcoreLocked) 100 else cfg.cpuOverclockPct
+                            var overclockSlider by remember(cfg.cpuOverclockPct, raHardcoreLocked) {
+                                mutableFloatStateOf((if (raHardcoreLocked) 100 else cfg.cpuOverclockPct).toFloat())
+                            }
+                            val displayOverclock = if (raHardcoreLocked) {
+                                100
+                            } else {
+                                ((overclockSlider / 25f).roundToInt() * 25).coerceIn(50, 400)
+                            }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(stringResource(R.string.sys_overclock), color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                 Text(
@@ -502,11 +546,17 @@ private fun SettingsScreen(
                                 )
                             }
                             Slider(
-                                value = displayOverclock.toFloat(),
+                                value = if (raHardcoreLocked) 100f else overclockSlider,
                                 enabled = !raHardcoreLocked,
                                 onValueChange = { v ->
                                     if (!raHardcoreLocked) {
-                                        val snapped = ((v / 25f).toInt() * 25).coerceIn(50, 400)
+                                        overclockSlider = v
+                                    }
+                                },
+                                onValueChangeFinished = {
+                                    if (!raHardcoreLocked) {
+                                        val snapped = ((overclockSlider / 25f).roundToInt() * 25).coerceIn(50, 400)
+                                        overclockSlider = snapped.toFloat()
                                         GbcaPrefs.updateCoreConfig { it.copy(cpuOverclockPct = snapped) }
                                     }
                                 },
@@ -753,8 +803,9 @@ private fun SettingsScreen(
                                         .clickable {
                                             GbcaPrefs.updateCoreConfig { it.copy(videoFilter = filterId) }
                                             ConsoleSystem.entries.forEach { sys ->
-                                                GbcaPrefs.updateOverlayProfile(sys) { it.copy(shaderOverlay = filterId) }
+                                                GbcaPrefs.updateOverlayProfile(sys) { it.copy(shaderOverlay = filterId, retroArchShaderPath = "") }
                                             }
+                                            NativeCore.nativeSetRetroArchShader("")
                                         }
                                         .padding(horizontal = 12.dp, vertical = 9.dp),
                                 ) {
@@ -798,14 +849,20 @@ private fun SettingsScreen(
                                 }
                             }
 
+                            var fsrSharpnessSlider by remember(cfg.fsrSharpness) {
+                                mutableFloatStateOf(cfg.fsrSharpness.toFloat())
+                            }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(stringResource(R.string.vid_fsr_sharpness), color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                Text("${cfg.fsrSharpness}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
+                                Text("${fsrSharpnessSlider.roundToInt().coerceIn(0, 100)}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
                             }
                             Slider(
-                                value = cfg.fsrSharpness.toFloat(),
-                                onValueChange = { v ->
-                                    GbcaPrefs.updateCoreConfig { it.copy(fsrSharpness = v.toInt().coerceIn(0, 100)) }
+                                value = fsrSharpnessSlider,
+                                onValueChange = { v -> fsrSharpnessSlider = v },
+                                onValueChangeFinished = {
+                                    val clamped = fsrSharpnessSlider.roundToInt().coerceIn(0, 100)
+                                    fsrSharpnessSlider = clamped.toFloat()
+                                    GbcaPrefs.updateCoreConfig { it.copy(fsrSharpness = clamped) }
                                 },
                                 valueRange = 0f..100f,
                                 colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
@@ -892,13 +949,19 @@ private fun SettingsScreen(
                             SettingsSwitchRow(stringResource(R.string.aud_mute), cfg.audioMuted) { m ->
                                 GbcaPrefs.updateCoreConfig { it.copy(audioMuted = m) }
                             }
+                            var masterVolSlider by remember(cfg.masterVolume) {
+                                mutableFloatStateOf(cfg.masterVolume)
+                            }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(stringResource(R.string.aud_master), color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                Text("${(cfg.masterVolume * 100).toInt()}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
+                                Text("${(masterVolSlider * 100).roundToInt()}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
                             }
                             Slider(
-                                value = cfg.masterVolume,
-                                onValueChange = { v -> GbcaPrefs.updateCoreConfig { it.copy(masterVolume = v) } },
+                                value = masterVolSlider,
+                                onValueChange = { v -> masterVolSlider = v },
+                                onValueChangeFinished = {
+                                    GbcaPrefs.updateCoreConfig { it.copy(masterVolume = masterVolSlider) }
+                                },
                                 valueRange = 0f..1.5f,
                                 colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
                             )
@@ -971,7 +1034,7 @@ private fun SettingsScreen(
                             icon = Icons.Filled.Gamepad,
                             title = stringResource(R.string.ctrl_gamepad),
                             subtitle = stringResource(R.string.ctrl_gamepad_sub),
-                        ) { currentPage = SettingsPage.GAMEPAD }
+                        ) { currentPageName = SettingsPage.GAMEPAD.name }
                     }
                 }
 
@@ -1096,6 +1159,7 @@ private fun SettingsScreen(
                             subtitle = "Libretro + RetroAchievements",
                         ) {
                             val removed = BoxArtRepository.clearAllCachedCovers(context)
+                            GbcaPrefs.coverCacheGenState.value++
                             Toast.makeText(context, context.getString(R.string.toast_covers_cleared, removed), Toast.LENGTH_SHORT).show()
                         }
                     }

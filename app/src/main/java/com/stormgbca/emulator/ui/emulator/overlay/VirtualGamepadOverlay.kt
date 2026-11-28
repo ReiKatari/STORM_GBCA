@@ -33,6 +33,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,6 +61,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -97,6 +100,14 @@ private fun triggerHapticTick(vibrator: Vibrator?, enabled: Boolean) {
             vibrator.vibrate(VibrationEffect.createOneShot(14L, 90))
         }
     }
+}
+
+private enum class QuickActionId {
+    REWIND,
+    FAST_FORWARD,
+    QUICK_SAVE,
+    QUICK_LOAD,
+    MENU,
 }
 
 data class ResolvedControlRects(
@@ -146,6 +157,9 @@ fun VirtualGamepadOverlay(
     var activeTouchMask by remember { mutableIntStateOf(0) }
     val touchMaskProvider = remember { { activeTouchMask } }
     val pointerButtons = remember { mutableMapOf<Int, Int>() }
+    val quickBounds = remember { mutableStateMapOf<QuickActionId, Rect>() }
+    val pointerQuickButtons = remember { mutableMapOf<Int, QuickActionId>() }
+    val quickCallbacks = remember { mutableMapOf<QuickActionId, () -> Unit>() }
 
     var stickDx by remember { mutableFloatStateOf(0f) }
     var stickDy by remember { mutableFloatStateOf(0f) }
@@ -349,6 +363,16 @@ fun VirtualGamepadOverlay(
             return dx * dx + dy * dy <= hitR * hitR
         }
 
+        fun dispatchQuickActionAt(pt: Offset): QuickActionId? {
+            for ((id, rect) in quickBounds) {
+                if (rect.contains(pt)) {
+                    quickCallbacks[id]?.invoke()
+                    return id
+                }
+            }
+            return null
+        }
+
         // Multi-touch surface capturing all physical-style virtual buttons
         Box(
             modifier = Modifier
@@ -362,7 +386,10 @@ fun VirtualGamepadOverlay(
                         MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                             val pid = ev.getPointerId(idx)
                             val pt = Offset(ev.getX(idx), ev.getY(idx))
-                            if (stickPointerId == -1 && isInsideDpadArea(pt, 1.25f)) {
+                            val quickId = dispatchQuickActionAt(pt)
+                            if (quickId != null) {
+                                pointerQuickButtons[pid] = quickId
+                            } else if (stickPointerId == -1 && isInsideDpadArea(pt, 1.25f)) {
                                 stickPointerId = pid
                                 val dx = pt.x - rects.dpadCenter.x
                                 val dy = pt.y - rects.dpadCenter.y
@@ -380,6 +407,7 @@ fun VirtualGamepadOverlay(
                         MotionEvent.ACTION_MOVE -> {
                             for (i in 0 until ev.pointerCount) {
                                 val pid = ev.getPointerId(i)
+                                if (pid in pointerQuickButtons) continue
                                 val pt = Offset(ev.getX(i), ev.getY(i))
                                 if (pid == stickPointerId) {
                                     val dx = pt.x - rects.dpadCenter.x
@@ -426,6 +454,7 @@ fun VirtualGamepadOverlay(
                         }
                         MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                             val pid = ev.getPointerId(idx)
+                            pointerQuickButtons.remove(pid)
                             if (pid == stickPointerId) {
                                 stickPointerId = -1
                                 stickDx = 0f
@@ -434,6 +463,7 @@ fun VirtualGamepadOverlay(
                             if (pointerButtons.remove(pid) != null) changed = true
                         }
                         MotionEvent.ACTION_CANCEL -> {
+                            pointerQuickButtons.clear()
                             stickPointerId = -1
                             stickDx = 0f
                             stickDy = 0f
@@ -456,7 +486,7 @@ fun VirtualGamepadOverlay(
                             onKeyMaskChanged(combined)
                         }
                     }
-                    pointerButtons.isNotEmpty() || stickPointerId != -1
+                    pointerButtons.isNotEmpty() || stickPointerId != -1 || pointerQuickButtons.isNotEmpty()
                 },
         ) {
             if (profile.useAnalogStick) {
@@ -558,6 +588,11 @@ fun VirtualGamepadOverlay(
         // 5 SEPARATE INDEPENDENTLY POSITIONABLE QUICK ACTION BUTTONS (STORM DS Parity!)
         val showAnyQuick = profile.showQuickStrip
         if (showAnyQuick && profile.showRewindBtn) {
+            val cb = {
+                triggerHapticTick(vibrator, profile.hapticsEnabled)
+                onRewindTap()
+            }
+            quickCallbacks[QuickActionId.REWIND] = cb
             FloatingQuickActionButton(
                 icon = Icons.Filled.History,
                 center = rects.rewindCenter,
@@ -566,13 +601,19 @@ fun VirtualGamepadOverlay(
                 borderGlow = style.glow,
                 active = false,
                 alpha = alpha,
-                onClick = {
-                    triggerHapticTick(vibrator, profile.hapticsEnabled)
-                    onRewindTap()
-                },
+                onBoundsChanged = { quickBounds[QuickActionId.REWIND] = it },
+                onClick = cb,
             )
+        } else {
+            quickBounds.remove(QuickActionId.REWIND)
+            quickCallbacks.remove(QuickActionId.REWIND)
         }
         if (showAnyQuick && profile.showFastForwardBtn) {
+            val cb = {
+                triggerHapticTick(vibrator, profile.hapticsEnabled)
+                onToggleFastForward()
+            }
+            quickCallbacks[QuickActionId.FAST_FORWARD] = cb
             FloatingQuickActionButton(
                 icon = Icons.Filled.FastForward,
                 center = rects.fastForwardCenter,
@@ -581,13 +622,19 @@ fun VirtualGamepadOverlay(
                 borderGlow = style.glow,
                 active = fastForwardActive,
                 alpha = alpha,
-                onClick = {
-                    triggerHapticTick(vibrator, profile.hapticsEnabled)
-                    onToggleFastForward()
-                },
+                onBoundsChanged = { quickBounds[QuickActionId.FAST_FORWARD] = it },
+                onClick = cb,
             )
+        } else {
+            quickBounds.remove(QuickActionId.FAST_FORWARD)
+            quickCallbacks.remove(QuickActionId.FAST_FORWARD)
         }
         if (showAnyQuick && profile.showQuickSaveBtn) {
+            val cb = {
+                triggerHapticTick(vibrator, profile.hapticsEnabled)
+                onQuickSave()
+            }
+            quickCallbacks[QuickActionId.QUICK_SAVE] = cb
             FloatingQuickActionButton(
                 icon = Icons.Filled.Save,
                 center = rects.quickSaveCenter,
@@ -596,13 +643,19 @@ fun VirtualGamepadOverlay(
                 borderGlow = style.glow,
                 active = false,
                 alpha = alpha,
-                onClick = {
-                    triggerHapticTick(vibrator, profile.hapticsEnabled)
-                    onQuickSave()
-                },
+                onBoundsChanged = { quickBounds[QuickActionId.QUICK_SAVE] = it },
+                onClick = cb,
             )
+        } else {
+            quickBounds.remove(QuickActionId.QUICK_SAVE)
+            quickCallbacks.remove(QuickActionId.QUICK_SAVE)
         }
         if (showAnyQuick && profile.showQuickLoadBtn) {
+            val cb = {
+                triggerHapticTick(vibrator, profile.hapticsEnabled)
+                onQuickLoad()
+            }
+            quickCallbacks[QuickActionId.QUICK_LOAD] = cb
             FloatingQuickActionButton(
                 icon = Icons.Filled.Upload,
                 center = rects.quickLoadCenter,
@@ -611,13 +664,19 @@ fun VirtualGamepadOverlay(
                 borderGlow = style.glow,
                 active = false,
                 alpha = alpha,
-                onClick = {
-                    triggerHapticTick(vibrator, profile.hapticsEnabled)
-                    onQuickLoad()
-                },
+                onBoundsChanged = { quickBounds[QuickActionId.QUICK_LOAD] = it },
+                onClick = cb,
             )
+        } else {
+            quickBounds.remove(QuickActionId.QUICK_LOAD)
+            quickCallbacks.remove(QuickActionId.QUICK_LOAD)
         }
         if (profile.showMenuBtn || !showAnyQuick) {
+            val cb = {
+                triggerHapticTick(vibrator, profile.hapticsEnabled)
+                onOpenMenu()
+            }
+            quickCallbacks[QuickActionId.MENU] = cb
             FloatingQuickActionButton(
                 icon = Icons.Filled.Menu,
                 center = rects.menuCenter,
@@ -626,11 +685,12 @@ fun VirtualGamepadOverlay(
                 borderGlow = style.glow,
                 active = false,
                 alpha = alpha.coerceAtLeast(0.55f),
-                onClick = {
-                    triggerHapticTick(vibrator, profile.hapticsEnabled)
-                    onOpenMenu()
-                },
+                onBoundsChanged = { quickBounds[QuickActionId.MENU] = it },
+                onClick = cb,
             )
+        } else {
+            quickBounds.remove(QuickActionId.MENU)
+            quickCallbacks.remove(QuickActionId.MENU)
         }
     }
 }
@@ -1028,6 +1088,7 @@ private fun FloatingQuickActionButton(
     borderGlow: Color,
     active: Boolean,
     alpha: Float,
+    onBoundsChanged: (Rect) -> Unit,
     onClick: () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -1053,6 +1114,7 @@ private fun FloatingQuickActionButton(
         modifier = Modifier
             .offset { IntOffset((center.x - radiusPx).roundToInt(), (center.y - radiusPx).roundToInt()) }
             .size(diameterDp)
+            .onGloballyPositioned { coords -> onBoundsChanged(coords.boundsInParent()) }
             .graphicsLayer {
                 val s = 1f - 0.13f * pressAnim
                 scaleX = s

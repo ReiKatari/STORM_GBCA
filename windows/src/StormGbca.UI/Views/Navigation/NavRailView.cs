@@ -31,17 +31,17 @@ public class NavRailView : Border
         var rootGrid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         var topStack = new StackPanel { Spacing = 6, Margin = new Thickness(0, 12, 0, 0) };
 
-        AddItem(topStack, NavSectionKind.Library, AuroraIconKind.LibraryGrid, "Библиотека");
-        AddItem(topStack, NavSectionKind.Favorites, AuroraIconKind.StarFavorite, "Избранное");
-        AddItem(topStack, NavSectionKind.Recent, AuroraIconKind.RecentClock, "Недавние");
+        AddItem(topStack, NavSectionKind.Library, AuroraIconKind.LibraryGrid, GbcaLoc.T("NavLibrary"));
+        AddItem(topStack, NavSectionKind.Favorites, AuroraIconKind.StarFavorite, GbcaLoc.T("NavFavorites"));
+        AddItem(topStack, NavSectionKind.Recent, AuroraIconKind.RecentClock, GbcaLoc.T("NavRecent"));
         AddItem(topStack, NavSectionKind.Catalog, AuroraIconKind.WifiGlobe, GbcaLoc.T("NavCatalog"));
-        AddItem(topStack, NavSectionKind.SkinsAndOverlays, AuroraIconKind.ShaderPrism, "Корпусы 3D");
-        AddItem(topStack, NavSectionKind.Achievements, AuroraIconKind.TrophyCrown, "Достижения");
+        AddItem(topStack, NavSectionKind.SkinsAndOverlays, AuroraIconKind.ShaderPrism, GbcaLoc.T("NavSkins"));
+        AddItem(topStack, NavSectionKind.Achievements, AuroraIconKind.TrophyCrown, GbcaLoc.T("NavAchievements"));
 
         rootGrid.Children.Add(topStack);
 
         var bottomStack = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
-        AddItem(bottomStack, NavSectionKind.Settings, AuroraIconKind.SettingsCore, "Настройки");
+        AddItem(bottomStack, NavSectionKind.Settings, AuroraIconKind.SettingsCore, GbcaLoc.T("NavSettings"));
         rootGrid.Children.Add(bottomStack);
         Grid.SetRow(bottomStack, 1);
 
@@ -49,11 +49,7 @@ public class NavRailView : Border
 
         StormGbcaUiState.Instance.NavSectionChanged += _ => UpdateActiveStyles();
         StormGbcaUiState.Instance.RomUpdatesChanged += () => Dispatcher.UIThread.Post(UpdateCatalogBadge);
-        GbcaLoc.LanguageChanged += _ => Dispatcher.UIThread.Post(() =>
-        {
-            var cat = _items.FirstOrDefault(i => i.Kind == NavSectionKind.Catalog);
-            if (cat.Label != null) cat.Label.Text = GbcaLoc.T("NavCatalog");
-        });
+        GbcaLoc.LanguageChanged += _ => Dispatcher.UIThread.Post(ApplyLocalization);
         StormThemeBrushes.BindTheme(this, () =>
         {
             Background = StormThemeBrushes.GlassPanel;
@@ -187,6 +183,24 @@ public class NavRailView : Border
         }
     }
 
+    private void ApplyLocalization()
+    {
+        foreach (var item in _items)
+        {
+            item.Label.Text = item.Kind switch
+            {
+                NavSectionKind.Library => GbcaLoc.T("NavLibrary"),
+                NavSectionKind.Favorites => GbcaLoc.T("NavFavorites"),
+                NavSectionKind.Recent => GbcaLoc.T("NavRecent"),
+                NavSectionKind.Catalog => GbcaLoc.T("NavCatalog"),
+                NavSectionKind.SkinsAndOverlays => GbcaLoc.T("NavSkins"),
+                NavSectionKind.Achievements => GbcaLoc.T("NavAchievements"),
+                NavSectionKind.Settings => GbcaLoc.T("NavSettings"),
+                _ => item.Label.Text
+            };
+        }
+    }
+
     private void UpdateCatalogBadge()
     {
         if (_catalogBadge == null || _catalogBadgeText == null) return;
@@ -210,15 +224,32 @@ public class NavDockView : Border
         BorderThickness = new Thickness(1);
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        AddDockBtn(row, NavSectionKind.Library, AuroraIconKind.LibraryGrid, "Библиотека");
-        AddDockBtn(row, NavSectionKind.Favorites, AuroraIconKind.StarFavorite, "Избранное");
+        AddDockBtn(row, NavSectionKind.Library, AuroraIconKind.LibraryGrid, GbcaLoc.T("NavLibrary"));
+        AddDockBtn(row, NavSectionKind.Favorites, AuroraIconKind.StarFavorite, GbcaLoc.T("NavFavorites"));
         AddDockBtn(row, NavSectionKind.Catalog, AuroraIconKind.WifiGlobe, GbcaLoc.T("NavCatalog"));
-        AddDockBtn(row, NavSectionKind.SkinsAndOverlays, AuroraIconKind.ShaderPrism, "Корпусы 3D");
-        AddDockBtn(row, NavSectionKind.Achievements, AuroraIconKind.TrophyCrown, "Достижения");
-        AddDockBtn(row, NavSectionKind.Settings, AuroraIconKind.SettingsCore, "Настройки");
+        AddDockBtn(row, NavSectionKind.SkinsAndOverlays, AuroraIconKind.ShaderPrism, GbcaLoc.T("NavSkins"));
+        AddDockBtn(row, NavSectionKind.Achievements, AuroraIconKind.TrophyCrown, GbcaLoc.T("NavAchievements"));
+        AddDockBtn(row, NavSectionKind.Settings, AuroraIconKind.SettingsCore, GbcaLoc.T("NavSettings"));
         Child = row;
 
         StormGbcaUiState.Instance.NavSectionChanged += _ => UpdateActiveStyles();
+        GbcaLoc.LanguageChanged += _ => Dispatcher.UIThread.Post(() =>
+        {
+            foreach (var (kind, container) in _items)
+            {
+                string tip = kind switch
+                {
+                    NavSectionKind.Library => GbcaLoc.T("NavLibrary"),
+                    NavSectionKind.Favorites => GbcaLoc.T("NavFavorites"),
+                    NavSectionKind.Catalog => GbcaLoc.T("NavCatalog"),
+                    NavSectionKind.SkinsAndOverlays => GbcaLoc.T("NavSkins"),
+                    NavSectionKind.Achievements => GbcaLoc.T("NavAchievements"),
+                    NavSectionKind.Settings => GbcaLoc.T("NavSettings"),
+                    _ => string.Empty
+                };
+                if (!string.IsNullOrEmpty(tip)) ToolTip.SetTip(container, tip);
+            }
+        });
         StormThemeBrushes.BindTheme(this, () =>
         {
             Background = StormThemeBrushes.GlassPanel;

@@ -122,7 +122,7 @@ public class StormGbcaMainView : Grid
         Children.Add(_dropOverlay);
         Grid.SetRowSpan(_dropOverlay, totalRows);
 
-        _modalHost = new AuroraModalHost { IsOpen = false };
+        _modalHost = new AuroraModalHost();
         Children.Add(_modalHost);
         Grid.SetRowSpan(_modalHost, totalRows);
 
@@ -133,6 +133,11 @@ public class StormGbcaMainView : Grid
 
         KeyDown += OnRootKeyDown;
         StormGbcaUiState.Instance.NavSectionChanged += OnNavSectionChanged;
+        StormGbcaUiState.Instance.SettingsTabRequested += tabIdx =>
+        {
+            StormGbcaUiState.Instance.SetNavSection(NavSectionKind.Settings);
+            _settingsView.OpenTab(tabIdx);
+        };
         StormGbcaUiState.Instance.EmulationStarted += _ => SwitchToEmulation(true);
         StormGbcaUiState.Instance.EmulationStopped += () => SwitchToEmulation(false);
         StormGbcaUiState.Instance.FullscreenChanged += OnFullscreenChanged;
@@ -363,8 +368,7 @@ public class StormGbcaMainView : Grid
         closeBtn.Click += (_, _) => _modalHost.Dismiss();
         sp.Children.Add(closeBtn);
         card.Content = sp;
-        _modalHost.Content = card;
-        _modalHost.IsOpen = true;
+        _modalHost.Show(card);
     }
 
     private async Task PickAndOpenRomAsync()
@@ -412,13 +416,12 @@ public class StormGbcaMainView : Grid
         {
             modal = new StormUpdateModal(StormUpdateModal.UpdateModalMode.Checking, onRetry: () => _ = CheckAndShowUpdateModalAsync(true));
             modal.CloseRequested += () => _modalHost.Dismiss();
-            _modalHost.Content = modal;
-            _modalHost.IsOpen = true;
+            _modalHost.Show(modal);
         }
 
         try
         {
-            var curVer = AuroraDualMirrorUpdater.TryParseSemanticVersion(GbcaLoc.AppVersion, out var parsed) ? parsed : new Version(1, 9, 0);
+            var curVer = AuroraDualMirrorUpdater.TryParseSemanticVersion(GbcaLoc.AppVersion, out var parsed) ? parsed : new Version(1, 9, 1);
             var updater = new AuroraDualMirrorUpdater();
             var res = await updater.CheckStormGbcaUpdateAsync(curVer, StormGbcaUiState.Instance.Settings.DefaultUpdateSource);
 
@@ -435,8 +438,7 @@ public class StormGbcaMainView : Grid
                     {
                         modal = new StormUpdateModal(StormUpdateModal.UpdateModalMode.UpdateAvailable, res, onRetry: () => _ = CheckAndShowUpdateModalAsync(true));
                         modal.CloseRequested += () => _modalHost.Dismiss();
-                        _modalHost.Content = modal;
-                        _modalHost.IsOpen = true;
+                        _modalHost.Show(modal);
                     }
                     else
                     {
@@ -453,7 +455,7 @@ public class StormGbcaMainView : Grid
         {
             if (manual && modal != null)
             {
-                var curVer = new Version(1, 9, 0);
+                var curVer = new Version(1, 9, 1);
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     modal.UpdateState(StormUpdateModal.UpdateModalMode.Error, new AuroraUpdateCheckResult(false, curVer, curVer, string.Empty, string.Empty, null, "None", CheckSucceeded: false, ErrorMessage: ex.Message));
@@ -466,24 +468,21 @@ public class StormGbcaMainView : Grid
     {
         var palette = new CommandPaletteModal();
         palette.CloseRequested += () => _modalHost.Dismiss();
-        _modalHost.Content = palette;
-        _modalHost.IsOpen = true;
+        _modalHost.Show(palette);
     }
 
     private void ShowRomModal(GbcaRomRecord rom, int tabIdx)
     {
         var modal = new RomDetailsModal(rom, tabIdx);
         modal.CloseRequested += () => _modalHost.Dismiss();
-        _modalHost.Content = modal;
-        _modalHost.IsOpen = true;
+        _modalHost.Show(modal);
     }
 
     private void ShowCoverViewer(GbcaRomRecord rom)
     {
         var viewer = new CoverViewerModal(rom);
         viewer.CloseRequested += () => _modalHost.Dismiss();
-        _modalHost.Content = viewer;
-        _modalHost.IsOpen = true;
+        _modalHost.Show(viewer);
     }
 
     private void OnNavSectionChanged(NavSectionKind section)

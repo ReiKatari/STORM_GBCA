@@ -116,7 +116,27 @@ fun VulkanDriverManagerSheet(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val gpuProfile = remember { VulkanDriverRepository.detectGpuProfile(context) }
+    var gpuProfile by remember {
+        mutableStateOf(
+            GpuDeviceProfile(
+                telemetry = GraphicsTelemetry(
+                    vulkanSupported = false,
+                    gpuName = "",
+                    vulkanDeviceApi = "",
+                    vulkanInstanceApi = "",
+                    glesVersion = "3.0",
+                ),
+                gpuDescription = "",
+                vendorFamily = GpuVendorFamily.OTHER,
+                adrenoSubFamily = AdrenoSubFamily.NON_ADRENO,
+                maliArchFamily = MaliArchFamily.NON_MALI,
+                isAdrenoTurnipCapable = false,
+                isMalisx2Supported = false,
+                supportsCustomDrivers = false,
+                blockReason = null,
+            )
+        )
+    }
     val installedDrivers = GbcaPrefs.installedVulkanDriversState.value
     val activeDriverPath = GbcaPrefs.coreConfigState.value.customVulkanDriverPath
 
@@ -146,9 +166,12 @@ fun VulkanDriverManagerSheet(
     }
 
     LaunchedEffect(Unit) {
-        repoGroups = withContext(Dispatchers.IO) {
-            VulkanDriverRepository.getCachedAllRepositories(context)
+        val (profile, cached) = withContext(Dispatchers.IO) {
+            VulkanDriverRepository.detectGpuProfile(context) to
+                VulkanDriverRepository.getCachedAllRepositories(context)
         }
+        gpuProfile = profile
+        repoGroups = cached
         syncRepos(force = false)
     }
 

@@ -80,6 +80,7 @@ public sealed class StormGbcaUiState
     public event Action? SettingsSaved;
     public event Action<string>? StatusNotification;
     public event Action? RomUpdatesChanged;
+    public event Action<int>? SettingsTabRequested;
 
     private StormGbcaUiState()
     {
@@ -96,15 +97,26 @@ public sealed class StormGbcaUiState
         Library.LibraryChanged += () =>
         {
             Library.SyncFavoritesAndRecents(Settings);
-            if (SelectedRom == null && Library.AllRoms.Count > 0)
-            {
-                SelectRom(Library.AllRoms[0]);
-            }
             if (Settings.ShowLibretroCovers)
             {
                 _ = Library.PreloadAllMissingCoversAsync();
             }
-            StateChanged?.Invoke();
+            void NotifyOnUi()
+            {
+                if (SelectedRom == null && Library.AllRoms.Count > 0)
+                {
+                    SelectRom(Library.AllRoms[0]);
+                }
+                StateChanged?.Invoke();
+            }
+            if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            {
+                NotifyOnUi();
+            }
+            else
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(NotifyOnUi);
+            }
         };
 
         Emulator.FrameCompleted += metrics => LastMetrics = metrics;
@@ -165,10 +177,29 @@ public sealed class StormGbcaUiState
     public void SelectRom(GbcaRomRecord? rom)
     {
         SelectedRom = rom;
-        RomSelected?.Invoke(rom);
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            RomSelected?.Invoke(rom);
+        }
+        else
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => RomSelected?.Invoke(rom));
+        }
         if (rom != null && Settings.ShowLibretroCovers && string.IsNullOrWhiteSpace(rom.CoverLocalPath))
         {
             _ = Library.EnsureCoverArtAsync(rom);
+        }
+    }
+
+    public void RequestSettingsTab(int tabIndex)
+    {
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            SettingsTabRequested?.Invoke(tabIndex);
+        }
+        else
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => SettingsTabRequested?.Invoke(tabIndex));
         }
     }
 

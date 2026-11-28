@@ -117,50 +117,35 @@ static void synthesize_optical_flow_midpoint(
 
     const float avg_scene_diff = scene_samples > 0 ? (scene_diff_sum / static_cast<float>(scene_samples)) : 0.0f;
     if (avg_scene_diff > 0.35f) {
-        // Hard scene transition: avoid motion smearing
         const uint32_t* src = (alpha >= 0.5f) ? cur_rgba : prev_rgba;
         std::memcpy(out_rgba.data(), src, count * 4);
         return;
     }
 
-    auto at_l0 = [&](int x, int y) -> float {
-        return l0_buf[std::clamp(y, 0, h - 1) * w + std::clamp(x, 0, w - 1)];
-    };
-    auto at_l1 = [&](int x, int y) -> float {
-        return l1_buf[std::clamp(y, 0, h - 1) * w + std::clamp(x, 0, w - 1)];
-    };
-
     for (int y = 0; y < h; ++y) {
+        const int ym = std::max(0, y - 1);
+        const int yp = std::min(h - 1, y + 1);
+        const int row = y * w;
+        const int row_m = ym * w;
+        const int row_p = yp * w;
         for (int x = 0; x < w; ++x) {
-            float sum_ix2 = 0.0f, sum_iy2 = 0.0f, sum_ixiy = 0.0f;
-            float sum_ixit = 0.0f, sum_iyit = 0.0f, sum_it_abs = 0.0f;
-            for (int oy = -1; oy <= 1; ++oy) {
-                for (int ox = -1; ox <= 1; ++ox) {
-                    int sx = x + ox;
-                    int sy = y + oy;
-                    float ix = 0.25f * ((at_l0(sx + 1, sy) - at_l0(sx - 1, sy)) +
-                                        (at_l1(sx + 1, sy) - at_l1(sx - 1, sy)));
-                    float iy = 0.25f * ((at_l0(sx, sy + 1) - at_l0(sx, sy - 1)) +
-                                        (at_l1(sx, sy + 1) - at_l1(sx, sy - 1)));
-                    float it = at_l1(sx, sy) - at_l0(sx, sy);
-                    sum_ix2 += ix * ix;
-                    sum_iy2 += iy * iy;
-                    sum_ixiy += ix * iy;
-                    sum_ixit += ix * it;
-                    sum_iyit += iy * it;
-                    sum_it_abs += std::abs(it);
-                }
+            const int xm = std::max(0, x - 1);
+            const int xp = std::min(w - 1, x + 1);
+            const int idx = row + x;
+
+            const float it = l1_buf[idx] - l0_buf[idx];
+            float vx = 0.0f;
+            float vy = 0.0f;
+            if (std::abs(it) > 0.018f) {
+                const float ix = 0.5f * (l1_buf[row + xp] - l1_buf[row + xm]);
+                const float iy = 0.5f * (l1_buf[row_p + x] - l1_buf[row_m + x]);
+                const float grad2 = ix * ix + iy * iy + 0.004f;
+                vx = std::clamp(-it * ix / grad2, -3.0f, 3.0f);
+                vy = std::clamp(-it * iy / grad2, -3.0f, 3.0f);
             }
 
-            float vx = 0.0f, vy = 0.0f;
-            if (sum_it_abs > 0.025f) {
-                float det = sum_ix2 * sum_iy2 - sum_ixiy * sum_ixiy + 0.0025f;
-                vx = std::clamp((-sum_iy2 * sum_ixit + sum_ixiy * sum_iyit) / det, -4.0f, 4.0f);
-                vy = std::clamp((-sum_ix2 * sum_iyit + sum_ixiy * sum_ixit) / det, -4.0f, 4.0f);
-            }
-
-            RgbF p0 = unpack_rgba(prev_rgba[y * w + x]);
-            RgbF p1 = unpack_rgba(cur_rgba[y * w + x]);
+            RgbF p0 = unpack_rgba(prev_rgba[idx]);
+            RgbF p1 = unpack_rgba(cur_rgba[idx]);
             RgbF w0 = sample_bilinear_rgba(prev_rgba, w, h, static_cast<float>(x) - vx * alpha, static_cast<float>(y) - vy * alpha);
             RgbF w1 = sample_bilinear_rgba(cur_rgba,  w, h, static_cast<float>(x) + vx * (1.0f - alpha), static_cast<float>(y) + vy * (1.0f - alpha));
 
@@ -188,64 +173,28 @@ static void synthesize_optical_flow_midpoint(
             res.r += (hc.r - res.r) * cut_t;
             res.g += (hc.g - res.g) * cut_t;
             res.b += (hc.b - res.b) * cut_t;
-            out_rgba[y * w + x] = pack_rgba(res.r, res.g, res.b);
+            out_rgba[idx] = pack_rgba(res.r, res.g, res.b);
         }
     }
 }
 
-static inline void easu_set_cpu(float& dirX, float& dirY, float& len, float ppx, float ppy,
-                                bool biS, bool biT, bool biU, bool biV,
-                                float lA, float lB, float lC, float lD, float lE) {
-    float w = 0.0f;
-    if (biS) w = (1.0f - ppx) * (1.0f - ppy);
-    if (biT) w = ppx * (1.0f - ppy);
-    if (biU) w = (1.0f - ppx) * ppy;
-    if (biV) w = ppx * ppy;
-
-    float lenX = std::max(std::abs(lD - lC), std::abs(lC - lB));
-    float dX = lD - lB;
-    dirX += dX * w;
-    float lx = std::clamp(std::abs(dX) / std::max(lenX, 1e-5f), 0.0f, 1.0f);
-    len += (lx * lx) * w;
-
-    float lenY = std::max(std::abs(lE - lC), std::abs(lC - lA));
-    float dY = lE - lA;
-    dirY += dY * w;
-    float ly = std::clamp(std::abs(dY) / std::max(lenY, 1e-5f), 0.0f, 1.0f);
-    len += (ly * ly) * w;
-}
-
-static inline void easu_tap_cpu(RgbF& aC, float& aW, float ox, float oy,
-                                float dirX, float dirY, float len2X, float len2Y,
-                                float lob, float clp, const RgbF& c) {
-    float vx = (ox * dirX + oy * dirY) * len2X;
-    float vy = (ox * (-dirY) + oy * dirX) * len2Y;
-    float d2 = std::min(vx * vx + vy * vy, clp);
-    float wB = 0.4f * d2 - 1.0f;
-    float wA = lob * d2 - 1.0f;
-    wB *= wB;
-    wA *= wA;
-    wB = (25.0f / 16.0f) * wB - (25.0f / 16.0f - 1.0f);
-    float w = wB * wA;
-    aC.r += c.r * w;
-    aC.g += c.g * w;
-    aC.b += c.b * w;
-    aW += w;
-}
-
 static void run_rcas_cpu(const std::vector<RgbF>& stage, int w, int h, float sharpness, std::vector<uint32_t>& out_rgba) {
     out_rgba.resize(static_cast<size_t>(w) * static_cast<size_t>(h));
-    auto at = [&](int x, int y) -> const RgbF& {
-        return stage[static_cast<size_t>(std::clamp(y, 0, h - 1)) * w + std::clamp(x, 0, w - 1)];
-    };
     const float sharp = std::clamp(sharpness, 0.0f, 1.0f);
     for (int y = 0; y < h; ++y) {
+        const int ym = std::max(0, y - 1);
+        const int yp = std::min(h - 1, y + 1);
+        const size_t row = static_cast<size_t>(y) * w;
+        const size_t row_m = static_cast<size_t>(ym) * w;
+        const size_t row_p = static_cast<size_t>(yp) * w;
         for (int x = 0; x < w; ++x) {
-            const RgbF& b = at(x, y - 1);
-            const RgbF& d = at(x - 1, y);
-            const RgbF& e = at(x, y);
-            const RgbF& f = at(x + 1, y);
-            const RgbF& h_px = at(x, y + 1);
+            const int xm = std::max(0, x - 1);
+            const int xp = std::min(w - 1, x + 1);
+            const RgbF& b = stage[row_m + x];
+            const RgbF& d = stage[row + xm];
+            const RgbF& e = stage[row + x];
+            const RgbF& f = stage[row + xp];
+            const RgbF& h_px = stage[row_p + x];
 
             float bL = fsr_luma(b), dL = fsr_luma(d), eL = fsr_luma(e), fL = fsr_luma(f), hL = fsr_luma(h_px);
             float mnL = std::min({bL, dL, fL, hL});
@@ -269,7 +218,7 @@ static void run_rcas_cpu(const std::vector<RgbF>& stage, int w, int h, float sha
             });
             lobe *= sharp * nz;
             float rcpL = 1.0f / (4.0f * lobe + 1.0f);
-            out_rgba[static_cast<size_t>(y) * w + x] = pack_rgba(
+            out_rgba[row + x] = pack_rgba(
                 (lobe * (b.r + d.r + f.r + h_px.r) + e.r) * rcpL,
                 (lobe * (b.g + d.g + f.g + h_px.g) + e.g) * rcpL,
                 (lobe * (b.b + d.b + f.b + h_px.b) + e.b) * rcpL
@@ -278,216 +227,87 @@ static void run_rcas_cpu(const std::vector<RgbF>& stage, int w, int h, float sha
     }
 }
 
-static void run_fsr1_cpu(const uint32_t* src, int sw, int sh, int dw, int dh, float sharpness,
-                         std::vector<RgbF>& stage, std::vector<uint32_t>& out_rgba) {
+static void fast_edge_aware_upscale_cpu(const uint32_t* src, int sw, int sh, int dw, int dh, std::vector<RgbF>& stage) {
     stage.resize(static_cast<size_t>(dw) * static_cast<size_t>(dh));
-    auto at_src = [&](int x, int y) -> RgbF {
-        return unpack_rgba(src[std::clamp(y, 0, sh - 1) * sw + std::clamp(x, 0, sw - 1)]);
-    };
     const float sx = static_cast<float>(sw) / static_cast<float>(dw);
     const float sy = static_cast<float>(sh) / static_cast<float>(dh);
 
     for (int y = 0; y < dh; ++y) {
-        float py = (static_cast<float>(y) + 0.5f) * sy - 0.5f;
-        int iy = static_cast<int>(std::floor(py));
-        float fpy = py - static_cast<float>(iy);
+        float py = std::clamp((static_cast<float>(y) + 0.5f) * sy - 0.5f, 0.0f, static_cast<float>(sh - 1));
+        int y0 = static_cast<int>(py);
+        int y1 = std::min(y0 + 1, sh - 1);
+        float fy = py - static_cast<float>(y0);
+        // S-curve sharpen on fractional weight for crisp pixel-art edges
+        float fy2 = fy * fy * (3.0f - 2.0f * fy);
+        float wy = fy + (fy2 - fy) * 0.65f;
+
+        const uint32_t* row0 = src + static_cast<size_t>(y0) * sw;
+        const uint32_t* row1 = src + static_cast<size_t>(y1) * sw;
+        RgbF* dst_row = stage.data() + static_cast<size_t>(y) * dw;
+
         for (int x = 0; x < dw; ++x) {
-            float px = (static_cast<float>(x) + 0.5f) * sx - 0.5f;
-            int ix = static_cast<int>(std::floor(px));
-            float fpx = px - static_cast<float>(ix);
+            float px = std::clamp((static_cast<float>(x) + 0.5f) * sx - 0.5f, 0.0f, static_cast<float>(sw - 1));
+            int x0 = static_cast<int>(px);
+            int x1 = std::min(x0 + 1, sw - 1);
+            float fx = px - static_cast<float>(x0);
+            float fx2 = fx * fx * (3.0f - 2.0f * fx);
+            float wx = fx + (fx2 - fx) * 0.65f;
 
-            RgbF b = at_src(ix + 0, iy - 1), c = at_src(ix + 1, iy - 1);
-            RgbF e = at_src(ix - 1, iy + 0), f = at_src(ix + 0, iy + 0), g = at_src(ix + 1, iy + 0), h = at_src(ix + 2, iy + 0);
-            RgbF i = at_src(ix - 1, iy + 1), j = at_src(ix + 0, iy + 1), k = at_src(ix + 1, iy + 1), l = at_src(ix + 2, iy + 1);
-            RgbF n = at_src(ix + 0, iy + 2), o = at_src(ix + 1, iy + 2);
+            RgbF c00 = unpack_rgba(row0[x0]);
+            RgbF c10 = unpack_rgba(row0[x1]);
+            RgbF c01 = unpack_rgba(row1[x0]);
+            RgbF c11 = unpack_rgba(row1[x1]);
 
-            float bL = fsr_luma(b), cL = fsr_luma(c);
-            float eL = fsr_luma(e), fL = fsr_luma(f), gL = fsr_luma(g), hL = fsr_luma(h);
-            float iL = fsr_luma(i), jL = fsr_luma(j), kL = fsr_luma(k), lL = fsr_luma(l);
-            float nL = fsr_luma(n), oL = fsr_luma(o);
-
-            float dirX = 0.0f, dirY = 0.0f, len = 0.0f;
-            easu_set_cpu(dirX, dirY, len, fpx, fpy, true,  false, false, false, bL, eL, fL, gL, jL);
-            easu_set_cpu(dirX, dirY, len, fpx, fpy, false, true,  false, false, cL, fL, gL, hL, kL);
-            easu_set_cpu(dirX, dirY, len, fpx, fpy, false, false, true,  false, fL, iL, jL, kL, nL);
-            easu_set_cpu(dirX, dirY, len, fpx, fpy, false, false, false, true,  gL, jL, kL, lL, oL);
-
-            float dirR = dirX * dirX + dirY * dirY;
-            if (dirR < (1.0f / 32768.0f)) {
-                dirX = 1.0f; dirY = 0.0f;
-            } else {
-                float inv = 1.0f / std::sqrt(dirR);
-                dirX *= inv; dirY *= inv;
-            }
-            len = len * 0.5f;
-            len *= len;
-            float stretch = 1.0f / std::max(std::abs(dirX), std::abs(dirY));
-            float len2X = 1.0f + (stretch - 1.0f) * len;
-            float len2Y = 1.0f - 0.5f * len;
-            float lob = 0.5f + (0.29f - 0.5f) * len;
-            float clp = 1.0f / lob;
-
-            RgbF min4{ std::min({f.r, g.r, j.r, k.r}), std::min({f.g, g.g, j.g, k.g}), std::min({f.b, g.b, j.b, k.b}) };
-            RgbF max4{ std::max({f.r, g.r, j.r, k.r}), std::max({f.g, g.g, j.g, k.g}), std::max({f.b, g.b, j.b, k.b}) };
-
-            RgbF aC{0.0f, 0.0f, 0.0f};
-            float aW = 0.0f;
-            easu_tap_cpu(aC, aW,  0.0f - fpx, -1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, b);
-            easu_tap_cpu(aC, aW,  1.0f - fpx, -1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, c);
-            easu_tap_cpu(aC, aW, -1.0f - fpx,  0.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, e);
-            easu_tap_cpu(aC, aW,  0.0f - fpx,  0.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, f);
-            easu_tap_cpu(aC, aW,  1.0f - fpx,  0.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, g);
-            easu_tap_cpu(aC, aW,  2.0f - fpx,  0.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, h);
-            easu_tap_cpu(aC, aW, -1.0f - fpx,  1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, i);
-            easu_tap_cpu(aC, aW,  0.0f - fpx,  1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, j);
-            easu_tap_cpu(aC, aW,  1.0f - fpx,  1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, k);
-            easu_tap_cpu(aC, aW,  2.0f - fpx,  1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, l);
-            easu_tap_cpu(aC, aW,  0.0f - fpx,  2.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, n);
-            easu_tap_cpu(aC, aW,  1.0f - fpx,  2.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, o);
-
-            float invW = 1.0f / std::max(aW, 1e-5f);
-            stage[static_cast<size_t>(y) * dw + x] = {
-                std::clamp(aC.r * invW, min4.r, max4.r),
-                std::clamp(aC.g * invW, min4.g, max4.g),
-                std::clamp(aC.b * invW, min4.b, max4.b)
+            float w00 = (1.0f - wx) * (1.0f - wy);
+            float w10 = wx * (1.0f - wy);
+            float w01 = (1.0f - wx) * wy;
+            float w11 = wx * wy;
+            dst_row[x] = {
+                c00.r * w00 + c10.r * w10 + c01.r * w01 + c11.r * w11,
+                c00.g * w00 + c10.g * w10 + c01.g * w01 + c11.g * w11,
+                c00.b * w00 + c10.b * w10 + c01.b * w01 + c11.b * w11,
             };
         }
     }
+}
+
+static void run_fsr1_cpu(const uint32_t* src, int sw, int sh, int dw, int dh, float sharpness,
+                         std::vector<RgbF>& stage, std::vector<uint32_t>& out_rgba) {
+    fast_edge_aware_upscale_cpu(src, sw, sh, dw, dh, stage);
     run_rcas_cpu(stage, dw, dh, sharpness, out_rgba);
 }
 
-static float halton_cpu(int index, int base) {
-    float f = 1.0f, r = 0.0f;
-    int i = index;
-    while (i > 0) {
-        f /= static_cast<float>(base);
-        r += f * static_cast<float>(i % base);
-        i /= base;
-    }
-    return r;
-}
-
-static void run_fsr3_cpu(const uint32_t* src, int sw, int sh, int dw, int dh, float sharpness,
-                         int frame_idx, bool& history_valid,
+static void run_fsr3_cpu(const uint32_t* src, const uint32_t* prev_src, int sw, int sh, int dw, int dh,
+                         float sharpness, bool& history_valid,
                          std::vector<RgbF>& history_stage, std::vector<RgbF>& work_stage,
                          std::vector<uint32_t>& out_rgba) {
-    work_stage.resize(static_cast<size_t>(dw) * static_cast<size_t>(dh));
-    if (history_stage.size() != work_stage.size()) {
-        history_stage.assign(work_stage.size(), {0.0f, 0.0f, 0.0f});
-        history_valid = false;
-    }
-
-    auto at_src = [&](int x, int y) -> RgbF {
-        return unpack_rgba(src[std::clamp(y, 0, sh - 1) * sw + std::clamp(x, 0, sw - 1)]);
-    };
-    auto catmull = [&](float t, float& w0, float& w1, float& w2, float& w3) {
-        float t2 = t * t, t3 = t2 * t;
-        w0 = -0.5f * t + t2 - 0.5f * t3;
-        w1 = 1.0f - 2.5f * t2 + 1.5f * t3;
-        w2 = 0.5f * t + 2.0f * t2 - 1.5f * t3;
-        w3 = -0.5f * t2 + 0.5f * t3;
-    };
-
-    const float jx = (halton_cpu(frame_idx + 1, 2) - 0.5f) * 0.5f;
-    const float jy = (halton_cpu(frame_idx + 1, 3) - 0.5f) * 0.5f;
-    const float sx = static_cast<float>(sw) / static_cast<float>(dw);
-    const float sy = static_cast<float>(sh) / static_cast<float>(dh);
-
-    for (int y = 0; y < dh; ++y) {
-        float src_y = (static_cast<float>(y) + 0.5f) * sy - 0.5f + jy;
-        int iy = static_cast<int>(std::floor(src_y));
-        float fy = src_y - static_cast<float>(iy);
-        float wy[4];
-        catmull(fy, wy[0], wy[1], wy[2], wy[3]);
-
-        for (int x = 0; x < dw; ++x) {
-            float src_x = (static_cast<float>(x) + 0.5f) * sx - 0.5f + jx;
-            int ix = static_cast<int>(std::floor(src_x));
-            float fx = src_x - static_cast<float>(ix);
-            float wx[4];
-            catmull(fx, wx[0], wx[1], wx[2], wx[3]);
-
-            RgbF cur{0.0f, 0.0f, 0.0f};
-            RgbF nmin{1.0f, 1.0f, 1.0f}, nmax{0.0f, 0.0f, 0.0f};
-            for (int j = -1; j <= 2; ++j) {
-                RgbF row{0.0f, 0.0f, 0.0f};
-                for (int i = -1; i <= 2; ++i) {
-                    RgbF s = at_src(ix + i, iy + j);
-                    float weight_x = wx[i + 1];
-                    row.r += s.r * weight_x;
-                    row.g += s.g * weight_x;
-                    row.b += s.b * weight_x;
-                    if (j >= 0 && j <= 1 && i >= 0 && i <= 1) {
-                        nmin.r = std::min(nmin.r, s.r); nmin.g = std::min(nmin.g, s.g); nmin.b = std::min(nmin.b, s.b);
-                        nmax.r = std::max(nmax.r, s.r); nmax.g = std::max(nmax.g, s.g); nmax.b = std::max(nmax.b, s.b);
-                    }
+    fast_edge_aware_upscale_cpu(src, sw, sh, dw, dh, work_stage);
+    const size_t total = static_cast<size_t>(dw) * static_cast<size_t>(dh);
+    if (history_valid && history_stage.size() == total) {
+        const bool has_prev_raw = (prev_src != nullptr);
+        const float sx = static_cast<float>(sw) / static_cast<float>(dw);
+        const float sy = static_cast<float>(sh) / static_cast<float>(dh);
+        for (int y = 0; y < dh; ++y) {
+            const int src_y = std::clamp(static_cast<int>(static_cast<float>(y) * sy), 0, sh - 1);
+            const size_t row = static_cast<size_t>(y) * dw;
+            const size_t srow = static_cast<size_t>(src_y) * sw;
+            for (int x = 0; x < dw; ++x) {
+                RgbF& cur = work_stage[row + x];
+                const RgbF& h_px = history_stage[row + x];
+                float diff = fsr_luma({std::abs(cur.r - h_px.r), std::abs(cur.g - h_px.g), std::abs(cur.b - h_px.b)});
+                if (has_prev_raw) {
+                    const int src_x = std::clamp(static_cast<int>(static_cast<float>(x) * sx), 0, sw - 1);
+                    RgbF p_raw = unpack_rgba(prev_src[srow + src_x]);
+                    float mot = fsr_luma({std::abs(cur.r - p_raw.r), std::abs(cur.g - p_raw.g), std::abs(cur.b - p_raw.b)});
+                    diff = std::max(diff, mot * 0.75f);
                 }
-                float weight_y = wy[j + 1];
-                cur.r += row.r * weight_y;
-                cur.g += row.g * weight_y;
-                cur.b += row.b * weight_y;
+                float hw = 0.55f * (1.0f - std::clamp((diff - 0.06f) / 0.22f, 0.0f, 1.0f));
+                cur.r += (h_px.r - cur.r) * hw;
+                cur.g += (h_px.g - cur.g) * hw;
+                cur.b += (h_px.b - cur.b) * hw;
             }
-            cur.r = std::clamp(cur.r, nmin.r, nmax.r);
-            cur.g = std::clamp(cur.g, nmin.g, nmax.g);
-            cur.b = std::clamp(cur.b, nmin.b, nmax.b);
-
-            if (!history_valid) {
-                work_stage[static_cast<size_t>(y) * dw + x] = cur;
-                continue;
-            }
-
-            // 3x3 YCoCg variance clip (gamma = 1.25)
-            float m1y = 0, m1co = 0, m1cg = 0, m2y = 0, m2co = 0, m2cg = 0;
-            int cx = std::clamp(static_cast<int>(std::round(src_x)), 0, sw - 1);
-            int cy = std::clamp(static_cast<int>(std::round(src_y)), 0, sh - 1);
-            for (int oy = -1; oy <= 1; ++oy) {
-                for (int ox = -1; ox <= 1; ++ox) {
-                    RgbF s = at_src(cx + ox, cy + oy);
-                    float yv = 0.25f * s.r + 0.5f * s.g + 0.25f * s.b;
-                    float co = 0.5f * s.r - 0.5f * s.b;
-                    float cg = -0.25f * s.r + 0.5f * s.g - 0.25f * s.b;
-                    m1y += yv; m1co += co; m1cg += cg;
-                    m2y += yv * yv; m2co += co * co; m2cg += cg * cg;
-                }
-            }
-            float muy = m1y / 9.0f, muco = m1co / 9.0f, mucg = m1cg / 9.0f;
-            float sy_v = std::sqrt(std::max(0.0f, m2y / 9.0f - muy * muy)) * 1.25f;
-            float sco_v = std::sqrt(std::max(0.0f, m2co / 9.0f - muco * muco)) * 1.25f;
-            float scg_v = std::sqrt(std::max(0.0f, m2cg / 9.0f - mucg * mucg)) * 1.25f;
-
-            const RgbF& h_px = history_stage[static_cast<size_t>(y) * dw + x];
-            float hy = 0.25f * h_px.r + 0.5f * h_px.g + 0.25f * h_px.b;
-            float hco = 0.5f * h_px.r - 0.5f * h_px.b;
-            float hcg = -0.25f * h_px.r + 0.5f * h_px.g - 0.25f * h_px.b;
-
-            float vy = hy - muy, vco = hco - muco, vcg = hcg - mucg;
-            float ma = std::max({
-                std::abs(vy) / (sy_v + 1e-5f),
-                std::abs(vco) / (sco_v + 1e-5f),
-                std::abs(vcg) / (scg_v + 1e-5f)
-            });
-            if (ma > 1.0f) {
-                hy = muy + vy / ma;
-                hco = muco + vco / ma;
-                hcg = mucg + vcg / ma;
-            }
-            float tmp = hy - hcg;
-            RgbF clipped{
-                std::clamp(tmp + hco, 0.0f, 1.0f),
-                std::clamp(hy + hcg, 0.0f, 1.0f),
-                std::clamp(tmp - hco, 0.0f, 1.0f)
-            };
-
-            float disocc = rgb_luma({std::abs(cur.r - h_px.r), std::abs(cur.g - h_px.g), std::abs(cur.b - h_px.b)});
-            float hw = 0.72f * (1.0f - std::clamp((disocc - 0.08f) / 0.27f, 0.0f, 1.0f));
-            work_stage[static_cast<size_t>(y) * dw + x] = {
-                cur.r + (clipped.r - cur.r) * hw,
-                cur.g + (clipped.g - cur.g) * hw,
-                cur.b + (clipped.b - cur.b) * hw
-            };
         }
     }
-
     run_rcas_cpu(work_stage, dw, dh, sharpness, out_rgba);
     history_stage.swap(work_stage);
     history_valid = true;
@@ -551,6 +371,8 @@ struct VkFuncs {
             dlclose(lib);
             lib = nullptr;
         }
+        getInstanceProcAddr = nullptr;
+        createInstance = nullptr;
         if (!custom_driver_path.empty()) {
             lib = dlopen(custom_driver_path.c_str(), RTLD_NOW | RTLD_LOCAL);
             if (lib) LOGI("Loaded custom Vulkan driver: %s", custom_driver_path.c_str());
@@ -563,20 +385,30 @@ struct VkFuncs {
             return false;
         }
         getInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(lib, "vkGetInstanceProcAddr"));
-        if (!getInstanceProcAddr) return false;
+        if (!getInstanceProcAddr) {
+            dlclose(lib);
+            lib = nullptr;
+            return false;
+        }
         createInstance = reinterpret_cast<PFN_vkCreateInstance>(getInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance"));
-        return createInstance != nullptr;
+        if (!createInstance) {
+            dlclose(lib);
+            lib = nullptr;
+            getInstanceProcAddr = nullptr;
+            return false;
+        }
+        return true;
     }
 
     uint32_t query_instance_version() const {
-        if (!getInstanceProcAddr) return VK_API_VERSION_1_1;
+        if (!getInstanceProcAddr) return VK_API_VERSION_1_0;
         auto fn = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
             getInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
-        uint32_t ver = VK_API_VERSION_1_1;
+        uint32_t ver = VK_API_VERSION_1_0;
         if (fn && fn(&ver) == VK_SUCCESS && ver >= VK_API_VERSION_1_0) {
             return ver;
         }
-        return VK_API_VERSION_1_1;
+        return VK_API_VERSION_1_0;
     }
 
     bool load_instance(VkInstance inst) {
@@ -639,16 +471,17 @@ class VulkanRenderer {
 public:
     bool probe_info(std::string& out_device_name, std::string& out_device_api_ver, std::string& out_instance_api_ver) {
         std::lock_guard<std::mutex> lock(mu_);
-        if (!device_name_.empty() && !device_api_ver_.empty() && !instance_api_ver_.empty()) {
+        if (probed_once_) {
             out_device_name = device_name_;
             out_device_api_ver = device_api_ver_;
             out_instance_api_ver = instance_api_ver_;
-            return true;
+            return probe_ok_;
         }
+        probed_once_ = true;
+        probe_ok_ = false;
         VkFuncs tmp{};
         if (!tmp.load_library("")) return false;
         uint32_t inst_ver = tmp.query_instance_version();
-        std::string inst_ver_str = format_vk_version(inst_ver);
         uint32_t req_api = std::max<uint32_t>(VK_API_VERSION_1_1, std::min<uint32_t>(inst_ver, VK_MAKE_VERSION(1, 3, 0)));
 
         VkApplicationInfo app{};
@@ -665,8 +498,10 @@ public:
         VkResult cres = tmp.createInstance(&ci, nullptr, &inst);
         if (cres == VK_ERROR_INCOMPATIBLE_DRIVER) {
             app.apiVersion = VK_API_VERSION_1_0;
+            inst_ver = VK_API_VERSION_1_0;
             cres = tmp.createInstance(&ci, nullptr, &inst);
         }
+        std::string inst_ver_str = format_vk_version(inst_ver);
         if (cres != VK_SUCCESS) {
             if (tmp.lib) dlclose(tmp.lib);
             return false;
@@ -689,6 +524,7 @@ public:
         }
         if (tmp.destroyInstance) tmp.destroyInstance(inst, nullptr);
         if (tmp.lib) dlclose(tmp.lib);
+        probe_ok_ = ok;
         return ok;
     }
 
@@ -705,13 +541,12 @@ public:
         }
 
         uint32_t inst_ver = vk_.query_instance_version();
-        instance_api_ver_ = format_vk_version(inst_ver);
         uint32_t req_api = std::max<uint32_t>(VK_API_VERSION_1_1, std::min<uint32_t>(inst_ver, VK_MAKE_VERSION(1, 3, 0)));
 
         VkApplicationInfo app{};
         app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         app.pApplicationName = "STORM GBCA";
-        app.applicationVersion = VK_MAKE_VERSION(1, 8, 0);
+        app.applicationVersion = VK_MAKE_VERSION(1, 9, 1);
         app.pEngineName = "STORM GBCA Core";
         app.apiVersion = req_api;
 
@@ -725,8 +560,10 @@ public:
         VkResult cres = vk_.createInstance(&ici, nullptr, &instance_);
         if (cres == VK_ERROR_INCOMPATIBLE_DRIVER) {
             app.apiVersion = VK_API_VERSION_1_0;
+            inst_ver = VK_API_VERSION_1_0;
             cres = vk_.createInstance(&ici, nullptr, &instance_);
         }
+        instance_api_ver_ = format_vk_version(inst_ver);
         if (cres != VK_SUCCESS) {
             destroy_locked();
             return false;
@@ -819,14 +656,18 @@ public:
 
         VkSemaphoreCreateInfo sem_ci{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
         VkFenceCreateInfo fence_ci{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
-        vk_.createSemaphore(device_, &sem_ci, nullptr, &img_avail_sem_);
-        vk_.createSemaphore(device_, &sem_ci, nullptr, &render_done_sem_);
-        vk_.createFence(device_, &fence_ci, nullptr, &in_flight_fence_);
+        if (vk_.createSemaphore(device_, &sem_ci, nullptr, &img_avail_sem_) != VK_SUCCESS ||
+            vk_.createFence(device_, &fence_ci, nullptr, &in_flight_fence_) != VK_SUCCESS) {
+            destroy_locked();
+            return false;
+        }
 
         if (!recreate_swapchain_locked()) {
             destroy_locked();
             return false;
         }
+        probed_once_ = true;
+        probe_ok_ = true;
         ready_ = true;
         LOGI("Vulkan %s (instance %s) initialized on %s (%ux%u)",
              device_api_ver_.c_str(), instance_api_ver_.c_str(),
@@ -851,14 +692,18 @@ public:
             need_recreate_ = false;
         }
 
-        vk_.waitForFences(device_, 1, &in_flight_fence_, VK_TRUE, UINT64_MAX);
-        uint32_t img_idx = 0;
-        VkResult acq = vk_.acquireNextImageKHR(device_, swapchain_, UINT64_MAX, img_avail_sem_, VK_NULL_HANDLE, &img_idx);
-        if (acq == VK_ERROR_OUT_OF_DATE_KHR) {
+        const int sw = static_cast<int>(swap_extent_.width);
+        const int sh = static_cast<int>(swap_extent_.height);
+        if (sw <= 0 || sh <= 0 || vp_w <= 0 || vp_h <= 0 || swapchain_ == VK_NULL_HANDLE) return;
+
+        VkResult wf = vk_.waitForFences(device_, 1, &in_flight_fence_, VK_TRUE, 50000000ULL);
+        if (wf == VK_TIMEOUT) {
+            return;
+        }
+        if (wf != VK_SUCCESS) {
             need_recreate_ = true;
             return;
         }
-        if (acq != VK_SUCCESS && acq != VK_SUBOPTIMAL_KHR) return;
 
         const PostProcessParams post = get_post_process_params();
         const bool fg_midpoint = post.frame_gen_enabled &&
@@ -873,7 +718,6 @@ public:
                 cached_w_ = w;
                 cached_h_ = h;
                 fsr3_history_valid_ = false;
-                fsr3_frame_idx_ = 0;
             } else {
                 prev_frame_rgba_.swap(cur_frame_rgba_);
                 std::memcpy(cur_frame_rgba_.data(), rgba, raw_count * 4);
@@ -893,18 +737,17 @@ public:
         const uint32_t* upload_rgba = base_rgba;
         bool native_fsr_used = false;
 
-        if (!librashader_has_preset() && (post.fsr_mode == 1 || post.fsr_mode == 2)) {
+        if (!librashader_has_preset() && (post.fsr_mode == 1 || post.fsr_mode == 2) && w <= 256 && h <= 224) {
             float sharp = std::clamp(post.rcas_sharpness + fsr_quality_sharpness_bias(post.fsr_quality), 0.0f, 1.0f);
             float mult = (post.fsr_quality <= 1) ? 2.0f : 1.5f;
-            if (w > 320 || h > 240) mult = 1.5f;
             int target_w = std::max(w, static_cast<int>(std::lround(static_cast<float>(w) * mult)));
             int target_h = std::max(h, static_cast<int>(std::lround(static_cast<float>(h) * mult)));
             if (post.fsr_mode == 1) {
                 run_fsr1_cpu(base_rgba, w, h, target_w, target_h, sharp, fsr_stage_, fsr_out_rgba_);
             } else {
-                run_fsr3_cpu(base_rgba, w, h, target_w, target_h, sharp,
-                             fsr3_frame_idx_, fsr3_history_valid_, fsr3_history_stage_, fsr_stage_, fsr_out_rgba_);
-                fsr3_frame_idx_ = (fsr3_frame_idx_ + 1) & 31;
+                const uint32_t* prev_ptr = (prev_frame_rgba_.size() == raw_count) ? prev_frame_rgba_.data() : nullptr;
+                run_fsr3_cpu(base_rgba, prev_ptr, w, h, target_w, target_h, sharp,
+                             fsr3_history_valid_, fsr3_history_stage_, fsr_stage_, fsr_out_rgba_);
             }
             upload_w = target_w;
             upload_h = target_h;
@@ -912,7 +755,34 @@ public:
             native_fsr_used = true;
         }
 
+        // Clamp viewport safely inside swapchain extent (Android Y=0 at top for Vulkan)
+        int dx0 = std::clamp(vp_x, 0, sw - 1);
+        int dx1 = std::clamp(vp_x + vp_w, dx0 + 1, sw);
+        int dy0 = std::clamp(vp_y, 0, sh - 1);
+        int dy1 = std::clamp(vp_y + vp_h, dy0 + 1, sh);
+        uint32_t dst_w = static_cast<uint32_t>(dx1 - dx0);
+        uint32_t dst_h = static_cast<uint32_t>(dy1 - dy0);
+
+        // Allocate/resize source and shader output images BEFORE acquiring swapchain image
         if (!ensure_source_image_locked(static_cast<uint32_t>(upload_w), static_cast<uint32_t>(upload_h))) return;
+        const bool want_librashader = !native_fsr_used && librashader_has_preset() &&
+                                      ensure_shader_out_image_locked(dst_w, dst_h);
+
+        uint32_t img_idx = 0;
+        VkResult acq = vk_.acquireNextImageKHR(device_, swapchain_, 50000000ULL, img_avail_sem_, VK_NULL_HANDLE, &img_idx);
+        if (acq == VK_TIMEOUT) {
+            return;
+        }
+        if (acq == VK_ERROR_OUT_OF_DATE_KHR) {
+            need_recreate_ = true;
+            return;
+        }
+        if (acq != VK_SUCCESS && acq != VK_SUBOPTIMAL_KHR) return;
+        if (img_idx >= swap_images_.size() || img_idx >= render_done_sems_.size()) {
+            need_recreate_ = true;
+            return;
+        }
+        bool acq_suboptimal = (acq == VK_SUBOPTIMAL_KHR);
 
         // Upload RGBA frame into persistently mapped host-visible staging buffer
         size_t bytes = static_cast<size_t>(upload_w) * static_cast<size_t>(upload_h) * 4;
@@ -920,7 +790,6 @@ public:
             std::memcpy(mapped_ptr_, upload_rgba, bytes);
         }
 
-        vk_.resetFences(device_, 1, &in_flight_fence_);
         vk_.resetCommandBuffer(cmd_buf_, 0);
         VkCommandBufferBeginInfo bi{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr };
         vk_.beginCommandBuffer(cmd_buf_, &bi);
@@ -943,16 +812,8 @@ public:
         VkImageSubresourceRange range{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
         vk_.cmdClearColorImage(cmd_buf_, swap_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &range);
 
-        // Clamp viewport inside swapchain extent (Android Y=0 at top for Vulkan)
-        int dx0 = std::clamp(vp_x, 0, static_cast<int>(swap_extent_.width));
-        int dy0 = std::clamp(vp_y, 0, static_cast<int>(swap_extent_.height));
-        int dx1 = std::clamp(vp_x + vp_w, dx0 + 1, static_cast<int>(swap_extent_.width));
-        int dy1 = std::clamp(vp_y + vp_h, dy0 + 1, static_cast<int>(swap_extent_.height));
-        uint32_t dst_w = static_cast<uint32_t>(dx1 - dx0);
-        uint32_t dst_h = static_cast<uint32_t>(dy1 - dy0);
-
         bool shaded = false;
-        if (!native_fsr_used && librashader_has_preset() && ensure_shader_out_image_locked(dst_w, dst_h)) {
+        if (want_librashader) {
             transition_image(cmd_buf_, src_img_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                              VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
@@ -1010,6 +871,7 @@ public:
 
         vk_.endCommandBuffer(cmd_buf_);
 
+        VkSemaphore render_done = render_done_sems_[img_idx];
         VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         VkSubmitInfo si{};
         si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1019,18 +881,30 @@ public:
         si.commandBufferCount = 1;
         si.pCommandBuffers = &cmd_buf_;
         si.signalSemaphoreCount = 1;
-        si.pSignalSemaphores = &render_done_sem_;
-        vk_.queueSubmit(queue_, 1, &si, in_flight_fence_);
+        si.pSignalSemaphores = &render_done;
+
+        vk_.resetFences(device_, 1, &in_flight_fence_);
+        VkResult sr = vk_.queueSubmit(queue_, 1, &si, in_flight_fence_);
+        if (sr != VK_SUCCESS) {
+            need_recreate_ = true;
+            if (in_flight_fence_) {
+                vk_.destroyFence(device_, in_flight_fence_, nullptr);
+                in_flight_fence_ = VK_NULL_HANDLE;
+            }
+            VkFenceCreateInfo fence_ci{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
+            vk_.createFence(device_, &fence_ci, nullptr, &in_flight_fence_);
+            return;
+        }
 
         VkPresentInfoKHR pi{};
         pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         pi.waitSemaphoreCount = 1;
-        pi.pWaitSemaphores = &render_done_sem_;
+        pi.pWaitSemaphores = &render_done;
         pi.swapchainCount = 1;
         pi.pSwapchains = &swapchain_;
         pi.pImageIndices = &img_idx;
         VkResult pr = vk_.queuePresentKHR(queue_, &pi);
-        if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR) {
+        if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR || acq_suboptimal) {
             need_recreate_ = true;
         }
     }
@@ -1052,7 +926,7 @@ private:
                 return i;
             }
         }
-        return 0;
+        return UINT32_MAX;
     }
 
     void transition_image(VkCommandBuffer cmd, VkImage img, VkImageLayout old_l, VkImageLayout new_l,
@@ -1074,10 +948,7 @@ private:
     bool recreate_swapchain_locked() {
         if (device_) vk_.deviceWaitIdle(device_);
         librashader_reset_vk();
-        if (swapchain_) {
-            vk_.destroySwapchainKHR(device_, swapchain_, nullptr);
-            swapchain_ = VK_NULL_HANDLE;
-        }
+
         VkSurfaceCapabilitiesKHR caps{};
         if (vk_.getPhysicalDeviceSurfaceCapabilitiesKHR(phys_, surface_, &caps) != VK_SUCCESS) return false;
         swap_extent_ = caps.currentExtent;
@@ -1103,6 +974,18 @@ private:
         uint32_t img_count = std::max(2u, caps.minImageCount);
         if (caps.maxImageCount > 0 && img_count > caps.maxImageCount) img_count = caps.maxImageCount;
 
+        VkCompositeAlphaFlagBitsKHR comp_alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        if (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) {
+            comp_alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        } else if (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) {
+            comp_alpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+        } else if (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) {
+            comp_alpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+        } else if (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) {
+            comp_alpha = VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
+        }
+
+        VkSwapchainKHR old_swapchain = swapchain_;
         VkSwapchainCreateInfoKHR sci{};
         sci.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         sci.surface = surface_;
@@ -1115,15 +998,37 @@ private:
         sci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         sci.preTransform = (caps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
                                ? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR : caps.currentTransform;
-        sci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        sci.compositeAlpha = comp_alpha;
         sci.presentMode = VK_PRESENT_MODE_FIFO_KHR;
         sci.clipped = VK_TRUE;
+        sci.oldSwapchain = old_swapchain;
 
-        if (vk_.createSwapchainKHR(device_, &sci, nullptr, &swapchain_) != VK_SUCCESS) return false;
+        VkSwapchainKHR new_swapchain = VK_NULL_HANDLE;
+        if (vk_.createSwapchainKHR(device_, &sci, nullptr, &new_swapchain) != VK_SUCCESS) {
+            return false;
+        }
+        if (old_swapchain) {
+            vk_.destroySwapchainKHR(device_, old_swapchain, nullptr);
+        }
+        swapchain_ = new_swapchain;
+
         uint32_t sc_cnt = 0;
         vk_.getSwapchainImagesKHR(device_, swapchain_, &sc_cnt, nullptr);
         swap_images_.resize(sc_cnt);
-        vk_.getSwapchainImagesKHR(device_, swapchain_, &sc_cnt, swap_images_.data());
+        if (sc_cnt > 0) {
+            vk_.getSwapchainImagesKHR(device_, swapchain_, &sc_cnt, swap_images_.data());
+        }
+
+        for (VkSemaphore s : render_done_sems_) {
+            if (s) vk_.destroySemaphore(device_, s, nullptr);
+        }
+        render_done_sems_.assign(swap_images_.size(), VK_NULL_HANDLE);
+        VkSemaphoreCreateInfo sem_ci{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
+        for (size_t i = 0; i < swap_images_.size(); ++i) {
+            if (vk_.createSemaphore(device_, &sem_ci, nullptr, &render_done_sems_[i]) != VK_SUCCESS) {
+                return false;
+            }
+        }
         return !swap_images_.empty();
     }
 
@@ -1138,14 +1043,27 @@ private:
         bci.size = bytes;
         bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vk_.createBuffer(device_, &bci, nullptr, &staging_buf_) != VK_SUCCESS) return false;
+        if (vk_.createBuffer(device_, &bci, nullptr, &staging_buf_) != VK_SUCCESS) {
+            destroy_source_locked();
+            return false;
+        }
 
         VkMemoryRequirements breq{};
         vk_.getBufferMemoryRequirements(device_, staging_buf_, &breq);
-        VkMemoryAllocateInfo bai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, breq.size,
-                                  find_mem_type(breq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) };
-        if (vk_.allocateMemory(device_, &bai, nullptr, &staging_mem_) != VK_SUCCESS) return false;
-        vk_.bindBufferMemory(device_, staging_buf_, staging_mem_, 0);
+        uint32_t memType = find_mem_type(breq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        if (memType == UINT32_MAX) {
+            destroy_source_locked();
+            return false;
+        }
+        VkMemoryAllocateInfo bai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, breq.size, memType };
+        if (vk_.allocateMemory(device_, &bai, nullptr, &staging_mem_) != VK_SUCCESS) {
+            destroy_source_locked();
+            return false;
+        }
+        if (vk_.bindBufferMemory(device_, staging_buf_, staging_mem_, 0) != VK_SUCCESS) {
+            destroy_source_locked();
+            return false;
+        }
         if (vk_.mapMemory(device_, staging_mem_, 0, bytes, 0, &mapped_ptr_) != VK_SUCCESS || !mapped_ptr_) {
             mapped_ptr_ = nullptr;
             destroy_source_locked();
@@ -1163,14 +1081,27 @@ private:
         ici.tiling = VK_IMAGE_TILING_OPTIMAL;
         ici.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        if (vk_.createImage(device_, &ici, nullptr, &src_img_) != VK_SUCCESS) return false;
+        if (vk_.createImage(device_, &ici, nullptr, &src_img_) != VK_SUCCESS) {
+            destroy_source_locked();
+            return false;
+        }
 
         VkMemoryRequirements ireq{};
         vk_.getImageMemoryRequirements(device_, src_img_, &ireq);
-        VkMemoryAllocateInfo iai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, ireq.size,
-                                  find_mem_type(ireq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) };
-        if (vk_.allocateMemory(device_, &iai, nullptr, &src_mem_) != VK_SUCCESS) return false;
-        vk_.bindImageMemory(device_, src_img_, src_mem_, 0);
+        uint32_t imgMemType = find_mem_type(ireq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (imgMemType == UINT32_MAX) {
+            destroy_source_locked();
+            return false;
+        }
+        VkMemoryAllocateInfo iai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, ireq.size, imgMemType };
+        if (vk_.allocateMemory(device_, &iai, nullptr, &src_mem_) != VK_SUCCESS) {
+            destroy_source_locked();
+            return false;
+        }
+        if (vk_.bindImageMemory(device_, src_img_, src_mem_, 0) != VK_SUCCESS) {
+            destroy_source_locked();
+            return false;
+        }
 
         src_w_ = w;
         src_h_ = h;
@@ -1182,6 +1113,7 @@ private:
         vk_.deviceWaitIdle(device_);
         if (shader_out_img_) { vk_.destroyImage(device_, shader_out_img_, nullptr); shader_out_img_ = VK_NULL_HANDLE; }
         if (shader_out_mem_) { vk_.freeMemory(device_, shader_out_mem_, nullptr); shader_out_mem_ = VK_NULL_HANDLE; }
+        shader_out_w_ = shader_out_h_ = 0;
 
         VkImageCreateInfo ici{};
         ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1198,10 +1130,25 @@ private:
 
         VkMemoryRequirements req{};
         vk_.getImageMemoryRequirements(device_, shader_out_img_, &req);
-        VkMemoryAllocateInfo ai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, req.size,
-                                 find_mem_type(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) };
-        if (vk_.allocateMemory(device_, &ai, nullptr, &shader_out_mem_) != VK_SUCCESS) return false;
-        vk_.bindImageMemory(device_, shader_out_img_, shader_out_mem_, 0);
+        uint32_t memType = find_mem_type(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (memType == UINT32_MAX) {
+            vk_.destroyImage(device_, shader_out_img_, nullptr);
+            shader_out_img_ = VK_NULL_HANDLE;
+            return false;
+        }
+        VkMemoryAllocateInfo ai{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, req.size, memType };
+        if (vk_.allocateMemory(device_, &ai, nullptr, &shader_out_mem_) != VK_SUCCESS) {
+            vk_.destroyImage(device_, shader_out_img_, nullptr);
+            shader_out_img_ = VK_NULL_HANDLE;
+            return false;
+        }
+        if (vk_.bindImageMemory(device_, shader_out_img_, shader_out_mem_, 0) != VK_SUCCESS) {
+            vk_.destroyImage(device_, shader_out_img_, nullptr);
+            shader_out_img_ = VK_NULL_HANDLE;
+            vk_.freeMemory(device_, shader_out_mem_, nullptr);
+            shader_out_mem_ = VK_NULL_HANDLE;
+            return false;
+        }
         shader_out_w_ = w;
         shader_out_h_ = h;
         return true;
@@ -1221,15 +1168,20 @@ private:
 
     void destroy_locked() {
         ready_ = false;
+        need_recreate_ = false;
         if (device_) {
             vk_.deviceWaitIdle(device_);
             librashader_reset_vk();
             destroy_source_locked();
             if (shader_out_img_) { vk_.destroyImage(device_, shader_out_img_, nullptr); shader_out_img_ = VK_NULL_HANDLE; }
             if (shader_out_mem_) { vk_.freeMemory(device_, shader_out_mem_, nullptr); shader_out_mem_ = VK_NULL_HANDLE; }
+            shader_out_w_ = shader_out_h_ = 0;
             if (in_flight_fence_) { vk_.destroyFence(device_, in_flight_fence_, nullptr); in_flight_fence_ = VK_NULL_HANDLE; }
             if (img_avail_sem_) { vk_.destroySemaphore(device_, img_avail_sem_, nullptr); img_avail_sem_ = VK_NULL_HANDLE; }
-            if (render_done_sem_) { vk_.destroySemaphore(device_, render_done_sem_, nullptr); render_done_sem_ = VK_NULL_HANDLE; }
+            for (VkSemaphore s : render_done_sems_) {
+                if (s) vk_.destroySemaphore(device_, s, nullptr);
+            }
+            render_done_sems_.clear();
             if (cmd_pool_) { vk_.destroyCommandPool(device_, cmd_pool_, nullptr); cmd_pool_ = VK_NULL_HANDLE; }
             if (swapchain_) { vk_.destroySwapchainKHR(device_, swapchain_, nullptr); swapchain_ = VK_NULL_HANDLE; }
             vk_.destroyDevice(device_, nullptr);
@@ -1248,7 +1200,6 @@ private:
         fsr_out_rgba_.clear();
         cached_w_ = cached_h_ = 0;
         fsr3_history_valid_ = false;
-        fsr3_frame_idx_ = 0;
     }
 
     std::mutex mu_;
@@ -1268,7 +1219,7 @@ private:
     VkCommandPool cmd_pool_ = VK_NULL_HANDLE;
     VkCommandBuffer cmd_buf_ = VK_NULL_HANDLE;
     VkSemaphore img_avail_sem_ = VK_NULL_HANDLE;
-    VkSemaphore render_done_sem_ = VK_NULL_HANDLE;
+    std::vector<VkSemaphore> render_done_sems_;
     VkFence in_flight_fence_ = VK_NULL_HANDLE;
 
     VkBuffer staging_buf_ = VK_NULL_HANDLE;
@@ -1292,10 +1243,11 @@ private:
     std::vector<uint32_t> fsr_out_rgba_;
     int cached_w_ = 0, cached_h_ = 0;
     bool fsr3_history_valid_ = false;
-    int fsr3_frame_idx_ = 0;
 
     bool ready_ = false;
     bool need_recreate_ = false;
+    bool probed_once_ = false;
+    bool probe_ok_ = false;
     std::string device_name_;
     std::string device_api_ver_;
     std::string instance_api_ver_;

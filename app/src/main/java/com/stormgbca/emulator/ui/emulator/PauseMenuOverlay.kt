@@ -73,6 +73,7 @@ import androidx.compose.material.icons.filled.VideogameAsset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -122,6 +123,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.roundToInt
 
 private enum class PauseSubDialog {
     NONE,
@@ -1203,29 +1205,42 @@ private fun VideoSettingsDialog(
                     }
                 }
 
-                val palName = NativeCore.nativeGetDmgPaletteName(cfg.dmgPaletteIndex) ?: "DMG Olive"
+                var dmgPalSlider by remember(cfg.dmgPaletteIndex) {
+                    mutableFloatStateOf(cfg.dmgPaletteIndex.toFloat())
+                }
+                val previewPalIndex = dmgPalSlider.roundToInt().coerceIn(0, paletteCount - 1)
+                val palName = NativeCore.nativeGetDmgPaletteName(previewPalIndex) ?: "DMG Olive"
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("DMG Palette (${cfg.dmgPaletteIndex + 1}/$paletteCount)", color = colors.text, fontSize = 12.sp)
+                    Text("DMG Palette (${previewPalIndex + 1}/$paletteCount)", color = colors.text, fontSize = 12.sp)
                     Text(palName, color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
                 }
                 Slider(
-                    value = cfg.dmgPaletteIndex.toFloat(),
-                    onValueChange = { v ->
-                        GbcaPrefs.updateCoreConfig { it.copy(dmgPaletteIndex = v.toInt().coerceIn(0, paletteCount - 1)) }
+                    value = dmgPalSlider,
+                    onValueChange = { v -> dmgPalSlider = v },
+                    onValueChangeFinished = {
+                        val clamped = dmgPalSlider.roundToInt().coerceIn(0, paletteCount - 1)
+                        dmgPalSlider = clamped.toFloat()
+                        GbcaPrefs.updateCoreConfig { it.copy(dmgPaletteIndex = clamped) }
                         onConfigApplied()
                     },
                     valueRange = 0f..(paletteCount - 1).toFloat(),
                     colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
                 )
 
+                var lcdGhostSlider by remember(cfg.lcdGhosting) {
+                    mutableFloatStateOf(cfg.lcdGhosting.toFloat())
+                }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("LCD Ghosting", color = colors.text, fontSize = 12.sp)
-                    Text("${cfg.lcdGhosting}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
+                    Text("${lcdGhostSlider.roundToInt().coerceIn(0, 100)}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
                 }
                 Slider(
-                    value = cfg.lcdGhosting.toFloat(),
-                    onValueChange = { v ->
-                        GbcaPrefs.updateCoreConfig { it.copy(lcdGhosting = v.toInt().coerceIn(0, 100)) }
+                    value = lcdGhostSlider,
+                    onValueChange = { v -> lcdGhostSlider = v },
+                    onValueChangeFinished = {
+                        val clamped = lcdGhostSlider.roundToInt().coerceIn(0, 100)
+                        lcdGhostSlider = clamped.toFloat()
+                        GbcaPrefs.updateCoreConfig { it.copy(lcdGhosting = clamped) }
                         onConfigApplied()
                     },
                     valueRange = 0f..100f,
@@ -1253,8 +1268,9 @@ private fun VideoSettingsDialog(
                             .background(if (sel) colors.greenDim else colors.surface2)
                             .border(1.dp, if (sel) colors.green else colors.line, RoundedCornerShape(9.dp))
                             .clickable {
-                                GbcaPrefs.updateOverlayProfile(system) { it.copy(shaderOverlay = id) }
+                                GbcaPrefs.updateOverlayProfile(system) { it.copy(shaderOverlay = id, retroArchShaderPath = "") }
                                 GbcaPrefs.updateCoreConfig { it.copy(videoFilter = id) }
+                                NativeCore.nativeSetRetroArchShader("")
                                 onConfigApplied()
                             }
                             .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -1292,14 +1308,20 @@ private fun VideoSettingsDialog(
                     }
                 }
 
+                var fsrSharpnessSlider by remember(cfg.fsrSharpness) {
+                    mutableFloatStateOf(cfg.fsrSharpness.toFloat())
+                }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(stringResource(R.string.vid_fsr_sharpness), color = colors.text, fontSize = 12.sp)
-                    Text("${cfg.fsrSharpness}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
+                    Text("${fsrSharpnessSlider.roundToInt().coerceIn(0, 100)}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
                 }
                 Slider(
-                    value = cfg.fsrSharpness.toFloat(),
-                    onValueChange = { v ->
-                        GbcaPrefs.updateCoreConfig { it.copy(fsrSharpness = v.toInt().coerceIn(0, 100)) }
+                    value = fsrSharpnessSlider,
+                    onValueChange = { v -> fsrSharpnessSlider = v },
+                    onValueChangeFinished = {
+                        val clamped = fsrSharpnessSlider.roundToInt().coerceIn(0, 100)
+                        fsrSharpnessSlider = clamped.toFloat()
+                        GbcaPrefs.updateCoreConfig { it.copy(fsrSharpness = clamped) }
                         onConfigApplied()
                     },
                     valueRange = 0f..100f,
@@ -1359,29 +1381,38 @@ private fun AudioMixerDialog(
                     )
                 }
 
+                var masterVolSlider by remember(cfg.masterVolume) {
+                    mutableFloatStateOf(cfg.masterVolume)
+                }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(stringResource(R.string.aud_master), color = colors.text, fontSize = 12.5.sp)
-                    Text("${(cfg.masterVolume * 100).toInt()}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
+                    Text("${(masterVolSlider * 100).roundToInt()}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
                 }
                 Slider(
-                    value = cfg.masterVolume,
-                    onValueChange = { v -> GbcaPrefs.updateCoreConfig { it.copy(masterVolume = v) }; onConfigApplied() },
+                    value = masterVolSlider,
+                    onValueChange = { v -> masterVolSlider = v },
+                    onValueChangeFinished = {
+                        GbcaPrefs.updateCoreConfig { it.copy(masterVolume = masterVolSlider) }
+                        onConfigApplied()
+                    },
                     valueRange = 0f..1.5f,
                     colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
                 )
 
                 chNames.forEachIndexed { idx, name ->
                     val vol = cfg.channelVolumes.getOrElse(idx) { 1f }
+                    var chVolSlider by remember(vol) { mutableFloatStateOf(vol) }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(name, color = colors.text2, fontSize = 12.sp)
-                        Text("${(vol * 100).toInt()}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
+                        Text("${(chVolSlider * 100).roundToInt()}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
                     }
                     Slider(
-                        value = vol,
-                        onValueChange = { v ->
-                            val next = cfg.channelVolumes.toMutableList()
+                        value = chVolSlider,
+                        onValueChange = { v -> chVolSlider = v },
+                        onValueChangeFinished = {
+                            val next = GbcaPrefs.coreConfigState.value.channelVolumes.toMutableList()
                             while (next.size < 6) next.add(1f)
-                            next[idx] = v
+                            next[idx] = chVolSlider
                             GbcaPrefs.updateCoreConfig { it.copy(channelVolumes = next) }
                             onConfigApplied()
                         },

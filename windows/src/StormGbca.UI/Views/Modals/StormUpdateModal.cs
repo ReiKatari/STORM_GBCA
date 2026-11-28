@@ -382,6 +382,7 @@ public sealed class StormUpdateModal : AuroraGlassCard
 
             // Interactive Dual-Source Selector (STORM GAMES WORLD vs GitHub)
             var chipsPanel = new WrapPanel { Orientation = Orientation.Horizontal };
+            var notesStack = new StackPanel { Spacing = 6 };
             string pageUrl = !string.IsNullOrWhiteSpace(ActiveResult().ReleasePageUrl)
                 ? ActiveResult().ReleasePageUrl
                 : "https://github.com/ReiKatari/STORM_GBCA/releases";
@@ -389,6 +390,11 @@ public sealed class StormUpdateModal : AuroraGlassCard
             void RefreshMetadataChips()
             {
                 var active = ActiveResult();
+                string activeNewVer = active.LatestVersion.ToString().Trim().TrimStart('v', 'V');
+                if (newPill.Child is StackPanel nsp && nsp.Children.Count > 1 && nsp.Children[1] is TextBlock ntb)
+                {
+                    ntb.Text = activeNewVer;
+                }
                 pageUrl = !string.IsNullOrWhiteSpace(active.ReleasePageUrl)
                     ? active.ReleasePageUrl
                     : "https://github.com/ReiKatari/STORM_GBCA/releases";
@@ -404,6 +410,19 @@ public sealed class StormUpdateModal : AuroraGlassCard
                 {
                     chipsPanel.Children.Add(BuildMetadataChip(active.PublishedAtUtc.Value.ToLocalTime().ToString("dd.MM.yyyy", CultureInfo.InvariantCulture), theme, false));
                 }
+            }
+
+            void RefreshChangelog()
+            {
+                var active = ActiveResult();
+                string activeNewVer = active.LatestVersion.ToString().Trim().TrimStart('v', 'V');
+                notesStack.Children.Clear();
+                string rawCleaned = string.IsNullOrWhiteSpace(active.Changelog)
+                    ? $"STORM GBCA {activeNewVer}"
+                    : s_htmlTagRegex.Replace(active.Changelog, string.Empty);
+                string localizedNotes = SelectLocalizedReleaseNotes(rawCleaned, GbcaLoc.CurrentLanguage);
+                if (string.IsNullOrWhiteSpace(localizedNotes)) localizedNotes = $"STORM GBCA {activeNewVer}";
+                RenderStructuredMarkdown(notesStack, localizedNotes, theme, accent);
             }
 
             if (stormOpt != null || ghOpt != null)
@@ -463,6 +482,7 @@ public sealed class StormUpdateModal : AuroraGlassCard
                             _selectedOption = opt;
                             UpdateSourcePills();
                             RefreshMetadataChips();
+                            RefreshChangelog();
                         };
                     }
                     return b;
@@ -492,14 +512,7 @@ public sealed class StormUpdateModal : AuroraGlassCard
 
             // Scrollable Structured Localized Changelog Card
             var notesScroll = new ScrollViewer { MinHeight = 110, MaxHeight = 220 };
-            var notesStack = new StackPanel { Spacing = 6 };
-            string rawCleaned = string.IsNullOrWhiteSpace(result.Changelog)
-                ? $"STORM GBCA {cleanNew}"
-                : s_htmlTagRegex.Replace(result.Changelog, string.Empty);
-            string localizedNotes = SelectLocalizedReleaseNotes(rawCleaned, GbcaLoc.CurrentLanguage);
-            if (string.IsNullOrWhiteSpace(localizedNotes)) localizedNotes = $"STORM GBCA {cleanNew}";
-
-            RenderStructuredMarkdown(notesStack, localizedNotes, theme, accent);
+            RefreshChangelog();
             notesScroll.Content = notesStack;
             _bodyHost.Children.Add(new Border
             {

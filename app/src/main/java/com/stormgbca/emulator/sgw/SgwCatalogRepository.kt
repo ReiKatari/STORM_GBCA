@@ -43,7 +43,7 @@ object SgwCatalogRepository {
     private const val TAG = "SgwCatalogRepo"
     private const val PRIMARY_HOST = "https://stormgamesworld.ru"
     private const val FALLBACK_HOST = "https://storm-games.world"
-    private const val USER_AGENT = "STORM-GBCA/1.9.0 (Android)"
+    private const val USER_AGENT = "STORM-GBCA/1.9.1 (Android)"
     private const val CACHE_FILE_NAME = "sgw_catalog_v1.json"
     private const val CACHE_TTL_MS = 15L * 60L * 1000L
 

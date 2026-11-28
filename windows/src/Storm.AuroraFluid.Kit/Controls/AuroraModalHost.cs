@@ -1,3 +1,6 @@
+// Copyright (c) 2026 STORM TEAM. All rights reserved.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
+
 using System;
 using Avalonia;
 using Avalonia.Controls;
@@ -57,6 +60,8 @@ public class AuroraModalHost : ContentControl
         HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
         VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch;
         Focusable = true;
+        IsVisible = false;
+        IsHitTestVisible = false;
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -77,10 +82,27 @@ public class AuroraModalHost : ContentControl
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
+        if (change.Property == IsOpenProperty)
+        {
+            bool open = IsOpen;
+            IsVisible = open;
+            IsHitTestVisible = open;
+        }
         if (change.Property == BoundsProperty || change.Property == ContentProperty || change.Property == IsOpenProperty)
         {
             ClampModalBounds();
         }
+    }
+
+    public void Show(Control content)
+    {
+        Content = content;
+        IsVisible = true;
+        IsHitTestVisible = true;
+        IsOpen = true;
+        ClampModalBounds();
+        InvalidateVisual();
+        Focus();
     }
 
     private void ClampModalBounds()
@@ -129,10 +151,16 @@ public class AuroraModalHost : ContentControl
 
     public void Dismiss()
     {
-        if (!IsOpen) return;
+        bool wasOpen = IsOpen;
         IsOpen = false;
-        AuroraTactileFeedbackService.Instance.PlayClick();
-        Closed?.Invoke(this, EventArgs.Empty);
+        IsVisible = false;
+        IsHitTestVisible = false;
+        Content = null;
+        if (wasOpen)
+        {
+            AuroraTactileFeedbackService.Instance.PlayClick();
+            Closed?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     public override void Render(DrawingContext context)

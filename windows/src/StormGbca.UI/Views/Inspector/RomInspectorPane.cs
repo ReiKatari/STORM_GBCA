@@ -268,6 +268,11 @@ public class RomInspectorPane : Border
 
     private void UpdatePane(GbcaRomRecord? rom)
     {
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdatePane(rom));
+            return;
+        }
         _currentRom = rom;
         _badgesRow.Children.Clear();
         _slotsGrid.Children.Clear();

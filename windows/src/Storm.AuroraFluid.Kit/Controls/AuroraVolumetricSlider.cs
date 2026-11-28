@@ -1,3 +1,6 @@
+// Copyright (c) 2026 STORM TEAM. All rights reserved.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
+
 using System;
 using Avalonia;
 using Avalonia.Controls;
@@ -103,8 +106,10 @@ public class AuroraVolumetricSlider : Control
     {
         base.OnPointerPressed(e);
         _isDragging = true;
+        e.Pointer.Capture(this);
         UpdateValueFromPoint(e.GetPosition(this));
         InvalidateVisual();
+        e.Handled = true;
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -120,6 +125,17 @@ public class AuroraVolumetricSlider : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+        _isDragging = false;
+        if (e.Pointer.Captured == this)
+        {
+            e.Pointer.Capture(null);
+        }
+        InvalidateVisual();
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
         _isDragging = false;
         InvalidateVisual();
     }

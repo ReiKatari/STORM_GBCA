@@ -46,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -199,6 +200,11 @@ private fun LayoutEditorScreen(
         // INTERACTIVE DRAGGABLE & RESIZABLE GAME SCREEN FRAME
         val vpWidthDp = with(density) { viewportRect.width.toDp() }
         val vpHeightDp = with(density) { viewportRect.height.toDp() }
+        val latestW by rememberUpdatedState(w)
+        val latestH by rememberUpdatedState(h)
+        val latestViewportRect by rememberUpdatedState(viewportRect)
+        val latestScreenCfg by rememberUpdatedState(currentScreenCfg)
+        val latestUpdateScreenCfg by rememberUpdatedState(::updateScreenCfg)
         Box(
             modifier = Modifier
                 .offset { IntOffset(viewportRect.left.roundToInt(), viewportRect.top.roundToInt()) }
@@ -206,17 +212,20 @@ private fun LayoutEditorScreen(
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xBB0F172A))
                 .border(2.dp, colors.green, RoundedCornerShape(8.dp))
-                .pointerInput(w, h, activeSystem, isLandscape, currentScreenCfg) {
+                .pointerInput(activeSystem, isLandscape) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        val curCx = (viewportRect.left + viewportRect.width / 2f) / w
-                        val curCy = (viewportRect.top + viewportRect.height / 2f) / h
-                        val curWf = viewportRect.width / w
-                        val curHf = viewportRect.height / h
-                        var nx = (curCx + dragAmount.x / w).coerceIn(0.05f, 0.95f)
-                        val ny = (curCy + dragAmount.y / h).coerceIn(0.05f, 0.95f)
+                        val cw = latestW
+                        val ch = latestH
+                        val vr = latestViewportRect
+                        val curCx = (vr.left + vr.width / 2f) / cw
+                        val curCy = (vr.top + vr.height / 2f) / ch
+                        val curWf = vr.width / cw
+                        val curHf = vr.height / ch
+                        var nx = (curCx + dragAmount.x / cw).coerceIn(0.05f, 0.95f)
+                        val ny = (curCy + dragAmount.y / ch).coerceIn(0.05f, 0.95f)
                         if (kotlin.math.abs(nx - 0.5f) < 0.018f) nx = 0.5f
-                        updateScreenCfg {
+                        latestUpdateScreenCfg {
                             it.copy(
                                 useCustom = true,
                                 screenPreset = 4,
@@ -267,14 +276,18 @@ private fun LayoutEditorScreen(
                     .size(36.dp)
                     .clip(RoundedCornerShape(topStart = 10.dp))
                     .background(colors.green)
-                    .pointerInput(w, h, activeSystem, isLandscape, currentScreenCfg) {
+                    .pointerInput(activeSystem, isLandscape) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
-                            val curWf = if (currentScreenCfg.useCustom) currentScreenCfg.widthFraction else (viewportRect.width / w)
-                            val curHf = if (currentScreenCfg.useCustom) currentScreenCfg.heightFraction else (viewportRect.height / h)
-                            val nwf = (curWf + (dragAmount.x * 1.6f) / w).coerceIn(0.20f, 1.0f)
-                            val nhf = (curHf + (dragAmount.y * 1.6f) / h).coerceIn(0.20f, 1.0f)
-                            updateScreenCfg {
+                            val cw = latestW
+                            val ch = latestH
+                            val vr = latestViewportRect
+                            val cfgSnap = latestScreenCfg
+                            val curWf = if (cfgSnap.useCustom) cfgSnap.widthFraction else (vr.width / cw)
+                            val curHf = if (cfgSnap.useCustom) cfgSnap.heightFraction else (vr.height / ch)
+                            val nwf = (curWf + (dragAmount.x * 1.6f) / cw).coerceIn(0.20f, 1.0f)
+                            val nhf = (curHf + (dragAmount.y * 1.6f) / ch).coerceIn(0.20f, 1.0f)
+                            latestUpdateScreenCfg {
                                 it.copy(
                                     useCustom = true,
                                     screenPreset = 4,
@@ -766,6 +779,10 @@ private fun DraggableNode(
     val sizePx = with(density) { sizeDp.dp.toPx() }
     val xPx = pos.xFraction * containerW
     val yPx = pos.yFraction * containerH
+    val latestPos by rememberUpdatedState(pos)
+    val latestW by rememberUpdatedState(containerW)
+    val latestH by rememberUpdatedState(containerH)
+    val latestOnMove by rememberUpdatedState(onMove)
 
     Box(
         modifier = Modifier
@@ -774,12 +791,15 @@ private fun DraggableNode(
             .clip(CircleShape)
             .background(accent.copy(alpha = 0.28f))
             .border(2.dp, accent, CircleShape)
-            .pointerInput(containerW, containerH, pos) {
+            .pointerInput(label) {
                 detectDragGestures { change, dragAmount ->
                     change.consume()
-                    val nx = ((pos.xFraction * containerW + dragAmount.x) / containerW).coerceIn(0.03f, 0.97f)
-                    val ny = ((pos.yFraction * containerH + dragAmount.y) / containerH).coerceIn(0.05f, 0.95f)
-                    onMove(pos.copy(xFraction = nx, yFraction = ny))
+                    val cw = latestW
+                    val ch = latestH
+                    val cur = latestPos
+                    val nx = ((cur.xFraction * cw + dragAmount.x) / cw).coerceIn(0.03f, 0.97f)
+                    val ny = ((cur.yFraction * ch + dragAmount.y) / ch).coerceIn(0.05f, 0.95f)
+                    latestOnMove(cur.copy(xFraction = nx, yFraction = ny))
                 }
             },
         contentAlignment = Alignment.Center,
@@ -808,6 +828,10 @@ private fun DraggableIconNode(
     val sizePx = with(density) { sizeDp.dp.toPx() }
     val xPx = pos.xFraction * containerW
     val yPx = pos.yFraction * containerH
+    val latestPos by rememberUpdatedState(pos)
+    val latestW by rememberUpdatedState(containerW)
+    val latestH by rememberUpdatedState(containerH)
+    val latestOnMove by rememberUpdatedState(onMove)
 
     Box(
         modifier = Modifier
@@ -816,12 +840,15 @@ private fun DraggableIconNode(
             .clip(CircleShape)
             .background(Color(0xCC0D1220))
             .border(1.8.dp, accent, CircleShape)
-            .pointerInput(containerW, containerH, pos) {
+            .pointerInput(icon.name) {
                 detectDragGestures { change, dragAmount ->
                     change.consume()
-                    val nx = ((pos.xFraction * containerW + dragAmount.x) / containerW).coerceIn(0.03f, 0.97f)
-                    val ny = ((pos.yFraction * containerH + dragAmount.y) / containerH).coerceIn(0.05f, 0.95f)
-                    onMove(pos.copy(xFraction = nx, yFraction = ny))
+                    val cw = latestW
+                    val ch = latestH
+                    val cur = latestPos
+                    val nx = ((cur.xFraction * cw + dragAmount.x) / cw).coerceIn(0.03f, 0.97f)
+                    val ny = ((cur.yFraction * ch + dragAmount.y) / ch).coerceIn(0.05f, 0.95f)
+                    latestOnMove(cur.copy(xFraction = nx, yFraction = ny))
                 }
             },
         contentAlignment = Alignment.Center,

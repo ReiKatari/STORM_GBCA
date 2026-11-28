@@ -173,6 +173,11 @@ public class StormStatusBar : Border
 
     private void UpdateCount()
     {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(UpdateCount);
+            return;
+        }
         int count = StormGbcaUiState.Instance.GetFilteredRoms().Count;
         string plural = AuroraLocalizationService.GetRussianPlural(count, "игра", "игры", "игр");
         _countText.Text = $"{count} {plural}";

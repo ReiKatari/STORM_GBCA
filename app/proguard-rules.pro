@@ -11,6 +11,8 @@
 -keep class com.stormgbca.emulator.model.** { *; }
 -keep class com.stormgbca.emulator.data.** { *; }
 -keep class com.stormgbca.emulator.update.** { *; }
+-keep class com.stormgbca.emulator.vulkandriver.** { *; }
+-keep class com.stormgbca.emulator.sgw.** { *; }
 
 # Keep Parcelables & standard JSON/Coil integrations
 -keepclassmembers class * implements android.os.Parcelable {

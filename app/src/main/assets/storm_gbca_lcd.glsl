@@ -27,7 +27,7 @@ uniform sampler2D u_prev_tex;
 
 uniform highp vec2 u_emu_lcd_size;
 uniform highp vec2 u_render_size;
-uniform int        u_display_mode;        // 0=Nearest, 1=Bilinear, 2=LCD Grid, 3=RGB Subpixel, 4=xBRZ-lite, 5=CRT Scanlines, 6=Sharp Bilinear
+uniform int        u_display_mode;        // 0=Nearest, 1=Bilinear, 2=LCD Grid, 3=RGB Subpixel, 4=xBRZ-lite, 5=CRT Scanlines, 6=Sharp Bilinear, 7=FSR1, 8=FSR3
 uniform float      u_lcd_is_grayscale;
 uniform float      u_integer_scaling;
 uniform float      u_color_correction_strength;
@@ -51,9 +51,9 @@ vec4 sample_raw(highp vec2 uv) {
 
 vec3 apply_color_correct(vec3 c) {
     if (u_color_correction_strength > 0.005) {
-        vec3 lin = pow(max(c, vec3(0.0)), vec3(u_input_gamma));
+        vec3 lin = pow(max(c, vec3(1e-5)), vec3(u_input_gamma));
         vec3 corrected = lin.r * u_red_color + lin.g * u_green_color + lin.b * u_blue_color;
-        corrected = pow(clamp(corrected, 0.0, 1.0), vec3(1.0 / 2.2));
+        corrected = pow(clamp(corrected, 1e-5, 1.0), vec3(1.0 / 2.2));
         c = mix(c, corrected, u_color_correction_strength);
     }
     return c;
@@ -281,6 +281,24 @@ void main() {
             highp vec2 modTexel = floor(texel) + (centerDist - clamp(centerDist, -regionRange, regionRange)) * scale + 0.5;
             frag_color = sample_raw(modTexel * invSize);
         }
+    } else if (mode == 7 || mode == 8) {
+        highp vec2 ip = (floor(v_uv * u_emu_lcd_size - 0.5) + 0.5) * invSize;
+        highp vec2 residual = fract(v_uv * u_emu_lcd_size + 0.5);
+        vec4 v0 = sample_raw(ip);
+        vec4 v1 = sample_raw(ip + vec2(invSize.x, 0.0));
+        vec4 v2 = sample_raw(ip + vec2(0.0, invSize.y));
+        vec4 v3 = sample_raw(ip + invSize);
+        highp vec2 smooth_dim = vec2(smooth_width, smooth_height);
+        vec2 alpha = vec2(
+            smoothstep(0.5 - smooth_dim.x * 0.5, 0.5 + smooth_dim.x * 0.5, residual.x),
+            smoothstep(0.5 - smooth_dim.y * 0.5, 0.5 + smooth_dim.y * 0.5, residual.y)
+        );
+        vec4 base = mix(mix(v0, v1, alpha.x), mix(v2, v3, alpha.x), alpha.y);
+        vec3 avg4 = 0.25 * (v0.rgb + v1.rgb + v2.rgb + v3.rgb);
+        vec3 mn4 = min(min(v0.rgb, v1.rgb), min(v2.rgb, v3.rgb));
+        vec3 mx4 = max(max(v0.rgb, v1.rgb), max(v2.rgb, v3.rgb));
+        vec3 sharp_rgb = clamp(base.rgb + (base.rgb - avg4) * 0.35, mn4, mx4);
+        frag_color = vec4(sharp_rgb, base.a);
     } else {
         frag_color = sample_raw(v_uv);
     }

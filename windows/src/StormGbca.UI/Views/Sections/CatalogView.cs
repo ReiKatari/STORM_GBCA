@@ -56,6 +56,8 @@ public sealed class CatalogView : Grid
     private readonly ScrollViewer _scrollViewer;
 
     private readonly List<(CatalogFilterKind Kind, Color Accent, Border Chip, TextBlock Label)> _chips = [];
+    private readonly SemaphoreSlim _coverSemaphore = new(4, 4);
+    private CancellationTokenSource? _coverCts;
     private CatalogFilterKind _activeFilter = CatalogFilterKind.All;
     private string _searchQuery = string.Empty;
     private bool _isLoading;
@@ -369,6 +371,11 @@ public sealed class CatalogView : Grid
 
     private void RebuildCards()
     {
+        _coverCts?.Cancel();
+        _coverCts?.Dispose();
+        _coverCts = new CancellationTokenSource();
+        var coverCt = _coverCts.Token;
+
         _cardsWrap.Children.Clear();
 
         var state = StormGbcaUiState.Instance;
@@ -414,11 +421,11 @@ public sealed class CatalogView : Grid
         {
             updatesByGameId.TryGetValue(game.GameId, out var updateInfo);
             bool installed = updateInfo == null && state.CatalogService.IsCatalogGameInstalled(game, library);
-            _cardsWrap.Children.Add(BuildCatalogCard(game, updateInfo, installed));
+            _cardsWrap.Children.Add(BuildCatalogCard(game, updateInfo, installed, coverCt));
         }
     }
 
-    private Control BuildCatalogCard(SgwCatalogGame game, SgwGameUpdateInfo? updateInfo, bool installed)
+    private Control BuildCatalogCard(SgwCatalogGame game, SgwGameUpdateInfo? updateInfo, bool installed, CancellationToken coverCt)
     {
         Color platColor = StormGbcaUiState.GetPlatformBadgeColor(game.Platform);
 
@@ -471,7 +478,7 @@ public sealed class CatalogView : Grid
         coverBox.Child = coverLayer;
         topRow.Children.Add(coverBox);
 
-        LoadCoverAsync(game, coverImg, placeholderIcon);
+        LoadCoverAsync(game, coverImg, placeholderIcon, coverCt);
 
         var infoCol = new StackPanel { Spacing = 5 };
         infoCol.Children.Add(new TextBlock
@@ -535,12 +542,14 @@ public sealed class CatalogView : Grid
         root.Children.Add(topRow);
 
         // Action Button Row
+        bool upToDateInstalled = installed && updateInfo == null;
         var actionBtn = new AuroraVolumetricButton
         {
             Height = 36,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             IsHero = updateInfo != null || !installed,
-            IsEnabled = !_isDownloading && (game.FileExists || !string.IsNullOrWhiteSpace(game.DownloadUrl))
+            IsEnabled = !_isDownloading && !upToDateInstalled && (game.FileExists || !string.IsNullOrWhiteSpace(game.DownloadUrl)),
+            Opacity = upToDateInstalled ? 0.65 : 1.0
         };
 
         string btnLabel;
@@ -583,23 +592,47 @@ public sealed class CatalogView : Grid
         return card;
     }
 
-    private void LoadCoverAsync(SgwCatalogGame game, Image targetImage, Control fallback)
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(game.CoverUrl)) return;
+        _coverCts?.Cancel();
+        _coverCts?.Dispose();
+        _coverCts = null;
+        _downloadCts?.Cancel();
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void LoadCoverAsync(SgwCatalogGame game, Image targetImage, Control fallback, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(game.CoverUrl) || ct.IsCancellationRequested) return;
         _ = Task.Run(async () =>
         {
-            string? path = await StormGbcaUiState.Instance.CatalogService.EnsureCatalogCoverCachedAsync(game).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(path)) return;
-            await Dispatcher.UIThread.InvokeAsync(() =>
+            bool acquired = false;
+            try
             {
-                var bmp = BitmapHelper.LoadBitmapCached(path);
-                if (bmp != null)
+                await _coverSemaphore.WaitAsync(ct).ConfigureAwait(false);
+                acquired = true;
+                if (ct.IsCancellationRequested) return;
+                string? path = await StormGbcaUiState.Instance.CatalogService.EnsureCatalogCoverCachedAsync(game, ct).ConfigureAwait(false);
+                if (ct.IsCancellationRequested || string.IsNullOrWhiteSpace(path)) return;
+                await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    targetImage.Source = bmp;
-                    fallback.IsVisible = false;
-                }
-            });
-        });
+                    if (ct.IsCancellationRequested) return;
+                    var bmp = BitmapHelper.LoadBitmapCached(path);
+                    if (bmp != null)
+                    {
+                        targetImage.Source = bmp;
+                        fallback.IsVisible = false;
+                    }
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                if (acquired) _coverSemaphore.Release();
+            }
+        }, ct);
     }
 
     private async Task StartCatalogDownloadAsync(SgwCatalogGame game, GbcaRomRecord? replacingRom)
