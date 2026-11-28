@@ -20,7 +20,7 @@ extern "C" {
   #define STORM_GBCA_API __attribute__((visibility("default")))
 #endif
 
-#define STORM_GBCA_VERSION_STRING "1.6.0"
+#define STORM_GBCA_VERSION_STRING "1.7.0"
 
 /* Key bitmask */
 enum {

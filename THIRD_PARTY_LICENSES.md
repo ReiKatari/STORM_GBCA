@@ -1,6 +1,6 @@
 # Third-Party Licenses & Open-Source Attributions - STORM GBCA
 
-**STORM GBCA (version 1.6.0)** is distributed under the **Mozilla Public License Version 2.0 (MPL-2.0)**. See [LICENSE](LICENSE) for the full project license notice.
+**STORM GBCA (version 1.7.0)** is distributed under the **Mozilla Public License Version 2.0 (MPL-2.0)**. See [LICENSE](LICENSE) for the full project license notice.
 
 ---
 

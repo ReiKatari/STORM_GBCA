@@ -6,12 +6,12 @@
 
 <p align="center">
   <strong>Флагманский кроссплатформенный эмулятор Nintendo Game Boy, Game Boy Color и Game Boy Advance для Android и Windows x64 (mGBA + SameBoy + Vulkan 1.1 + RetroArch librashader + 40 аутентичных 3D-скинов + Link Cable / Wireless RFU / Dolphin JoyBus / GB Printer + интерфейс STORM DS Watermelon / AuroraFluid)</strong><br />
-  Версия <code>1.6.0</code> | Платформы: <code>Android (arm64-v8a, armeabi-v7a, x86_64)</code> и <code>Windows x64</code>
+  Версия <code>1.7.0</code> | Платформы: <code>Android (arm64-v8a, armeabi-v7a, x86_64)</code> и <code>Windows x64</code>
 </p>
 
 <p align="center">
   <a href="https://github.com/ReiKatari/STORM_GBCA">GitHub Repository</a> -
-  <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.6.0">Релиз STORM GBCA 1.6.0</a> -
+  <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.7.0">Релиз STORM GBCA 1.7.0</a> -
   <a href="https://stormgamesworld.ru/programs?repo=STORM_GBCA">Страница на STORM GAMES WORLD</a> -
   <a href="PRIVACY_POLICY.md">Политика конфиденциальности (Privacy Policy)</a> -
   <a href="THIRD_PARTY_LICENSES.md">Лицензии и компоненты (Third-Party Licenses)</a>
@@ -27,19 +27,18 @@
 
 ---
 
-## Что нового в версии 1.6.0
+## Что нового в версии 1.7.0
 
-- **Полностью обновлённая 3D-крестовина и режим виртуального стика (как в STORM DS)**:
-  - Переработана геометрия крестовины с объёмным углублением, стрелками направлений и наклонным откликом при нажатии.
-  - Добавлена опция замены крестовины на плавный 8-позиционный виртуальный стик с пружинным возвратом отдельно для GB, GBC и GBA.
-- **Плавные пружинные анимации нажатия у всех кнопок**:
-  - Добавлены тактильные spring-анимации, смещение и подсветка свечением для крестовины/стика, A, B, L, R, SELECT, START и всех 5 горячих кнопок.
-- **Улучшенная эргономика и размеры кнопок оверлея по умолчанию**:
-  - Кнопки A и B раздвинуты дальше друг от друга и приподняты вместе с крестовиной; L и R увеличены до размеров реальных триггеров и размещены точно над крестовиной (L) и над A/B (R); горячие кнопки подняты к верхнему краю; START и SELECT немного увеличены.
-- **Несколько папок с играми (ROM) в настройках Android**:
-  - В разделе «Настройки -> Библиотека, обложки и бейджи -> Папки с играми (ROM)» добавлен полноценный список подключённых папок с возможностью добавлять любое количество каталогов, удалять отдельные папки и автоматически пересканировать библиотеку.
-- **Разделение настроек управления по платформам GB, GBC и GBA**:
-  - Раздел «Управление, экраны и 3D-скины» разбит на отдельные блоки для **Game Boy (GB)**, **Game Boy Color (GBC)** и **Game Boy Advance (GBA)** с быстрым переключением крестовины/стика, плюс отдельный блок физического геймпада.
+- **Полное соответствие RetroAchievements Hardcore и живое ядро `rcheevos 12.5.0`**:
+  - Встроено покадровое исполнение достижений, индикаторов прогресса `Measured`, значков испытания `Challenge (Primed)`, таблиц лидеров и пингов Rich Presence (каждые 2 минуты) для GB, GBC, SGB и GBA на обоих ядрах mGBA и SameBoy (Android и Windows).
+- **Нативный Hardcore Gatekeeper (Core + Android + Windows)**:
+  - Строгое соблюдение всех правил RetroAchievements Hardcore - блокируются загрузка состояний (при сохранении возможности создания Save State для отладки), перемотка (Rewind), читы, RAM Finder / правка памяти, замедление, покадровый шаг, разгон CPU и мягкое патчирование во время сессии; переключение Casual -> Hardcore на лету запрашивает и выполняет обязательный полный сброс консоли.
+- **Соответствующий спецификации Connect API, 3-сегментный User-Agent и офлайн-очередь**:
+  - Авторизация и отправка результатов переведены на HTTPS POST через официальные подписанные конструкторы `rcheevos 12.5.0` (подлинная подпись `&v=` и реальные флаги `&h=1`/`&h=0`), добавлен уникальный 3-сегментный User-Agent (`STORM-GBCA/1.7.0 (...) mgba/0.10.5` / `sameboy/1.0.5`), энергонезависимая офлайн-очередь и сериализация прогресса в сохранениях Casual-режима (`.raprog`).
+- **Живой игровой HUD RetroAchievements**:
+  - Добавлены заметный стартовый баннер режима Hardcore/Casual, анимированные уведомления о разблокировке достижений, значки срабатывания Challenge, пилюли прогресса `Measured`, трекеры таблиц лидеров и обновлённая терминология Casual на Android и Windows.
+- **Прозрачность, политика конфиденциальности и лицензии FOSS**:
+  - Опубликованы официальные документы `PRIVACY_POLICY.md` (ноль телеметрии, ноль рекламы, прозрачность GDPR) и `THIRD_PARTY_LICENSES.md` (полная атрибуция FOSS и раскрытие 100% бесплатного открытого ПО), доступные прямо из экранов «О программе» на Android и Windows.
 
 ---
 
@@ -64,13 +63,13 @@
 
 ---
 
-## Релиз 1.6.0
+## Релиз 1.7.0
 
 | Файл релиза | Назначение | Ключевые возможности |
 | --- | --- | --- |
-| `STORM_GBCA_1.6.0.apk` | Подписанная универсальная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`) | Новая 3D-крестовина и 8-позиционный виртуальный стик (отдельно для GB, GBC, GBA), пружинные spring-анимации и подсветка всех кнопок, улучшенная эргономика и триггеры L/R, список нескольких папок ROM, разделение настроек управления по GB/GBC/GBA, оптимизированный GLSL/Vulkan пайплайн и 11-язычное окно обновлений |
-| `STORM_GBCA_1.6.0_Windows.zip` | Портативная сборка для Windows 10/11 (x64) | Автономный `STORM GBCA.exe` + нативное ядро `storm_gbca_core.dll` (1.6.0), тема `STORM DAY`, поиск `Ctrl+K`, двойной клик запуска игр, полная поддержка `.zip` ROM на Windows, аудио-буфер `8192` + `timeBeginPeriod(1)` (`59.73 FPS`), менеджер папок ROM, адаптивная вёрстка и 11-язычное окно обновлений |
-| `STORM_GBCA_1.6.0_Setup.exe` | Установщик для Windows 10/11 (x64) | Эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`), распаковка в `%LOCALAPPDATA%\Programs\STORM GBCA`, создание ярлыков, регистрация в Windows и чистое удаление |
+| `STORM_GBCA_1.7.0.apk` | Подписанная универсальная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`) | Полная сертификация RetroAchievements Hardcore (`rcheevos 12.5.0`), нативный Hardcore Gatekeeper, подписанный HTTPS POST API с 3-сегментным User-Agent, офлайн-очередь и `.raprog`, живой игровой HUD RA, ссылки на `PRIVACY_POLICY.md` и `THIRD_PARTY_LICENSES.md` в разделе «О программе» и 11-язычное окно обновлений |
+| `STORM_GBCA_1.7.0_Windows.zip` | Портативная сборка для Windows 10/11 (x64) | Автономный `STORM GBCA.exe` + нативное ядро `storm_gbca_core.dll` (1.7.0), полное соответствие RetroAchievements Hardcore (`rcheevos 12.5.0`), нативный Hardcore Gatekeeper, подписанный HTTPS POST API, живой игровой HUD RA, доступ к Политике конфиденциальности и FOSS-лицензиям и 11-язычное окно обновлений |
+| `STORM_GBCA_1.7.0_Setup.exe` | Установщик для Windows 10/11 (x64) | Эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`), распаковка в `%LOCALAPPDATA%\Programs\STORM GBCA`, создание ярлыков, регистрация в Windows и чистое удаление |
 
 ---
 
@@ -124,9 +123,9 @@ dotnet publish windows/src/StormGbca.Desktop/StormGbca.Desktop.csproj -c Release
 ./gradlew :app:assembleRelease --max-workers=3 -Dorg.gradle.priority=low
 ```
 Готовые артефакты релиза сохраняются в папку `releases/`:
-- `releases/STORM_GBCA_1.6.0.apk`
-- `releases/STORM_GBCA_1.6.0_Windows.zip`
-- `releases/STORM_GBCA_1.6.0_Setup.exe`
+- `releases/STORM_GBCA_1.7.0.apk`
+- `releases/STORM_GBCA_1.7.0_Windows.zip`
+- `releases/STORM_GBCA_1.7.0_Setup.exe`
 
 ---
 

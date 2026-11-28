@@ -77,7 +77,7 @@ public sealed class VolumetricButton : Button
 public sealed class InstallerForm : Form
 {
     private const string AppDisplayName = "STORM GBCA";
-    private static readonly string AppVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.6.0";
+    private static readonly string AppVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.7.0";
     private const string AppFolderName = "STORM GBCA";
     private const string ExeName = "STORM GBCA.exe";
     private const string IcoName = "app.ico";

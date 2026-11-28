@@ -109,10 +109,7 @@ public sealed class RetroAchievementsService
 
     public string BuildUserAgent()
     {
-        var asmVer = typeof(RetroAchievementsService).Assembly.GetName().Version;
-        string appVer = asmVer != null && (asmVer.Major > 0 || asmVer.Minor > 0)
-            ? $"{asmVer.Major}.{asmVer.Minor}.{Math.Max(0, asmVer.Build)}"
-            : GbcaLoc.AppVersion.TrimStart('v', 'V');
+        string appVer = GbcaLoc.AppVersion.Trim().TrimStart('v', 'V');
         var osVer = Environment.OSVersion.Version;
         return $"STORM-GBCA/{appVer} (Windows {osVer.Major}.{osVer.Minor}) {_activeCoreSegment}";
     }

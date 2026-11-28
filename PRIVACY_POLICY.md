@@ -2,7 +2,7 @@
 
 **Effective Date:** 2026-11-28
 **Developer:** STORM TEAM
-**Application:** STORM GBCA (Android & Windows x64, version 1.6.0)
+**Application:** STORM GBCA (Android & Windows x64, version 1.7.0)
 **Repository:** https://github.com/ReiKatari/STORM_GBCA
 **Website:** https://stormgamesworld.ru/programs?repo=STORM_GBCA
 
