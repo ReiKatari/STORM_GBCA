@@ -66,7 +66,7 @@ public sealed partial class GbcaRomLibrary
 
     public GbcaRomLibrary()
     {
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.8.0 (Windows)");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.9.0 (Windows)");
         try
         {
             var initial = GbcaSettingsStore.Load();
@@ -460,6 +460,34 @@ public sealed partial class GbcaRomLibrary
             SaveCache();
             LibraryChanged?.Invoke();
         }
+        return rec;
+    }
+
+    public GbcaRomRecord? ReplaceRomRecord(string oldFilePath, string newFilePath)
+    {
+        var rec = InspectRomFile(newFilePath);
+        if (rec == null) return null;
+
+        lock (_syncLock)
+        {
+            var old = _roms.FirstOrDefault(r => string.Equals(r.FilePath, oldFilePath, StringComparison.OrdinalIgnoreCase));
+            if (old != null)
+            {
+                rec.IsFavorite = old.IsFavorite;
+                rec.PlayCount = old.PlayCount;
+                rec.LastPlayedUtc = old.LastPlayedUtc;
+                if (string.IsNullOrWhiteSpace(rec.CoverLocalPath) && !string.IsNullOrWhiteSpace(old.CoverLocalPath) && File.Exists(old.CoverLocalPath))
+                {
+                    rec.CoverLocalPath = old.CoverLocalPath;
+                }
+                _roms.Remove(old);
+            }
+            _roms.RemoveAll(r => string.Equals(r.FilePath, newFilePath, StringComparison.OrdinalIgnoreCase));
+            _roms.Add(rec);
+        }
+
+        SaveCache();
+        LibraryChanged?.Invoke();
         return rec;
     }
 

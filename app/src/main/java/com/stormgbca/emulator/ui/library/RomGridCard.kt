@@ -41,14 +41,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.stormgbca.emulator.R
 import com.stormgbca.emulator.data.GbcaPrefs
 import com.stormgbca.emulator.model.RomEntry
+import com.stormgbca.emulator.sgw.SgwGameUpdateInfo
+import com.stormgbca.emulator.sgw.SgwUpdateKind
 import com.stormgbca.emulator.ui.theme.AppThemeManager
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.WatermelonColors
@@ -95,6 +99,7 @@ fun RomGridCard(
     rom: RomEntry,
     boxArtPath: String?,
     hasRaAchievements: Boolean = false,
+    gameUpdate: SgwGameUpdateInfo? = null,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
@@ -209,8 +214,8 @@ fun RomGridCard(
                 .border(if (focused) 2.5.dp else 1.2.dp, if (focused) colors.red else Color.White.copy(alpha = 0.24f), shape),
         )
 
-        // Independent Platform & Region Badges (OFF by default, matching STORM DS!)
-        if (cfg.showPlatformBadge || cfg.showRegionBadge) {
+        // Independent Platform, Region & SGW Update Badges
+        if (cfg.showPlatformBadge || cfg.showRegionBadge || gameUpdate != null) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -236,6 +241,21 @@ fun RomGridCard(
                             .padding(horizontal = 4.dp, vertical = 2.dp),
                     ) {
                         Text(regCode, color = Color.White, fontFamily = WatermelonMono, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (gameUpdate != null) {
+                    val badgeText = if (gameUpdate.kind == SgwUpdateKind.TRANSLATION_AVAILABLE) {
+                        "RUS"
+                    } else {
+                        stringResource(R.string.sgw_badge_update)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(colors.green)
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    ) {
+                        Text(badgeText, color = Color(0xFF05060A), fontFamily = WatermelonMono, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
             }
@@ -321,6 +341,7 @@ fun RomListRow(
     rom: RomEntry,
     boxArtPath: String?,
     hasRaAchievements: Boolean = false,
+    gameUpdate: SgwGameUpdateInfo? = null,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
@@ -338,7 +359,7 @@ fun RomListRow(
             if (rom.hasGyro || rom.hasTilt) add("GYRO")
         }
     }
-    val showAnyBadge = cfg.showPlatformBadge || cfg.showRegionBadge || (cfg.showHardwareBadges && hwTags.isNotEmpty()) || (cfg.showRaBadge && hasRaAchievements)
+    val showAnyBadge = cfg.showPlatformBadge || cfg.showRegionBadge || (cfg.showHardwareBadges && hwTags.isNotEmpty()) || (cfg.showRaBadge && hasRaAchievements) || gameUpdate != null
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -437,6 +458,21 @@ fun RomListRow(
                                 Spacer(Modifier.width(2.dp))
                                 Text("RA", color = Color(0xFFFACC15), fontFamily = WatermelonMono, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
                             }
+                        }
+                    }
+                    if (gameUpdate != null) {
+                        val badgeText = if (gameUpdate.kind == SgwUpdateKind.TRANSLATION_AVAILABLE) {
+                            "RUS"
+                        } else {
+                            stringResource(R.string.sgw_badge_update)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(colors.green)
+                                .padding(horizontal = 5.dp, vertical = 1.5.dp),
+                        ) {
+                            Text(badgeText, color = Color(0xFF05060A), fontFamily = WatermelonMono, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
                         }
                     }
                 }

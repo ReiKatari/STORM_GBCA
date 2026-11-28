@@ -35,6 +35,8 @@ public class BentoRomCard : AuroraGlassCard
     private readonly Border _platPill;
     private readonly WrapPanel _hwRow;
     private readonly Border _raPill;
+    private readonly Border _updatePill;
+    private readonly TextBlock _updatePillText;
 
     public GbcaRomRecord Rom => _rom;
 
@@ -138,6 +140,29 @@ public class BentoRomCard : AuroraGlassCard
         _raPill.VerticalAlignment = VerticalAlignment.Bottom;
         _raPill.Margin = new Thickness(0, 0, 7, 7);
         artLayer.Children.Add(_raPill);
+
+        // Bottom-left SGW Update / Translation Badge (shown automatically when update is available)
+        _updatePillText = new TextBlock
+        {
+            Text = "UPD",
+            FontSize = 9,
+            FontWeight = FontWeight.Bold,
+            Foreground = Brushes.White
+        };
+        _updatePill = new Border
+        {
+            IsVisible = false,
+            Background = new SolidColorBrush(Color.FromArgb(235, 16, 185, 129)),
+            BorderBrush = new SolidColorBrush(Color.Parse("#10B981")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(6, 1),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(8, 0, 0, 7),
+            Child = _updatePillText
+        };
+        artLayer.Children.Add(_updatePill);
 
         // Top-right Favorite Star
         _starIcon = new AuroraVectorIcon
@@ -254,6 +279,7 @@ public class BentoRomCard : AuroraGlassCard
             }
         }
         void OnSettingsSaved() => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshBadgesAndCover);
+        void OnUpdatesChanged() => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshUpdateBadge);
 
         AttachedToVisualTree += (_, _) =>
         {
@@ -261,11 +287,15 @@ public class BentoRomCard : AuroraGlassCard
             StormGbcaUiState.Instance.Library.CoverArtUpdated += OnCoverArtUpdated;
             StormGbcaUiState.Instance.SettingsSaved -= OnSettingsSaved;
             StormGbcaUiState.Instance.SettingsSaved += OnSettingsSaved;
+            StormGbcaUiState.Instance.RomUpdatesChanged -= OnUpdatesChanged;
+            StormGbcaUiState.Instance.RomUpdatesChanged += OnUpdatesChanged;
+            RefreshUpdateBadge();
         };
         DetachedFromVisualTree += (_, _) =>
         {
             StormGbcaUiState.Instance.Library.CoverArtUpdated -= OnCoverArtUpdated;
             StormGbcaUiState.Instance.SettingsSaved -= OnSettingsSaved;
+            StormGbcaUiState.Instance.RomUpdatesChanged -= OnUpdatesChanged;
         };
 
         StormThemeBrushes.BindTheme(this, () =>
@@ -296,8 +326,24 @@ public class BentoRomCard : AuroraGlassCard
         });
 
         RefreshBadgesAndCover();
+        RefreshUpdateBadge();
         UpdateFavoriteVisual();
         UpdateSelectionVisual();
+    }
+
+    private void RefreshUpdateBadge()
+    {
+        var upd = StormGbcaUiState.Instance.GetUpdateForRom(_rom);
+        if (upd == null)
+        {
+            _updatePill.IsVisible = false;
+            return;
+        }
+        _updatePillText.Text = upd.Kind == Core.Subsystems.SgwUpdateKind.TranslationAvailable
+            ? "RUS"
+            : $"{Core.Localization.GbcaLoc.T("BadgeUpdatePrefix")} {upd.RemoteVersion}";
+        ToolTip.SetTip(_updatePill, Core.Localization.GbcaLoc.T("CatalogUpdateTooltip"));
+        _updatePill.IsVisible = true;
     }
 
     private void RefreshBadgesAndCover()

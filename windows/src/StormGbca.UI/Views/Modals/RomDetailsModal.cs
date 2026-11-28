@@ -11,7 +11,9 @@ using Storm.AuroraFluid.Kit.Icons;
 using Storm.AuroraFluid.Kit.Services;
 using StormGbca.Core.Configuration;
 using StormGbca.Core.Library;
+using StormGbca.Core.Localization;
 using StormGbca.Core.Paths;
+using StormGbca.Core.Subsystems;
 using StormGbca.UI.Common;
 using StormGbca.UI.Views.Bento;
 
@@ -170,6 +172,91 @@ public class RomDetailsModal : AuroraGlassCard
         var badges = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
         BentoRomCard.AddHardwareBadges(badges, _rom.HardwareFlags);
         if (badges.Children.Count > 0) stack.Children.Add(badges);
+
+        var sgwUpdate = StormGbcaUiState.Instance.GetUpdateForRom(_rom);
+        if (sgwUpdate != null)
+        {
+            var updCard = new Border
+            {
+                Margin = new Thickness(0, 8, 0, 0),
+                Padding = new Thickness(12, 10),
+                CornerRadius = new CornerRadius(10),
+                Background = new SolidColorBrush(Color.FromArgb(30, 16, 185, 129)),
+                BorderBrush = new SolidColorBrush(Color.Parse("#10B981")),
+                BorderThickness = new Thickness(1)
+            };
+            var updStack = new StackPanel { Spacing = 6 };
+            updStack.Children.Add(new TextBlock
+            {
+                Text = $"{sgwUpdate.RemoteGame.Title} ({sgwUpdate.LocalVersion} -> {sgwUpdate.RemoteVersion})",
+                FontSize = 12,
+                FontWeight = FontWeight.Bold,
+                Foreground = StormThemeBrushes.PrimaryText,
+                TextWrapping = TextWrapping.Wrap
+            });
+            updStack.Children.Add(new TextBlock
+            {
+                Text = GbcaLoc.T("SgwSaveMigrationNote"),
+                FontSize = 11,
+                Foreground = StormThemeBrushes.SecondaryText,
+                TextWrapping = TextWrapping.Wrap
+            });
+            var updBtnLabel = new TextBlock
+            {
+                Text = GbcaLoc.T("BtnUpdateFromSgw"),
+                FontSize = 12,
+                FontWeight = FontWeight.Bold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var updBtn = new AuroraVolumetricButton
+            {
+                IsHero = true,
+                Height = 36,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Content = updBtnLabel
+            };
+            updBtn.Click += async (_, _) =>
+            {
+                updBtn.IsEnabled = false;
+                var progress = new Progress<SgwDownloadProgress>(p =>
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        if (p.TotalBytes > 1)
+                        {
+                            int pct = (int)Math.Clamp((double)p.DownloadedBytes * 100.0 / p.TotalBytes, 0.0, 100.0);
+                            updBtnLabel.Text = $"{pct}%";
+                        }
+                        else if (!string.IsNullOrWhiteSpace(p.StatusText))
+                        {
+                            updBtnLabel.Text = p.StatusText;
+                        }
+                    });
+                });
+                var res = await StormGbcaUiState.Instance.DownloadCatalogGameAsync(sgwUpdate.RemoteGame, _rom, progress);
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (res.Success)
+                    {
+                        CloseRequested?.Invoke();
+                    }
+                    else
+                    {
+                        updBtn.IsEnabled = true;
+                        updBtnLabel.Text = GbcaLoc.T("BtnUpdateFromSgw");
+                        if (!string.IsNullOrWhiteSpace(res.ErrorMessage))
+                        {
+                            StormGbcaUiState.Instance.NotifyStatus(res.ErrorMessage);
+                        }
+                    }
+                });
+            };
+            updStack.Children.Add(updBtn);
+            updCard.Child = updStack;
+            stack.Children.Add(updCard);
+        }
     }
 
     private void BuildCheatsTab(StackPanel stack)

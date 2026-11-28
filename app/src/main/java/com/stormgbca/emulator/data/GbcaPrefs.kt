@@ -20,6 +20,7 @@ import com.stormgbca.emulator.model.RomFilter
 import com.stormgbca.emulator.model.RomSortMode
 import com.stormgbca.emulator.model.RomViewMode
 import com.stormgbca.emulator.model.SystemOverlayProfile
+import com.stormgbca.emulator.sgw.SgwInstalledMeta
 import com.stormgbca.emulator.vulkandriver.InstalledVulkanDriver
 import kotlinx.serialization.json.Json
 import ru.stormgames.gbca.NativeCore
@@ -505,6 +506,27 @@ object GbcaPrefs {
     fun getSkippedUpdateVersion(): String = prefs.getString("skipped_update_version", "") ?: ""
     fun setSkippedUpdateVersion(ver: String) {
         prefs.edit().putString("skipped_update_version", ver).apply()
+    }
+
+    fun getSgwInstalledMeta(): Map<String, SgwInstalledMeta> {
+        if (!::prefs.isInitialized) return emptyMap()
+        val raw = prefs.getString("sgw_installed_meta_v1", null) ?: return emptyMap()
+        return runCatching { json.decodeFromString<Map<String, SgwInstalledMeta>>(raw) }.getOrDefault(emptyMap())
+    }
+
+    fun saveSgwInstalledMeta(meta: SgwInstalledMeta) {
+        if (!::prefs.isInitialized) return
+        val map = getSgwInstalledMeta().toMutableMap()
+        map[meta.uriString] = meta
+        prefs.edit().putString("sgw_installed_meta_v1", json.encodeToString(map)).apply()
+    }
+
+    fun removeSgwInstalledMeta(uriString: String) {
+        if (!::prefs.isInitialized) return
+        val map = getSgwInstalledMeta().toMutableMap()
+        if (map.remove(uriString) != null) {
+            prefs.edit().putString("sgw_installed_meta_v1", json.encodeToString(map)).apply()
+        }
     }
 
     private fun loadInstalledVulkanDrivers(): List<InstalledVulkanDriver> {

@@ -51,6 +51,7 @@ public sealed class StormUpdateModal : AuroraGlassCard
     private TextBlock? _progressPercentText;
     private Border? _progressCard;
     private StackPanel? _actionsPanel;
+    private AuroraUpdateMirrorOption? _selectedOption;
 
     public event Action? CloseRequested;
 
@@ -314,7 +315,42 @@ public sealed class StormUpdateModal : AuroraGlassCard
             SetHeaderTint(accent);
 
             string cleanCur = GetCleanCurrentVersion();
-            string cleanNew = result.LatestVersion.ToString().Trim().TrimStart('v', 'V');
+            var prefSource = StormGbcaUiState.Instance.Settings.DefaultUpdateSource;
+            bool preferGh = string.Equals(prefSource, "github", StringComparison.OrdinalIgnoreCase);
+
+            var stormOpt = result.StormOption;
+            var ghOpt = result.GitHubOption;
+            _selectedOption = preferGh ? (ghOpt ?? stormOpt) : (stormOpt ?? ghOpt);
+            _selectedOption ??= new AuroraUpdateMirrorOption(
+                SourceKey: result.SourceMirror.Contains("GitHub", StringComparison.OrdinalIgnoreCase) ? "github" : "storm",
+                SourceLabel: string.IsNullOrWhiteSpace(result.SourceMirror) ? "STORM GAMES WORLD" : result.SourceMirror,
+                LatestVersion: result.LatestVersion,
+                DownloadUrl: result.DownloadUrl,
+                Changelog: result.Changelog,
+                ExpectedSha256: result.ExpectedSha256,
+                ReleasePageUrl: result.ReleasePageUrl,
+                AssetName: result.AssetName,
+                AssetSizeBytes: result.AssetSizeBytes,
+                PublishedAtUtc: result.PublishedAtUtc);
+
+            AuroraUpdateCheckResult ActiveResult()
+            {
+                var opt = _selectedOption!;
+                return result with
+                {
+                    LatestVersion = opt.LatestVersion,
+                    DownloadUrl = opt.DownloadUrl,
+                    Changelog = string.IsNullOrWhiteSpace(opt.Changelog) ? result.Changelog : opt.Changelog,
+                    ExpectedSha256 = opt.ExpectedSha256,
+                    SourceMirror = opt.SourceLabel,
+                    ReleasePageUrl = string.IsNullOrWhiteSpace(opt.ReleasePageUrl) ? result.ReleasePageUrl : opt.ReleasePageUrl,
+                    AssetName = opt.AssetName,
+                    AssetSizeBytes = opt.AssetSizeBytes,
+                    PublishedAtUtc = opt.PublishedAtUtc ?? result.PublishedAtUtc
+                };
+            }
+
+            string cleanNew = _selectedOption.LatestVersion.ToString().Trim().TrimStart('v', 'V');
 
             // Version Transition Card: Current -> New (zero 'v' prefix)
             var transitionBorder = new Border
@@ -344,19 +380,104 @@ public sealed class StormUpdateModal : AuroraGlassCard
             transitionBorder.Child = transitionGrid;
             _bodyHost.Children.Add(transitionBorder);
 
-            // Metadata Chips: Mirror Source, Size, Release Date
+            // Interactive Dual-Source Selector (STORM GAMES WORLD vs GitHub)
             var chipsPanel = new WrapPanel { Orientation = Orientation.Horizontal };
-            string mirrorLabel = string.IsNullOrWhiteSpace(result.SourceMirror) ? "GitHub" : result.SourceMirror;
-            chipsPanel.Children.Add(BuildMetadataChip(mirrorLabel, theme, true));
-            if (result.AssetSizeBytes > 0)
+            string pageUrl = !string.IsNullOrWhiteSpace(ActiveResult().ReleasePageUrl)
+                ? ActiveResult().ReleasePageUrl
+                : "https://github.com/ReiKatari/STORM_GBCA/releases";
+
+            void RefreshMetadataChips()
             {
-                double mb = result.AssetSizeBytes / (1024.0 * 1024.0);
-                chipsPanel.Children.Add(BuildMetadataChip(string.Format(CultureInfo.InvariantCulture, GbcaLoc.T("UpdateSizeMbFmt"), mb), theme, false));
+                var active = ActiveResult();
+                pageUrl = !string.IsNullOrWhiteSpace(active.ReleasePageUrl)
+                    ? active.ReleasePageUrl
+                    : "https://github.com/ReiKatari/STORM_GBCA/releases";
+                chipsPanel.Children.Clear();
+                string mirrorLabel = string.IsNullOrWhiteSpace(active.SourceMirror) ? "STORM GAMES WORLD" : active.SourceMirror;
+                chipsPanel.Children.Add(BuildMetadataChip(mirrorLabel, theme, true));
+                if (active.AssetSizeBytes > 0)
+                {
+                    double mb = active.AssetSizeBytes / (1024.0 * 1024.0);
+                    chipsPanel.Children.Add(BuildMetadataChip(string.Format(CultureInfo.InvariantCulture, GbcaLoc.T("UpdateSizeMbFmt"), mb), theme, false));
+                }
+                if (active.PublishedAtUtc.HasValue)
+                {
+                    chipsPanel.Children.Add(BuildMetadataChip(active.PublishedAtUtc.Value.ToLocalTime().ToString("dd.MM.yyyy", CultureInfo.InvariantCulture), theme, false));
+                }
             }
-            if (result.PublishedAtUtc.HasValue)
+
+            if (stormOpt != null || ghOpt != null)
             {
-                chipsPanel.Children.Add(BuildMetadataChip(result.PublishedAtUtc.Value.ToLocalTime().ToString("dd.MM.yyyy", CultureInfo.InvariantCulture), theme, false));
+                var srcCard = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 8 };
+                Border? stormPill = null;
+                Border? ghPill = null;
+
+                void UpdateSourcePills()
+                {
+                    void StylePill(Border? pill, bool selected, bool available)
+                    {
+                        if (pill == null) return;
+                        pill.Opacity = available ? 1.0 : 0.42;
+                        pill.IsHitTestVisible = available;
+                        pill.Background = selected
+                            ? new SolidColorBrush(Color.FromArgb(44, accent.R, accent.G, accent.B))
+                            : new SolidColorBrush(theme.HeaderColor);
+                        pill.BorderBrush = selected ? new SolidColorBrush(accent) : theme.BorderBrush;
+                        if (pill.Child is StackPanel sp && sp.Children.Count > 0 && sp.Children[0] is TextBlock tb)
+                        {
+                            tb.Foreground = selected ? theme.TextPrimaryBrush : theme.TextSecondaryBrush;
+                        }
+                    }
+
+                    bool isGh = string.Equals(_selectedOption?.SourceKey, "github", StringComparison.OrdinalIgnoreCase);
+                    StylePill(stormPill, !isGh && stormOpt != null, stormOpt != null);
+                    StylePill(ghPill, isGh && ghOpt != null, ghOpt != null);
+                }
+
+                Border BuildSourcePill(string title, AuroraUpdateMirrorOption? opt)
+                {
+                    string sub = opt != null && opt.AssetSizeBytes > 0
+                        ? string.Format(CultureInfo.InvariantCulture, "{0} | {1:F1} MB", opt.LatestVersion.ToString().TrimStart('v', 'V'), opt.AssetSizeBytes / (1024.0 * 1024.0))
+                        : (opt != null ? opt.LatestVersion.ToString().TrimStart('v', 'V') : GbcaLoc.T("UpdateSourceLabel"));
+                    var b = new Border
+                    {
+                        CornerRadius = new CornerRadius(10),
+                        Padding = new Thickness(10, 7),
+                        BorderThickness = new Thickness(1),
+                        Cursor = new Cursor(StandardCursorType.Hand),
+                        Child = new StackPanel
+                        {
+                            Spacing = 2,
+                            Children =
+                            {
+                                new TextBlock { Text = title, FontSize = 11.5, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center },
+                                new TextBlock { Text = sub, FontSize = 10, Foreground = theme.TextSecondaryBrush, HorizontalAlignment = HorizontalAlignment.Center }
+                            }
+                        }
+                    };
+                    if (opt != null)
+                    {
+                        b.PointerPressed += (_, _) =>
+                        {
+                            AuroraTactileFeedbackService.Instance.PlayClick();
+                            _selectedOption = opt;
+                            UpdateSourcePills();
+                            RefreshMetadataChips();
+                        };
+                    }
+                    return b;
+                }
+
+                stormPill = BuildSourcePill("STORM GAMES WORLD", stormOpt);
+                ghPill = BuildSourcePill("GitHub", ghOpt);
+                srcCard.Children.Add(stormPill);
+                srcCard.Children.Add(ghPill);
+                Grid.SetColumn(ghPill, 1);
+                UpdateSourcePills();
+                _bodyHost.Children.Add(srcCard);
             }
+
+            RefreshMetadataChips();
             _bodyHost.Children.Add(chipsPanel);
 
             // Changelog Section Header
@@ -412,7 +533,7 @@ public sealed class StormUpdateModal : AuroraGlassCard
             _actionsPanel = new StackPanel { Spacing = 8 };
             var updBtn = new AuroraVolumetricButton { IsHero = true, Height = 42, HorizontalAlignment = HorizontalAlignment.Stretch };
             updBtn.Content = new TextBlock { Text = GbcaLoc.T("UpdateNowBtn"), FontSize = 14, FontWeight = FontWeight.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            updBtn.Click += async (_, _) => await StartDownloadAsync(result);
+            updBtn.Click += async (_, _) => await StartDownloadAsync(ActiveResult());
             _actionsPanel.Children.Add(updBtn);
 
             var secRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 8 };
@@ -429,9 +550,6 @@ public sealed class StormUpdateModal : AuroraGlassCard
             _actionsPanel.Children.Add(secRow);
 
             // Footer Link to Open Release Page
-            string pageUrl = !string.IsNullOrWhiteSpace(result.ReleasePageUrl)
-                ? result.ReleasePageUrl
-                : "https://github.com/ReiKatari/STORM_GBCA/releases";
             var linkBtn = new Border
             {
                 HorizontalAlignment = HorizontalAlignment.Center,

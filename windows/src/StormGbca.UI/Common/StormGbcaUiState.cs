@@ -18,6 +18,7 @@ public enum NavSectionKind
     SkinsAndOverlays = 3,
     Achievements = 4,
     Settings = 5,
+    Catalog = 6,
 }
 
 public enum GbcaViewMode
@@ -36,6 +37,11 @@ public sealed class StormGbcaUiState
     public GbcaEmulatorSession Emulator { get; }
     public GbcaCheatService Cheats { get; }
     public RetroAchievementsService RetroAchievements { get; }
+    public SgwCatalogService CatalogService { get; }
+
+    public IReadOnlyList<SgwCatalogGame> CatalogGames { get; private set; } = [];
+    public IReadOnlyDictionary<string, SgwGameUpdateInfo> AvailableRomUpdates { get; private set; } =
+        new Dictionary<string, SgwGameUpdateInfo>(StringComparer.OrdinalIgnoreCase);
 
     public NavSectionKind ActiveNavSection { get; private set; } = NavSectionKind.Library;
     public GbcaPlatformFilter ActiveFilter { get; private set; } = GbcaPlatformFilter.All;
@@ -73,6 +79,7 @@ public sealed class StormGbcaUiState
     public event Action<bool>? HiddenToTrayChanged;
     public event Action? SettingsSaved;
     public event Action<string>? StatusNotification;
+    public event Action? RomUpdatesChanged;
 
     private StormGbcaUiState()
     {
@@ -81,6 +88,7 @@ public sealed class StormGbcaUiState
         Emulator = new GbcaEmulatorSession();
         Cheats = new GbcaCheatService();
         RetroAchievements = new RetroAchievementsService();
+        CatalogService = new SgwCatalogService();
 
         Library.SyncFavoritesAndRecents(Settings);
         SyncServicesFromSettings();
@@ -345,6 +353,76 @@ public sealed class StormGbcaUiState
     public void RequestUpdateCheck(bool manual = true) => UpdateCheckRequested?.Invoke(manual);
     public void RequestRomModal(GbcaRomRecord rom, int tabIndex = 0) => RomModalRequested?.Invoke(rom, tabIndex);
     public void RequestCoverViewer(GbcaRomRecord rom) => CoverViewerRequested?.Invoke(rom);
+
+    public SgwGameUpdateInfo? GetUpdateForRom(GbcaRomRecord? rom)
+    {
+        if (rom == null || string.IsNullOrWhiteSpace(rom.FilePath)) return null;
+        return AvailableRomUpdates.TryGetValue(rom.FilePath, out var info) ? info : null;
+    }
+
+    public void RecomputeLibraryUpdates()
+    {
+        if (CatalogGames.Count == 0)
+        {
+            AvailableRomUpdates = new Dictionary<string, SgwGameUpdateInfo>(StringComparer.OrdinalIgnoreCase);
+            RomUpdatesChanged?.Invoke();
+            return;
+        }
+        AvailableRomUpdates = CatalogService.FindUpdatesForLibrary(Library.AllRoms, CatalogGames);
+        RomUpdatesChanged?.Invoke();
+    }
+
+    public async Task RefreshCatalogAndUpdatesAsync(bool forceRefresh = false, CancellationToken ct = default)
+    {
+        var games = await CatalogService.GetCatalogAsync(forceRefresh, ct).ConfigureAwait(false);
+        CatalogGames = games;
+        var updates = CatalogService.FindUpdatesForLibrary(Library.AllRoms, games);
+        AvailableRomUpdates = updates;
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            RomUpdatesChanged?.Invoke();
+            StateChanged?.Invoke();
+        });
+    }
+
+    public async Task<SgwDownloadResult> DownloadCatalogGameAsync(
+        SgwCatalogGame game,
+        GbcaRomRecord? replacingRom = null,
+        IProgress<SgwDownloadProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        if (replacingRom != null && IsEmulationActive &&
+            string.Equals(Emulator.ActiveRomKey, replacingRom.FileName, StringComparison.OrdinalIgnoreCase))
+        {
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(StopEmulation);
+        }
+
+        bool wasSelected = replacingRom != null && SelectedRom != null &&
+                           string.Equals(SelectedRom.FilePath, replacingRom.FilePath, StringComparison.OrdinalIgnoreCase);
+
+        var res = await CatalogService.DownloadOrUpdateRomAsync(game, Settings, Library, replacingRom, progress, ct).ConfigureAwait(false);
+        if (res.Success)
+        {
+            var refreshedUpdates = CatalogGames.Count > 0
+                ? CatalogService.FindUpdatesForLibrary(Library.AllRoms, CatalogGames)
+                : new Dictionary<string, SgwGameUpdateInfo>(StringComparer.OrdinalIgnoreCase);
+            AvailableRomUpdates = refreshedUpdates;
+
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (wasSelected && res.NewRecord != null)
+                {
+                    SelectRom(res.NewRecord);
+                }
+                RomUpdatesChanged?.Invoke();
+                StateChanged?.Invoke();
+                NotifyStatus(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    StormGbca.Core.Localization.GbcaLoc.T("CatalogDoneMsgFmt"),
+                    res.NewRecord?.GetDisplayTitle() ?? game.Title));
+            });
+        }
+        return res;
+    }
 
     public IReadOnlyList<GbcaRomRecord> GetFilteredRoms()
     {

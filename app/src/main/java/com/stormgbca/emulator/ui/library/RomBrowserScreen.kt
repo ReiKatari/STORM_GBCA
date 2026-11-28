@@ -46,11 +46,13 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.outlined.StarOutline
@@ -85,6 +87,7 @@ import com.stormgbca.emulator.model.RomEntry
 import com.stormgbca.emulator.model.RomFilter
 import com.stormgbca.emulator.model.RomSortMode
 import com.stormgbca.emulator.model.RomViewMode
+import com.stormgbca.emulator.sgw.SgwGameUpdateInfo
 import com.stormgbca.emulator.ui.common.UnifiedBackButton
 import com.stormgbca.emulator.ui.common.WatermelonMark
 import com.stormgbca.emulator.ui.theme.SpaceGrotesk
@@ -117,6 +120,7 @@ fun RomBrowserScreen(
     roms: List<RomEntry>,
     boxArtMap: Map<String, String>,
     confirmedRaHashes: Set<String> = emptySet(),
+    gameUpdatesMap: Map<String, SgwGameUpdateInfo> = emptyMap(),
     filter: RomFilter,
     sortMode: RomSortMode,
     viewMode: RomViewMode,
@@ -127,6 +131,8 @@ fun RomBrowserScreen(
     onFilterChange: (RomFilter) -> Unit,
     onSortChange: (RomSortMode) -> Unit,
     onToggleViewMode: () -> Unit,
+    onOpenCatalog: () -> Unit = {},
+    onUpdateRomFromSgw: (SgwGameUpdateInfo) -> Unit = {},
     onAddFolder: () -> Unit,
     onOpenSingleFile: () -> Unit,
     onRefresh: () -> Unit,
@@ -290,40 +296,82 @@ fun RomBrowserScreen(
                 }
             }
             Row(
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
+                val updatesCount = gameUpdatesMap.size
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .weight(1.02f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (updatesCount > 0) colors.green.copy(alpha = 0.16f) else colors.surface2)
+                        .border(1.dp, if (updatesCount > 0) colors.green else colors.line, RoundedCornerShape(16.dp))
+                        .clickable(onClick = onOpenCatalog)
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                ) {
+                    Icon(Icons.Filled.Public, contentDescription = null, tint = colors.green, modifier = Modifier.size(13.5.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.catalog_btn),
+                        color = colors.text,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (updatesCount > 0) {
+                        Spacer(Modifier.width(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(colors.green)
+                                .padding(horizontal = 4.5.dp, vertical = 0.5.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = updatesCount.toString(),
+                                color = Color(0xFF05060A),
+                                fontFamily = WatermelonMono,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
                 val favSelected = filter == RomFilter.FAVORITES
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier
-                        .weight(1.15f)
+                        .weight(1.08f)
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (favSelected) colors.green else colors.surface2)
                         .border(1.dp, if (favSelected) colors.green else colors.line, RoundedCornerShape(16.dp))
                         .clickable { onFilterChange(if (favSelected) RomFilter.ALL else RomFilter.FAVORITES) }
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
                 ) {
                     Icon(
                         imageVector = if (favSelected) Icons.Filled.Star else Icons.Outlined.StarOutline,
                         contentDescription = null,
                         tint = if (favSelected) Color(0xFF05060A) else WatermelonColors.favoriteStar,
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier.size(13.5.dp),
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
                         text = filterLabel(RomFilter.FAVORITES),
                         color = if (favSelected) Color(0xFF05060A) else colors.text,
                         fontFamily = SpaceGrotesk,
-                        fontSize = 11.5.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                HeaderActionPill(Icons.Filled.FileOpen, stringResource(R.string.file_btn), onOpenSingleFile, Modifier.weight(0.92f))
-                HeaderActionPill(Icons.Filled.Refresh, stringResource(R.string.refresh_library), onRefresh, Modifier.weight(0.98f))
+                HeaderActionPill(Icons.Filled.FileOpen, stringResource(R.string.file_btn), onOpenSingleFile, Modifier.weight(0.88f))
+                HeaderActionPill(Icons.Filled.Refresh, stringResource(R.string.refresh_library), onRefresh, Modifier.weight(0.95f))
             }
         }
 
@@ -372,6 +420,19 @@ fun RomBrowserScreen(
                             Text(stringResource(R.string.open_rom_file), color = colors.text, fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         }
                     }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(colors.green.copy(alpha = 0.14f))
+                            .border(1.dp, colors.green.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                            .clickable(onClick = onOpenCatalog)
+                            .padding(horizontal = 18.dp, vertical = 11.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Icon(Icons.Filled.Public, contentDescription = null, tint = colors.green, modifier = Modifier.size(17.dp))
+                            Text(stringResource(R.string.sgw_open_catalog_cta), color = colors.green, fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
                 }
             }
         } else if (viewMode == RomViewMode.GRID) {
@@ -387,6 +448,7 @@ fun RomBrowserScreen(
                         rom = rom,
                         boxArtPath = boxArtMap[rom.uriString],
                         hasRaAchievements = rom.md5.lowercase() in confirmedRaHashes,
+                        gameUpdate = gameUpdatesMap[rom.uriString],
                         onClick = { onLaunchRom(rom) },
                         onLongPress = { contextRom = rom },
                     )
@@ -403,6 +465,7 @@ fun RomBrowserScreen(
                         rom = rom,
                         boxArtPath = boxArtMap[rom.uriString],
                         hasRaAchievements = rom.md5.lowercase() in confirmedRaHashes,
+                        gameUpdate = gameUpdatesMap[rom.uriString],
                         onClick = { onLaunchRom(rom) },
                         onLongPress = { contextRom = rom },
                     )
@@ -412,11 +475,17 @@ fun RomBrowserScreen(
     }
 
     contextRom?.let { rom ->
+        val ctxUpdate = gameUpdatesMap[rom.uriString]
         RomContextDialog(
             rom = rom,
             boxArtPath = boxArtMap[rom.uriString],
+            gameUpdate = ctxUpdate,
             onDismiss = { contextRom = null },
             onLaunch = { contextRom = null; onLaunchRom(rom) },
+            onUpdateFromSgw = {
+                contextRom = null
+                if (ctxUpdate != null) onUpdateRomFromSgw(ctxUpdate)
+            },
             onToggleFavorite = { onToggleFavorite(rom); contextRom = null },
             onSetCoreOverride = { ov -> onSetCoreOverride(rom, ov); contextRom = null },
             onPickSoftPatch = { onPickSoftPatch(rom); contextRom = null },
@@ -516,9 +585,16 @@ private fun HeaderActionPill(icon: ImageVector, label: String, onClick: () -> Un
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = colors.green, modifier = Modifier.size(14.dp))
+        Icon(icon, contentDescription = null, tint = colors.green, modifier = Modifier.size(13.5.dp))
         Spacer(Modifier.width(4.dp))
-        Text(label, color = colors.text, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            text = label,
+            color = colors.text,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -583,8 +659,10 @@ private fun InfoRow(label: String, value: String) {
 private fun RomContextDialog(
     rom: RomEntry,
     boxArtPath: String?,
+    gameUpdate: SgwGameUpdateInfo? = null,
     onDismiss: () -> Unit,
     onLaunch: () -> Unit,
+    onUpdateFromSgw: () -> Unit = {},
     onToggleFavorite: () -> Unit,
     onSetCoreOverride: (Int) -> Unit,
     onPickSoftPatch: () -> Unit,
@@ -607,6 +685,27 @@ private fun RomContextDialog(
                 Spacer(Modifier.height(4.dp))
 
                 ContextBtn(Icons.Filled.PlayArrow, stringResource(R.string.ctx_launch), colors.green, onLaunch)
+                if (gameUpdate != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(11.dp))
+                            .background(colors.green.copy(alpha = 0.16f))
+                            .border(1.dp, colors.green.copy(alpha = 0.6f), RoundedCornerShape(11.dp))
+                            .clickable(onClick = onUpdateFromSgw)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        Icon(Icons.Filled.SystemUpdateAlt, contentDescription = null, tint = colors.green, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = stringResource(R.string.ctx_update_sgw),
+                            color = colors.green,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
                 ContextBtn(
                     if (rom.isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
                     stringResource(if (rom.isFavorite) R.string.ctx_fav_remove else R.string.ctx_fav_add),

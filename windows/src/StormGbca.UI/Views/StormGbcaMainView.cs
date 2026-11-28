@@ -38,6 +38,7 @@ public class StormGbcaMainView : Grid
     private readonly NavRailView _navRail;
     private readonly NavDockView _navDock;
     private readonly BentoWorkspaceView _bentoWorkspace;
+    private readonly CatalogView _catalogView;
     private readonly GbcaSkinAndOverlayViews _skinsView;
     private readonly AchievementsView _achievementsView;
     private readonly SettingsView _settingsView;
@@ -87,12 +88,14 @@ public class StormGbcaMainView : Grid
 
         _centerGrid = new Grid();
         _bentoWorkspace = new BentoWorkspaceView();
+        _catalogView = new CatalogView { IsVisible = false };
         _skinsView = new GbcaSkinAndOverlayViews { IsVisible = false };
         _achievementsView = new AchievementsView { IsVisible = false };
         _settingsView = new SettingsView { IsVisible = false };
         _emulationView = new SingleScreenSessionView { IsVisible = false };
 
         _centerGrid.Children.Add(_bentoWorkspace);
+        _centerGrid.Children.Add(_catalogView);
         _centerGrid.Children.Add(_skinsView);
         _centerGrid.Children.Add(_achievementsView);
         _centerGrid.Children.Add(_settingsView);
@@ -139,11 +142,26 @@ public class StormGbcaMainView : Grid
         GbcaLoc.LanguageChanged += _ => ApplyHeaderTextsAndTheme();
         StormThemeBrushes.BindTheme(this, ApplyHeaderTextsAndTheme);
 
-        _ = StormGbcaUiState.Instance.Library.ScanDirectoriesAsync(StormGbcaUiState.Instance.Settings.RomDirectories);
+        _ = ScanLibraryAndCheckGameUpdatesAsync();
 
         if (StormGbcaUiState.Instance.Settings.AutoCheckUpdates)
         {
             DispatcherTimer.RunOnce(() => _ = CheckAndShowUpdateModalAsync(manual: false), TimeSpan.FromMilliseconds(1400));
+        }
+    }
+
+    private async Task ScanLibraryAndCheckGameUpdatesAsync()
+    {
+        try
+        {
+            await StormGbcaUiState.Instance.Library.ScanDirectoriesAsync(StormGbcaUiState.Instance.Settings.RomDirectories);
+            if (StormGbcaUiState.Instance.Settings.AutoCheckGameUpdates)
+            {
+                await StormGbcaUiState.Instance.RefreshCatalogAndUpdatesAsync(forceRefresh: false);
+            }
+        }
+        catch
+        {
         }
     }
 
@@ -400,9 +418,9 @@ public class StormGbcaMainView : Grid
 
         try
         {
-            var curVer = AuroraDualMirrorUpdater.TryParseSemanticVersion(GbcaLoc.AppVersion, out var parsed) ? parsed : new Version(1, 2, 0);
+            var curVer = AuroraDualMirrorUpdater.TryParseSemanticVersion(GbcaLoc.AppVersion, out var parsed) ? parsed : new Version(1, 9, 0);
             var updater = new AuroraDualMirrorUpdater();
-            var res = await updater.CheckStormGbcaUpdateAsync(curVer);
+            var res = await updater.CheckStormGbcaUpdateAsync(curVer, StormGbcaUiState.Instance.Settings.DefaultUpdateSource);
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -435,7 +453,7 @@ public class StormGbcaMainView : Grid
         {
             if (manual && modal != null)
             {
-                var curVer = new Version(1, 2, 0);
+                var curVer = new Version(1, 9, 0);
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     modal.UpdateState(StormUpdateModal.UpdateModalMode.Error, new AuroraUpdateCheckResult(false, curVer, curVer, string.Empty, string.Empty, null, "None", CheckSucceeded: false, ErrorMessage: ex.Message));
@@ -472,9 +490,11 @@ public class StormGbcaMainView : Grid
     {
         if (StormGbcaUiState.Instance.IsEmulationActive) return;
         _bentoWorkspace.IsVisible = section is NavSectionKind.Library or NavSectionKind.Favorites or NavSectionKind.Recent;
+        _catalogView.IsVisible = section == NavSectionKind.Catalog;
         _skinsView.IsVisible = section == NavSectionKind.SkinsAndOverlays;
         _achievementsView.IsVisible = section == NavSectionKind.Achievements;
         _settingsView.IsVisible = section == NavSectionKind.Settings;
+        if (_catalogView.IsVisible) _ = _catalogView.EnsureLoadedAsync();
         if (_skinsView.IsVisible) _skinsView.RefreshBody();
         if (_achievementsView.IsVisible) _achievementsView.RefreshData();
     }
@@ -485,6 +505,7 @@ public class StormGbcaMainView : Grid
         _emulationView.IsVisible = active;
         _bodyHeaderGrid.IsVisible = !active;
         _bentoWorkspace.IsVisible = !active && sec is NavSectionKind.Library or NavSectionKind.Favorites or NavSectionKind.Recent;
+        _catalogView.IsVisible = !active && sec == NavSectionKind.Catalog;
         _skinsView.IsVisible = !active && sec == NavSectionKind.SkinsAndOverlays;
         _achievementsView.IsVisible = !active && sec == NavSectionKind.Achievements;
         _settingsView.IsVisible = !active && sec == NavSectionKind.Settings;

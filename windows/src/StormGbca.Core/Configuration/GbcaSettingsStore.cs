@@ -139,6 +139,8 @@ public sealed class GbcaAppSettings
     public bool WindowMaximized { get; set; } = false;
     public bool UiTactileAudioEnabled { get; set; } = true;
     public bool AutoCheckUpdates { get; set; } = true;
+    public string DefaultUpdateSource { get; set; } = "storm";
+    public bool AutoCheckGameUpdates { get; set; } = true;
     public string SkippedUpdateVersion { get; set; } = string.Empty;
     public bool Show3DBootSplash { get; set; } = false;
     public bool AutoFetchCovers { get; set; } = false;
@@ -467,5 +469,8 @@ public static class GbcaSettingsStore
         s.RomDirectories ??= [];
         s.FavoriteRoms ??= [];
         s.RecentRoms ??= [];
+        s.DefaultUpdateSource = string.Equals(s.DefaultUpdateSource, "github", StringComparison.OrdinalIgnoreCase)
+            ? "github"
+            : "storm";
     }
 }

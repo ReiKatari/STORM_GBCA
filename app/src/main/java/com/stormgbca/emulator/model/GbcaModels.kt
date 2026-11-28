@@ -297,6 +297,8 @@ data class GbcaCoreConfig(
     val appLanguage: String = "system",
     val extendedPauseMenu: Boolean = false,
     val autoCheckUpdates: Boolean = true,
+    val updateSourcePref: String = "storm",
+    val autoCheckGameUpdates: Boolean = true,
 
     // Multiplayer defaults
     val mpRoomName: String = "STORM GBCA Room",

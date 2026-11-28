@@ -34,6 +34,9 @@ public class RomInspectorPane : Border
     private readonly TextBlock _overlayVal;
     private readonly TextBlock _coreVal;
     private readonly UniformGrid _slotsGrid;
+    private readonly AuroraVolumetricButton _sgwUpdateBtn;
+    private readonly TextBlock _sgwUpdateBtnText;
+    private readonly TextBlock _sgwUpdateHint;
     private readonly List<Border> _dividers = [];
     private readonly List<TextBlock> _metaLabels = [];
     private readonly List<(Button Btn, TextBlock Label)> _tabButtons = [];
@@ -121,6 +124,30 @@ public class RomInspectorPane : Border
         };
         stack.Children.Add(playBtn);
 
+        _sgwUpdateBtn = new AuroraVolumetricButton
+        {
+            IsVisible = false,
+            Height = 36,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var updStack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        updStack.Children.Add(new AuroraVectorIcon { Kind = AuroraIconKind.UpdateRocket, Size = 14, VerticalAlignment = VerticalAlignment.Center });
+        _sgwUpdateBtnText = new TextBlock { Text = GbcaLoc.T("BtnUpdateFromSgw"), FontSize = 11.5, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, VerticalAlignment = VerticalAlignment.Center };
+        updStack.Children.Add(_sgwUpdateBtnText);
+        _sgwUpdateBtn.Content = updStack;
+        _sgwUpdateBtn.Click += async (_, _) => await RunSgwUpdateAsync();
+        stack.Children.Add(_sgwUpdateBtn);
+
+        _sgwUpdateHint = new TextBlock
+        {
+            IsVisible = false,
+            FontSize = 10,
+            Foreground = new SolidColorBrush(Color.Parse("#10B981")),
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center
+        };
+        stack.Children.Add(_sgwUpdateHint);
+
         var div1 = new Border { Height = 1, Background = StormThemeBrushes.SubtleBorder, Margin = new Thickness(0, 2) };
         _dividers.Add(div1);
         stack.Children.Add(div1);
@@ -162,6 +189,7 @@ public class RomInspectorPane : Border
         Child = scroll;
 
         StormGbcaUiState.Instance.RomSelected += UpdatePane;
+        StormGbcaUiState.Instance.RomUpdatesChanged += () => Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdatePane(_currentRom));
         StormGbcaUiState.Instance.SettingsSaved += () => Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdatePane(_currentRom));
         StormGbcaUiState.Instance.SkinOrOverlayChanged += () => Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdatePane(_currentRom));
         StormGbcaUiState.Instance.Library.CoverArtUpdated += updated =>
@@ -273,7 +301,27 @@ public class RomInspectorPane : Border
             _metaText.Text = "Выберите игру в списке";
             _coverImage.Source = null;
             _coverFrame.IsVisible = false;
+            _sgwUpdateBtn.IsVisible = false;
+            _sgwUpdateHint.IsVisible = false;
             return;
+        }
+
+        var upd = StormGbcaUiState.Instance.GetUpdateForRom(rom);
+        if (upd != null)
+        {
+            _sgwUpdateBtn.IsVisible = true;
+            _sgwUpdateBtn.IsEnabled = true;
+            _sgwUpdateBtn.BorderBrush = new SolidColorBrush(Color.Parse("#10B981"));
+            _sgwUpdateBtnText.Text = GbcaLoc.T("BtnUpdateFromSgw");
+            _sgwUpdateBtnText.Foreground = StormThemeBrushes.PrimaryText;
+            _sgwUpdateHint.IsVisible = true;
+            _sgwUpdateHint.Text = $"{upd.LocalVersion} -> {upd.RemoteVersion} | {GbcaLoc.T("SgwSaveMigrationNote")}";
+            ToolTip.SetTip(_sgwUpdateBtn, GbcaLoc.T("CatalogUpdateTooltip"));
+        }
+        else
+        {
+            _sgwUpdateBtn.IsVisible = false;
+            _sgwUpdateHint.IsVisible = false;
         }
 
         if (s.ShowPlatformBadge)
@@ -328,5 +376,42 @@ public class RomInspectorPane : Border
         sp.Children.Add(new TextBlock { Text = timeText, FontSize = 9.5, Foreground = StormThemeBrushes.SecondaryText });
         border.Child = sp;
         return border;
+    }
+
+    private async Task RunSgwUpdateAsync()
+    {
+        if (_currentRom == null) return;
+        var upd = StormGbcaUiState.Instance.GetUpdateForRom(_currentRom);
+        if (upd == null) return;
+
+        _sgwUpdateBtn.IsEnabled = false;
+        var progress = new Progress<Core.Subsystems.SgwDownloadProgress>(p =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (p.TotalBytes > 1)
+                {
+                    int pct = (int)Math.Clamp((double)p.DownloadedBytes * 100.0 / p.TotalBytes, 0.0, 100.0);
+                    _sgwUpdateBtnText.Text = $"{pct}%";
+                }
+                else if (!string.IsNullOrWhiteSpace(p.StatusText))
+                {
+                    _sgwUpdateBtnText.Text = p.StatusText;
+                }
+            });
+        });
+
+        try
+        {
+            var res = await StormGbcaUiState.Instance.DownloadCatalogGameAsync(upd.RemoteGame, _currentRom, progress);
+            if (!res.Success && !string.IsNullOrWhiteSpace(res.ErrorMessage))
+            {
+                StormGbcaUiState.Instance.NotifyStatus(res.ErrorMessage);
+            }
+        }
+        finally
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdatePane(_currentRom));
+        }
     }
 }

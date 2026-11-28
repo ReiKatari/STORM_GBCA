@@ -36,7 +36,10 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -314,19 +317,40 @@ private fun formatPublishedDate(rawIso: String): String {
 @Composable
 fun StormUpdateDialog(
     release: UpdateReleaseInfo,
+    stormRelease: UpdateReleaseInfo? = null,
+    githubRelease: UpdateReleaseInfo? = null,
+    preferredSource: String = "storm",
     downloadState: UpdateDownloadState,
-    onStartDownload: () -> Unit,
+    onStartDownload: (UpdateReleaseInfo) -> Unit,
     onInstallApk: (java.io.File) -> Unit,
     onSkipVersion: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = watermelon
     val context = LocalContext.current
+    val stormAvailable = stormRelease != null || (githubRelease == null && release.sourceLabel != "GitHub")
+    val githubAvailable = githubRelease != null || (stormRelease == null && release.sourceLabel == "GitHub")
+
+    var selectedSource by remember(release.version, preferredSource, stormRelease, githubRelease) {
+        mutableStateOf(
+            when {
+                preferredSource.equals("github", ignoreCase = true) && githubAvailable -> "github"
+                stormAvailable -> "storm"
+                githubAvailable -> "github"
+                else -> "storm"
+            }
+        )
+    }
+    val activeRelease = when (selectedSource) {
+        "github" -> githubRelease ?: release
+        else -> stormRelease ?: release
+    }
+
     val cleanCur = BuildConfig.VERSION_NAME.trim().removePrefix("v").removePrefix("V")
-    val cleanNew = release.version.trim().removePrefix("v").removePrefix("V")
-    val sizeMb = (release.apkAsset?.sizeBytes ?: 0L) / (1024.0 * 1024.0)
+    val cleanNew = activeRelease.version.trim().removePrefix("v").removePrefix("V")
+    val sizeMb = (activeRelease.apkAsset?.sizeBytes ?: 0L) / (1024.0 * 1024.0)
     val sizeLabel = if (sizeMb > 0.0) stringResource(R.string.update_dialog_size_mb_fmt, sizeMb) else ""
-    val dateLabel = remember(release.publishedAt) { formatPublishedDate(release.publishedAt) }
+    val dateLabel = remember(activeRelease.publishedAt) { formatPublishedDate(activeRelease.publishedAt) }
 
     val activeLocale = remember(context) {
         AppCompatDelegate.getApplicationLocales()[0]
@@ -334,9 +358,9 @@ fun StormUpdateDialog(
                 if (!it.isEmpty) it[0] else Locale.getDefault()
             }
     }
-    val parsedBlocks = remember(release.changelogMd, cleanNew, activeLocale) {
+    val parsedBlocks = remember(activeRelease.changelogMd, cleanNew, activeLocale) {
         val localized = selectLocalizedReleaseNotes(
-            raw = release.changelogMd.ifBlank { "STORM GBCA $cleanNew" },
+            raw = activeRelease.changelogMd.ifBlank { "STORM GBCA $cleanNew" },
             locale = activeLocale,
         ).ifBlank { "STORM GBCA $cleanNew" }
         parseReleaseNotes(localized)
@@ -462,13 +486,46 @@ fun StormUpdateDialog(
                         )
                     }
 
+                    // Interactive Download Source Selector: STORM GAMES WORLD vs GitHub
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = stringResource(R.string.update_source_label).uppercase(activeLocale),
+                            color = colors.text2,
+                            fontFamily = WatermelonMono,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.7.sp,
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            UpdateSourcePill(
+                                label = "STORM GAMES WORLD",
+                                selected = selectedSource == "storm",
+                                enabled = stormAvailable && downloadState !is UpdateDownloadState.Downloading,
+                                colors = colors,
+                                modifier = Modifier.weight(1.35f),
+                                onClick = { selectedSource = "storm" },
+                            )
+                            UpdateSourcePill(
+                                label = "GitHub",
+                                selected = selectedSource == "github",
+                                enabled = githubAvailable && downloadState !is UpdateDownloadState.Downloading,
+                                colors = colors,
+                                modifier = Modifier.weight(0.85f),
+                                onClick = { selectedSource = "github" },
+                            )
+                        }
+                    }
+
                     // Metadata Chips: Mirror Source, Size, Release Date (wrapped, zero horizontal scroll)
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        MetadataChip(Icons.Filled.Public, release.sourceLabel, colors, highlighted = true)
+                        MetadataChip(Icons.Filled.Public, activeRelease.sourceLabel, colors, highlighted = true)
                         if (sizeLabel.isNotBlank()) {
                             MetadataChip(Icons.Filled.Storage, sizeLabel, colors)
                         }
@@ -652,7 +709,7 @@ fun StormUpdateDialog(
                                 .background(colors.green)
                                 .clickable(
                                     enabled = downloadState !is UpdateDownloadState.Downloading,
-                                    onClick = onStartDownload,
+                                    onClick = { onStartDownload(activeRelease) },
                                 )
                                 .padding(vertical = 13.dp),
                             contentAlignment = Alignment.Center,
@@ -698,7 +755,7 @@ fun StormUpdateDialog(
                     }
 
                     // Footer Link to Open Release Page
-                    if (release.releasePageUrl.isNotBlank()) {
+                    if (activeRelease.releasePageUrl.isNotBlank()) {
                         Row(
                             modifier = Modifier
                                 .align(Alignment.CenterHorizontally)
@@ -706,7 +763,7 @@ fun StormUpdateDialog(
                                 .clickable {
                                     runCatching {
                                         context.startActivity(
-                                            Intent(Intent.ACTION_VIEW, Uri.parse(release.releasePageUrl))
+                                            Intent(Intent.ACTION_VIEW, Uri.parse(activeRelease.releasePageUrl))
                                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                         )
                                     }
@@ -809,6 +866,54 @@ private fun MetadataChip(
             fontFamily = WatermelonMono,
             fontSize = 11.sp,
             maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun UpdateSourcePill(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    colors: WatermelonColors,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                when {
+                    !enabled -> colors.surface2.copy(alpha = 0.45f)
+                    selected -> colors.green
+                    else -> colors.surface2
+                }
+            )
+            .border(
+                1.dp,
+                when {
+                    !enabled -> colors.line.copy(alpha = 0.45f)
+                    selected -> colors.green
+                    else -> colors.line
+                },
+                RoundedCornerShape(10.dp),
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 9.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = when {
+                !enabled -> colors.text2.copy(alpha = 0.42f)
+                selected -> Color(0xFF05060A)
+                else -> colors.text
+            },
+            fontFamily = SpaceGrotesk,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

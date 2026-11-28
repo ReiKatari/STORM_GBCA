@@ -139,6 +139,19 @@ public sealed record AuroraDownloadProgress(
     double SpeedMbPerSec
 );
 
+public sealed record AuroraUpdateMirrorOption(
+    string SourceKey,
+    string SourceLabel,
+    Version LatestVersion,
+    string DownloadUrl,
+    string Changelog,
+    string? ExpectedSha256,
+    string ReleasePageUrl,
+    string AssetName,
+    long AssetSizeBytes,
+    DateTimeOffset? PublishedAtUtc
+);
+
 public sealed record AuroraUpdateCheckResult(
     bool IsUpdateAvailable,
     Version CurrentVersion,
@@ -152,7 +165,9 @@ public sealed record AuroraUpdateCheckResult(
     long AssetSizeBytes = 0,
     DateTimeOffset? PublishedAtUtc = null,
     bool CheckSucceeded = false,
-    string? ErrorMessage = null
+    string? ErrorMessage = null,
+    AuroraUpdateMirrorOption? GitHubOption = null,
+    AuroraUpdateMirrorOption? StormOption = null
 );
 
 /// <summary>
@@ -168,14 +183,17 @@ public sealed class AuroraDualMirrorUpdater
 
     static AuroraDualMirrorUpdater()
     {
-        s_httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM_GBCA-AuroraFluid-Updater/1.8.0 (Windows; Android; Linux)");
+        s_httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM_GBCA-AuroraFluid-Updater/1.9.0 (Windows; Android; Linux)");
     }
 
     public const string DefaultGitHubOwner = "ReiKatari";
     public const string DefaultGitHubRepo = "STORM_GBCA";
 
     public Task<AuroraUpdateCheckResult> CheckStormGbcaUpdateAsync(Version currentVersion, CancellationToken cancellationToken = default)
-        => CheckForUpdateAsync(DefaultGitHubOwner, DefaultGitHubRepo, currentVersion, cancellationToken);
+        => CheckForUpdateAsync(DefaultGitHubOwner, DefaultGitHubRepo, currentVersion, "storm", cancellationToken);
+
+    public Task<AuroraUpdateCheckResult> CheckStormGbcaUpdateAsync(Version currentVersion, string preferredSource, CancellationToken cancellationToken = default)
+        => CheckForUpdateAsync(DefaultGitHubOwner, DefaultGitHubRepo, currentVersion, preferredSource, cancellationToken);
 
     public static bool TryParseSemanticVersion(string? raw, out Version version)
     {
@@ -221,10 +239,21 @@ public sealed class AuroraDualMirrorUpdater
     /// <summary>
     /// Checks GitHub Releases API and STORM GAMES WORLD mirrors in parallel and selects the newest Windows release.
     /// </summary>
+    public Task<AuroraUpdateCheckResult> CheckForUpdateAsync(
+        string githubOwner,
+        string githubRepo,
+        Version currentVersion,
+        CancellationToken cancellationToken = default)
+        => CheckForUpdateAsync(githubOwner, githubRepo, currentVersion, "storm", cancellationToken);
+
+    /// <summary>
+    /// Checks GitHub Releases API and STORM GAMES WORLD mirrors in parallel, respecting preferred default source when both match.
+    /// </summary>
     public async Task<AuroraUpdateCheckResult> CheckForUpdateAsync(
         string githubOwner,
         string githubRepo,
         Version currentVersion,
+        string preferredSource,
         CancellationToken cancellationToken = default)
     {
         var ghTask = TryCheckGitHubAsync(githubOwner, githubRepo, currentVersion, cancellationToken);
@@ -237,10 +266,46 @@ public sealed class AuroraDualMirrorUpdater
 
         bool anySucceeded = ghOk || mirrorOk;
 
+        AuroraUpdateMirrorOption? ghOpt = ghBest != null
+            ? new AuroraUpdateMirrorOption(
+                SourceKey: "github",
+                SourceLabel: "GitHub",
+                LatestVersion: ghBest.LatestVersion,
+                DownloadUrl: ghBest.DownloadUrl,
+                Changelog: ghBest.Changelog,
+                ExpectedSha256: ghBest.ExpectedSha256,
+                ReleasePageUrl: ghBest.ReleasePageUrl,
+                AssetName: ghBest.AssetName,
+                AssetSizeBytes: ghBest.AssetSizeBytes,
+                PublishedAtUtc: ghBest.PublishedAtUtc)
+            : null;
+
+        AuroraUpdateMirrorOption? stormOpt = mirrorBest != null
+            ? new AuroraUpdateMirrorOption(
+                SourceKey: "storm",
+                SourceLabel: "STORM GAMES WORLD",
+                LatestVersion: mirrorBest.LatestVersion,
+                DownloadUrl: mirrorBest.DownloadUrl,
+                Changelog: mirrorBest.Changelog,
+                ExpectedSha256: mirrorBest.ExpectedSha256,
+                ReleasePageUrl: mirrorBest.ReleasePageUrl,
+                AssetName: mirrorBest.AssetName,
+                AssetSizeBytes: mirrorBest.AssetSizeBytes,
+                PublishedAtUtc: mirrorBest.PublishedAtUtc)
+            : null;
+
+        bool preferGitHub = string.Equals(preferredSource, "github", StringComparison.OrdinalIgnoreCase);
         AuroraUpdateCheckResult? bestCandidate = null;
         if (ghBest != null && mirrorBest != null)
         {
-            bestCandidate = mirrorBest.LatestVersion > ghBest.LatestVersion ? mirrorBest : ghBest;
+            if (ghBest.LatestVersion == mirrorBest.LatestVersion)
+            {
+                bestCandidate = preferGitHub ? ghBest : mirrorBest;
+            }
+            else
+            {
+                bestCandidate = mirrorBest.LatestVersion > ghBest.LatestVersion ? mirrorBest : ghBest;
+            }
         }
         else
         {
@@ -249,7 +314,12 @@ public sealed class AuroraDualMirrorUpdater
 
         if (bestCandidate != null && bestCandidate.LatestVersion > currentVersion)
         {
-            return bestCandidate with { CheckSucceeded = true };
+            return bestCandidate with
+            {
+                CheckSucceeded = true,
+                GitHubOption = ghOpt,
+                StormOption = stormOpt
+            };
         }
 
         if (!anySucceeded)
@@ -267,7 +337,9 @@ public sealed class AuroraDualMirrorUpdater
             );
         }
 
-        string sourceLabel = ghOk ? "GitHub" : "STORM GAMES WORLD";
+        string sourceLabel = preferGitHub
+            ? (ghOk ? "GitHub" : "STORM GAMES WORLD")
+            : (mirrorOk ? "STORM GAMES WORLD" : "GitHub");
         return new AuroraUpdateCheckResult(
             IsUpdateAvailable: false,
             CurrentVersion: currentVersion,
@@ -277,7 +349,9 @@ public sealed class AuroraDualMirrorUpdater
             ExpectedSha256: null,
             SourceMirror: sourceLabel,
             ReleasePageUrl: $"https://github.com/{githubOwner}/{githubRepo}/releases",
-            CheckSucceeded: true
+            CheckSucceeded: true,
+            GitHubOption: ghOpt,
+            StormOption: stormOpt
         );
     }
 

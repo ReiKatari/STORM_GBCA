@@ -7,10 +7,33 @@ import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.LinearProgressIndicator
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.lifecycleScope
 import com.stormgbca.emulator.R
 import com.stormgbca.emulator.data.BoxArtRepository
@@ -23,16 +46,24 @@ import com.stormgbca.emulator.model.RomEntry
 import com.stormgbca.emulator.model.RomFilter
 import com.stormgbca.emulator.model.RomSortMode
 import com.stormgbca.emulator.model.RomViewMode
+import com.stormgbca.emulator.sgw.SgwCatalogGame
+import com.stormgbca.emulator.sgw.SgwCatalogRepository
+import com.stormgbca.emulator.sgw.SgwCatalogSheet
+import com.stormgbca.emulator.sgw.SgwDownloadState
+import com.stormgbca.emulator.sgw.SgwGameUpdateInfo
 import com.stormgbca.emulator.ui.emulator.EmulatorActivity
 import com.stormgbca.emulator.ui.ra.GameAchievementsDialog
 import com.stormgbca.emulator.ui.ra.RetroAchievementsAccountDialog
 import com.stormgbca.emulator.ui.settings.SettingsActivity
 import com.stormgbca.emulator.ui.theme.AppThemeManager
+import com.stormgbca.emulator.ui.theme.SpaceGrotesk
 import com.stormgbca.emulator.ui.theme.StormWatermelonTheme
+import com.stormgbca.emulator.ui.theme.WatermelonMono
+import com.stormgbca.emulator.ui.theme.watermelon
 import com.stormgbca.emulator.update.StormUpdateDialog
 import com.stormgbca.emulator.update.StormUpdateMirrorClient
+import com.stormgbca.emulator.update.UpdateCheckResult
 import com.stormgbca.emulator.update.UpdateDownloadState
-import com.stormgbca.emulator.update.UpdateReleaseInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -55,15 +86,21 @@ class MainActivity : AppCompatActivity() {
     private val viewModeState = mutableStateOf(RomViewMode.GRID)
     private val searchQueryState = mutableStateOf("")
     private val isScanningState = mutableStateOf(false)
-    private val latestUpdateState = mutableStateOf<UpdateReleaseInfo?>(null)
+    private val latestUpdateState = mutableStateOf<UpdateCheckResult?>(null)
     private val showUpdateDialogState = mutableStateOf(false)
     private val updateDownloadState = mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle)
     private val showRaAccountDialogState = mutableStateOf(false)
     private val raGameDialogRomState = mutableStateOf<RomEntry?>(null)
     private val raGameSessionState = mutableStateOf<RaGameSession?>(null)
     private val raGameLoadingState = mutableStateOf(false)
+    private val showSgwCatalogState = mutableStateOf(false)
+    private val sgwCatalogState = mutableStateOf<List<SgwCatalogGame>>(emptyList())
+    private val sgwUpdatesMapState = mutableStateOf<Map<String, SgwGameUpdateInfo>>(emptyMap())
+    private val sgwQuickDownloadState = mutableStateOf(SgwDownloadState())
 
     private var coverLoadJob: Job? = null
+    private var sgwUpdateCheckJob: Job? = null
+    private var sgwQuickUpdateJob: Job? = null
     private var pendingPatchRom: RomEntry? = null
     private var pendingCoverRom: RomEntry? = null
 
@@ -178,6 +215,7 @@ class MainActivity : AppCompatActivity() {
                     roms = filteredRoms,
                     boxArtMap = boxArtMap,
                     confirmedRaHashes = confirmedRaHashesState.value,
+                    gameUpdatesMap = sgwUpdatesMapState.value,
                     filter = filterState.value,
                     sortMode = sortModeState.value,
                     viewMode = viewModeState.value,
@@ -198,6 +236,8 @@ class MainActivity : AppCompatActivity() {
                         viewModeState.value = next
                         GbcaPrefs.setRomViewMode(next)
                     },
+                    onOpenCatalog = { showSgwCatalogState.value = true },
+                    onUpdateRomFromSgw = { upd -> startQuickRomUpdate(upd) },
                     onAddFolder = { folderPicker.launch(null) },
                     onOpenSingleFile = { singleFilePicker.launch(arrayOf("*/*")) },
                     onRefresh = { rescanLibrary() },
@@ -267,21 +307,105 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
 
-                val updateRel = latestUpdateState.value
-                if (showUpdateDialogState.value && updateRel != null) {
+                if (showSgwCatalogState.value) {
+                    SgwCatalogSheet(
+                        installedRoms = romsState.value,
+                        initialCatalog = sgwCatalogState.value,
+                        updatesByRomUri = sgwUpdatesMapState.value,
+                        onCatalogUpdated = { catalog ->
+                            sgwCatalogState.value = catalog
+                            recomputeSgwUpdates(romsState.value, catalog)
+                        },
+                        onRomInstalledOrUpdated = { newRom, _ ->
+                            val updatedList = GbcaPrefs.getCachedRoms()
+                            romsState.value = updatedList
+                            recomputeSgwUpdates(updatedList, sgwCatalogState.value)
+                            val cfg = GbcaPrefs.coreConfigState.value
+                            preloadCovers(updatedList, cfg.showLibretroCovers, cfg.showRaCovers)
+                        },
+                        onDismiss = { showSgwCatalogState.value = false },
+                    )
+                }
+
+                val quickDl = sgwQuickDownloadState.value
+                if (quickDl.active) {
+                    val colors = watermelon
+                    Dialog(onDismissRequest = {}) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = colors.surface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, colors.line, RoundedCornerShape(16.dp)),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text(
+                                    text = quickDl.title,
+                                    color = colors.text,
+                                    fontFamily = SpaceGrotesk,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                LinearProgressIndicator(
+                                    progress = (quickDl.percent / 100f).coerceIn(0f, 1f),
+                                    color = colors.green,
+                                    backgroundColor = colors.surface3,
+                                    modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(4.dp)),
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        text = quickDl.statusText.ifBlank { "${quickDl.percent}%" },
+                                        color = colors.text2,
+                                        fontFamily = WatermelonMono,
+                                        fontSize = 11.sp,
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(colors.surface2)
+                                            .border(1.dp, colors.line, RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                SgwCatalogRepository.cancelActiveDownload()
+                                                sgwQuickUpdateJob?.cancel()
+                                                sgwQuickDownloadState.value = SgwDownloadState(active = false)
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                                    ) {
+                                        Text(getString(R.string.cancel), color = colors.red, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val updateRes = latestUpdateState.value
+                if (showUpdateDialogState.value && updateRes != null) {
                     StormUpdateDialog(
-                        release = updateRel,
+                        release = updateRes.primary,
+                        stormRelease = updateRes.stormRelease,
+                        githubRelease = updateRes.githubRelease,
+                        preferredSource = GbcaPrefs.coreConfigState.value.updateSourcePref,
                         downloadState = updateDownloadState.value,
-                        onStartDownload = {
+                        onStartDownload = { selectedRel ->
                             lifecycleScope.launch {
-                                StormUpdateMirrorClient.downloadApk(this@MainActivity, updateRel) { st ->
+                                StormUpdateMirrorClient.downloadApk(this@MainActivity, selectedRel) { st ->
                                     updateDownloadState.value = st
                                 }
                             }
                         },
                         onInstallApk = { apk -> StormUpdateMirrorClient.installApk(this@MainActivity, apk) },
                         onSkipVersion = {
-                            GbcaPrefs.setSkippedUpdateVersion(updateRel.version)
+                            GbcaPrefs.setSkippedUpdateVersion(updateRes.primary.version)
                             showUpdateDialogState.value = false
                         },
                         onDismiss = { showUpdateDialogState.value = false },
@@ -303,14 +427,17 @@ class MainActivity : AppCompatActivity() {
         supportActionBar?.hide()
         AppThemeManager.applyImmersiveFullscreen(this)
         if (GbcaPrefs.consumeRomFoldersDirty()) {
-            if (GbcaPrefs.getRomFolders().isEmpty()) {
+            if (GbcaPrefs.getRomFolders().isEmpty() && !RomRepository.hasLocalFallbackRoms(this)) {
                 GbcaPrefs.saveCachedRoms(emptyList())
                 romsState.value = emptyList()
+                sgwUpdatesMapState.value = emptyMap()
             } else {
                 rescanLibrary()
             }
         } else {
-            romsState.value = GbcaPrefs.getCachedRoms()
+            val cached = GbcaPrefs.getCachedRoms()
+            romsState.value = cached
+            recomputeSgwUpdates(cached, sgwCatalogState.value)
         }
     }
 
@@ -343,9 +470,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun rescanLibrary() {
-        if (GbcaPrefs.getRomFolders().isEmpty()) {
+        if (GbcaPrefs.getRomFolders().isEmpty() && !RomRepository.hasLocalFallbackRoms(this)) {
             GbcaPrefs.saveCachedRoms(emptyList())
             romsState.value = emptyList()
+            sgwUpdatesMapState.value = emptyMap()
             isScanningState.value = false
             return
         }
@@ -354,6 +482,73 @@ class MainActivity : AppCompatActivity() {
             val scanned = RomRepository.scanFolders(this@MainActivity)
             romsState.value = scanned
             isScanningState.value = false
+            checkSgwGameUpdates(scanned)
+        }
+    }
+
+    private fun checkSgwGameUpdates(roms: List<RomEntry>) {
+        if (!GbcaPrefs.coreConfigState.value.autoCheckGameUpdates || roms.isEmpty()) {
+            sgwUpdatesMapState.value = emptyMap()
+            return
+        }
+        sgwUpdateCheckJob?.cancel()
+        sgwUpdateCheckJob = lifecycleScope.launch {
+            val cachedCatalog = withContext(Dispatchers.IO) {
+                SgwCatalogRepository.getCachedCatalog(this@MainActivity)
+            }
+            if (cachedCatalog.isNotEmpty()) {
+                sgwCatalogState.value = cachedCatalog
+                recomputeSgwUpdates(roms, cachedCatalog)
+            }
+            val res = SgwCatalogRepository.fetchCatalog(this@MainActivity, forceRefresh = false)
+            res.onSuccess { catalog ->
+                sgwCatalogState.value = catalog
+                recomputeSgwUpdates(roms, catalog)
+            }
+        }
+    }
+
+    private fun recomputeSgwUpdates(roms: List<RomEntry>, catalog: List<SgwCatalogGame>) {
+        if (!GbcaPrefs.coreConfigState.value.autoCheckGameUpdates || roms.isEmpty() || catalog.isEmpty()) {
+            sgwUpdatesMapState.value = emptyMap()
+            return
+        }
+        val updates = SgwCatalogRepository.findUpdatesForInstalled(roms, catalog)
+        sgwUpdatesMapState.value = updates.associateBy { it.localRom.uriString }
+    }
+
+    private fun startQuickRomUpdate(updateInfo: SgwGameUpdateInfo) {
+        if (sgwQuickDownloadState.value.active) return
+        sgwQuickUpdateJob?.cancel()
+        sgwQuickUpdateJob = lifecycleScope.launch {
+            val res = SgwCatalogRepository.downloadOrUpdateRom(
+                ctx = this@MainActivity,
+                remoteGame = updateInfo.remoteGame,
+                replacingRom = updateInfo.localRom,
+                targetTreeUri = null,
+            ) { st ->
+                sgwQuickDownloadState.value = st
+            }
+            res.onSuccess {
+                val updatedList = GbcaPrefs.getCachedRoms()
+                romsState.value = updatedList
+                recomputeSgwUpdates(updatedList, sgwCatalogState.value)
+                val cfg = GbcaPrefs.coreConfigState.value
+                preloadCovers(updatedList, cfg.showLibretroCovers, cfg.showRaCovers)
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.sgw_toast_updated_fmt, updateInfo.remoteGame.finalTitle),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }.onFailure { err ->
+                if (err !is kotlinx.coroutines.CancellationException) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.sgw_toast_error_fmt, err.message ?: "Error"),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
         }
     }
 
@@ -474,9 +669,9 @@ class MainActivity : AppCompatActivity() {
     private fun checkUpdatesOnLaunch() {
         if (!GbcaPrefs.coreConfigState.value.autoCheckUpdates) return
         lifecycleScope.launch {
-            val rel = StormUpdateMirrorClient.checkLatestUpdate()
-            if (rel != null && rel.version != GbcaPrefs.getSkippedUpdateVersion()) {
-                latestUpdateState.value = rel
+            val res = StormUpdateMirrorClient.checkLatestUpdate(GbcaPrefs.coreConfigState.value.updateSourcePref)
+            if (res != null && res.primary.version != GbcaPrefs.getSkippedUpdateVersion()) {
+                latestUpdateState.value = res
                 // Automatically pop up the update dialog on launch when a newer release exists!
                 showUpdateDialogState.value = true
             }

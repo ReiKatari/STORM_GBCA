@@ -106,8 +106,8 @@ import com.stormgbca.emulator.ui.theme.WatermelonMono
 import com.stormgbca.emulator.ui.theme.watermelon
 import com.stormgbca.emulator.update.StormUpdateDialog
 import com.stormgbca.emulator.update.StormUpdateMirrorClient
+import com.stormgbca.emulator.update.UpdateCheckResult
 import com.stormgbca.emulator.update.UpdateDownloadState
-import com.stormgbca.emulator.update.UpdateReleaseInfo
 import com.stormgbca.emulator.vulkandriver.VulkanDriverManager
 import com.stormgbca.emulator.vulkandriver.VulkanDriverManagerSheet
 import com.stormgbca.emulator.vulkandriver.VulkanDriverRepository
@@ -283,7 +283,7 @@ private fun SettingsScreen(
     var overlayDialogSystem by remember { mutableStateOf<ConsoleSystem?>(null) }
     var shaderTabSystem by remember { mutableStateOf(ConsoleSystem.GBA) }
     var showVulkanDriverSheet by remember { mutableStateOf(false) }
-    var foundUpdate by remember { mutableStateOf<UpdateReleaseInfo?>(null) }
+    var foundUpdate by remember { mutableStateOf<UpdateCheckResult?>(null) }
     var downloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
 
@@ -1226,6 +1226,43 @@ private fun SettingsScreen(
                             GbcaPrefs.updateCoreConfig { it.copy(autoCheckUpdates = c) }
                         }
                         WatermelonRowSeparator()
+                        SettingsSwitchSubRow(
+                            title = stringResource(R.string.auto_check_game_updates),
+                            subtitle = stringResource(R.string.auto_check_game_updates_sub),
+                            checked = cfg.autoCheckGameUpdates,
+                        ) { c ->
+                            GbcaPrefs.updateCoreConfig { it.copy(autoCheckGameUpdates = c) }
+                        }
+                        WatermelonRowSeparator()
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.update_source_default),
+                                color = colors.text,
+                                fontFamily = SpaceGrotesk,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                GridSelectChip(
+                                    label = "STORM GAMES WORLD",
+                                    selected = cfg.updateSourcePref != "github",
+                                    modifier = Modifier.weight(1.3f),
+                                ) {
+                                    GbcaPrefs.updateCoreConfig { it.copy(updateSourcePref = "storm") }
+                                }
+                                GridSelectChip(
+                                    label = "GitHub",
+                                    selected = cfg.updateSourcePref == "github",
+                                    modifier = Modifier.weight(0.9f),
+                                ) {
+                                    GbcaPrefs.updateCoreConfig { it.copy(updateSourcePref = "github") }
+                                }
+                            }
+                        }
+                        WatermelonRowSeparator()
                         SettingsNavRow(
                             icon = Icons.Filled.Restore,
                             title = stringResource(R.string.export_backup),
@@ -1262,10 +1299,10 @@ private fun SettingsScreen(
                         ) {
                             updateStatus = context.getString(R.string.update_checking)
                             scope.launch {
-                                val rel = StormUpdateMirrorClient.checkLatestUpdate()
-                                if (rel != null) {
-                                    foundUpdate = rel
-                                    val cleanRelVer = rel.version.trim().removePrefix("v").removePrefix("V")
+                                val res = StormUpdateMirrorClient.checkLatestUpdate(cfg.updateSourcePref)
+                                if (res != null) {
+                                    foundUpdate = res
+                                    val cleanRelVer = res.primary.version.trim().removePrefix("v").removePrefix("V")
                                     updateStatus = context.getString(R.string.update_available_fmt, cleanRelVer)
                                 } else {
                                     updateStatus = context.getString(R.string.update_latest, cleanAppVer)
@@ -1336,18 +1373,21 @@ private fun SettingsScreen(
         VulkanDriverManagerSheet(onDismiss = { showVulkanDriverSheet = false })
     }
 
-    foundUpdate?.let { rel ->
+    foundUpdate?.let { res ->
         StormUpdateDialog(
-            release = rel,
+            release = res.primary,
+            stormRelease = res.stormRelease,
+            githubRelease = res.githubRelease,
+            preferredSource = cfg.updateSourcePref,
             downloadState = downloadState,
-            onStartDownload = {
+            onStartDownload = { selectedRel ->
                 scope.launch {
-                    StormUpdateMirrorClient.downloadApk(context, rel) { downloadState = it }
+                    StormUpdateMirrorClient.downloadApk(context, selectedRel) { downloadState = it }
                 }
             },
             onInstallApk = { apk -> StormUpdateMirrorClient.installApk(context, apk) },
             onSkipVersion = {
-                GbcaPrefs.setSkippedUpdateVersion(rel.version)
+                GbcaPrefs.setSkippedUpdateVersion(res.primary.version)
                 foundUpdate = null
             },
             onDismiss = { foundUpdate = null },

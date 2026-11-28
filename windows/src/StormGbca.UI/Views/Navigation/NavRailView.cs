@@ -6,9 +6,11 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Storm.AuroraFluid.Kit.Icons;
 using Storm.AuroraFluid.Kit.Services;
 using Storm.AuroraFluid.Kit.Themes;
+using StormGbca.Core.Localization;
 using StormGbca.UI.Common;
 
 namespace StormGbca.UI.Views.Navigation;
@@ -16,6 +18,8 @@ namespace StormGbca.UI.Views.Navigation;
 public class NavRailView : Border
 {
     private readonly List<(NavSectionKind Kind, Border Container, TextBlock Label)> _items = [];
+    private Border? _catalogBadge;
+    private TextBlock? _catalogBadgeText;
 
     public NavRailView()
     {
@@ -30,6 +34,7 @@ public class NavRailView : Border
         AddItem(topStack, NavSectionKind.Library, AuroraIconKind.LibraryGrid, "Библиотека");
         AddItem(topStack, NavSectionKind.Favorites, AuroraIconKind.StarFavorite, "Избранное");
         AddItem(topStack, NavSectionKind.Recent, AuroraIconKind.RecentClock, "Недавние");
+        AddItem(topStack, NavSectionKind.Catalog, AuroraIconKind.WifiGlobe, GbcaLoc.T("NavCatalog"));
         AddItem(topStack, NavSectionKind.SkinsAndOverlays, AuroraIconKind.ShaderPrism, "Корпусы 3D");
         AddItem(topStack, NavSectionKind.Achievements, AuroraIconKind.TrophyCrown, "Достижения");
 
@@ -43,6 +48,12 @@ public class NavRailView : Border
         Child = rootGrid;
 
         StormGbcaUiState.Instance.NavSectionChanged += _ => UpdateActiveStyles();
+        StormGbcaUiState.Instance.RomUpdatesChanged += () => Dispatcher.UIThread.Post(UpdateCatalogBadge);
+        GbcaLoc.LanguageChanged += _ => Dispatcher.UIThread.Post(() =>
+        {
+            var cat = _items.FirstOrDefault(i => i.Kind == NavSectionKind.Catalog);
+            if (cat.Label != null) cat.Label.Text = GbcaLoc.T("NavCatalog");
+        });
         StormThemeBrushes.BindTheme(this, () =>
         {
             Background = StormThemeBrushes.GlassPanel;
@@ -50,6 +61,7 @@ public class NavRailView : Border
             UpdateActiveStyles();
         });
         UpdateActiveStyles();
+        UpdateCatalogBadge();
     }
 
     private void AddItem(StackPanel panel, NavSectionKind kind, AuroraIconKind icon, string label)
@@ -80,7 +92,40 @@ public class NavRailView : Border
             HorizontalAlignment = HorizontalAlignment.Center
         };
         stack.Children.Add(tb);
-        container.Child = stack;
+
+        if (kind == NavSectionKind.Catalog)
+        {
+            var wrapper = new Grid();
+            wrapper.Children.Add(stack);
+            _catalogBadgeText = new TextBlock
+            {
+                Text = "0",
+                FontSize = 9,
+                FontWeight = FontWeight.Bold,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            _catalogBadge = new Border
+            {
+                IsVisible = false,
+                MinWidth = 17,
+                Height = 17,
+                Padding = new Thickness(4, 0),
+                CornerRadius = new CornerRadius(9),
+                Background = new SolidColorBrush(Color.Parse("#10B981")),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 4, 4, 0),
+                Child = _catalogBadgeText
+            };
+            wrapper.Children.Add(_catalogBadge);
+            container.Child = wrapper;
+        }
+        else
+        {
+            container.Child = stack;
+        }
 
         container.PointerEntered += (_, _) =>
         {
@@ -141,6 +186,14 @@ public class NavRailView : Border
             }
         }
     }
+
+    private void UpdateCatalogBadge()
+    {
+        if (_catalogBadge == null || _catalogBadgeText == null) return;
+        int count = StormGbcaUiState.Instance.AvailableRomUpdates.Count;
+        _catalogBadge.IsVisible = count > 0;
+        _catalogBadgeText.Text = count > 99 ? "99+" : count.ToString();
+    }
 }
 
 public class NavDockView : Border
@@ -159,6 +212,7 @@ public class NavDockView : Border
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         AddDockBtn(row, NavSectionKind.Library, AuroraIconKind.LibraryGrid, "Библиотека");
         AddDockBtn(row, NavSectionKind.Favorites, AuroraIconKind.StarFavorite, "Избранное");
+        AddDockBtn(row, NavSectionKind.Catalog, AuroraIconKind.WifiGlobe, GbcaLoc.T("NavCatalog"));
         AddDockBtn(row, NavSectionKind.SkinsAndOverlays, AuroraIconKind.ShaderPrism, "Корпусы 3D");
         AddDockBtn(row, NavSectionKind.Achievements, AuroraIconKind.TrophyCrown, "Достижения");
         AddDockBtn(row, NavSectionKind.Settings, AuroraIconKind.SettingsCore, "Настройки");

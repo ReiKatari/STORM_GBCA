@@ -1,78 +1,67 @@
-# STORM GBCA 1.8.0
+# STORM GBCA 1.9.0
 
 ## Русский
-- **AMD FSR 1 (EASU + RCAS) и AMD FSR 3 (Temporal + RCAS):** добавлены многопроходные GPU-шейдеры сверхвысокой чёткости на Android (OpenGL ES 3.2, Vulkan и RetroArch `.slangp`) и Windows (аппаратный рендерер SkiaSharp GPU SkSL с 12-точечным EASU, 32-фазным субпиксельным сдвигом Halton, отсечением дисперсии YCoCg, репроекцией по оптическому потоку и 5-точечным фильтром RCAS).
-- **Настройка резкости FSR RCAS и режимов качества:** в Настройках и игровом меню паузы на обеих платформах доступны ползунок резкости RCAS (`0..100%`) и 4 режима качества (`Качество 67% - 1.5x`, `Баланс 59% - 1.7x`, `Производительность 50% - 2.0x`, `Ультра производительность 33% - 3.0x`).
-- **Необязательная генерация кадров (`60 -> 120 FPS`):** добавлена интерполяция промежуточных кадров на основе оптического потока по градиентам яркости с отсечением при смене сцены для экранов 120 Гц (по умолчанию выключена, задержка ~16.7 мс, 100% совместима с RetroAchievements Hardcore).
-- **Реальное определение версий OpenGL ES и Vulkan:** в настройках видео статичные подписи `OpenGL 3.2` / `Vulkan 1.1` заменены на фактически поддерживаемые устройством версии графических API и активный GPU-бэкенд с отображением минимальных требований.
-- **Менеджер и загрузчик пользовательских драйверов Vulkan GPU на Android (как в STORM DS):** добавлено автоопределение модели GPU, каталог рекомендуемых сборок Turnip / Adreno / Mali, отображение прогресса загрузки, безопасная распаковка ZIP-архивов и локальный импорт драйверов.
+- **Встроенный каталог STORM GAMES WORLD (GB / GBC / GBA):** добавлен полноценный каталог игр для Nintendo Game Boy, Game Boy Color и Game Boy Advance на Android и Windows (в единой стилистике тем STORM GBCA, выровненной со STORM SWITCH и STORM DS), с поддержкой зеркала `storm-games.world`, поиском, фильтрами и живым прогрессом загрузки.
+- **Интеграция раздела переводов (`/translations`):** прямой поиск и загрузка официальных русских переводов команды STORM TEAM для GB, GBC и GBA с отображением версии, списка изменений и бейджа `RUS`.
+- **Фоновая проверка обновлений игр и переводов с безопасной заменой:** автоматическое сравнение версий локальных ROM с основным каталогом и `/translations`, удаление старого файла только после проверки загруженного ROM и автоматический перенос 100% сохранений (`.sav`), слотов состояний, `.raprog`, читов, обложек и избранного.
+- **Выбор источника обновлений (`GitHub` / `STORM GAMES WORLD`):** возможность выбрать источник загрузки прямо в окне обнаруженного обновления, а также настроить источник обновлений по умолчанию в Настройках на Android и Windows.
 
 ## English
-- **AMD FSR 1 (EASU + RCAS) & AMD FSR 3 (Temporal + RCAS):** added multi-pass GPU upscaling shaders across Android (OpenGL ES 3.2, Vulkan, and `.slangp`) and Windows (SkiaSharp GPU SkSL renderer with 12-tap EASU, 32-phase Halton jitter, YCoCg variance clipping, optical-flow reprojection, and 5-tap RCAS sharpening).
-- **FSR RCAS Sharpness (`0..100%`) & Quality Modes:** added RCAS sharpness tuning and 4 quality presets (`Quality 67% - 1.5x`, `Balanced 59% - 1.7x`, `Performance 50% - 2.0x`, `Ultra Performance 33% - 3.0x`) in both Settings and the in-game Pause Menu on Android and Windows.
-- **Optional Frame Generation (`60 -> 120 FPS`):** added optical-flow midpoint interpolation with scene-cut disocclusion fallback for 120 Hz displays (off by default, ~16.7 ms latency note, 100% RetroAchievements Hardcore compatible).
-- **Real OpenGL ES & Vulkan Version Detection:** replaced static `OpenGL 3.2` / `Vulkan 1.1` labels in Video Settings with real device-supported API versions and active GPU renderer capability info alongside minimum requirements.
-- **Custom Vulkan GPU Driver Manager & Downloader on Android (like STORM DS):** added automatic GPU detection, curated Turnip / Adreno / Mali catalog, live download progress, safe ZIP extraction, and local driver import.
+- **Built-in STORM GAMES WORLD Catalog (GB / GBC / GBA):** added the full Nintendo Game Boy, Game Boy Color, and Game Boy Advance catalog on Android and Windows (styled to match STORM GBCA themes and aligned with STORM SWITCH and STORM DS), featuring `storm-games.world` mirror fallback, search, filters, and live download progress.
+- **Translations Integration (`/translations`):** direct discovery and download of official STORM TEAM Russian translations for GB, GBC, and GBA with version info, changelogs, and `RUS` badges.
+- **Background Game & Translation Update Checker with Safe Replacement:** compares local ROM versions against the main catalog and `/translations`, removes the old ROM only after verified download, and automatically migrates 100% of saves (`.sav`), save states, `.raprog`, cheats, covers, and favorites.
+- **Dual-Source Update Selector (`GitHub` / `STORM GAMES WORLD`):** choose the download source directly when an update is found, plus a default update source setting in Settings on both Android and Windows.
 
 ## Deutsch
-- **AMD FSR 1 (EASU + RCAS) & AMD FSR 3 (Temporal + RCAS):** mehrstufige GPU-Upscaling-Shader für Android (OpenGL ES 3.2, Vulkan und `.slangp`) sowie Windows (SkiaSharp GPU-SkSL-Renderer mit 12-Tap-EASU, 32-Phasen-Halton-Jitter, YCoCg-Varianz-Clipping, Optical-Flow-Reprojektion und 5-Tap-RCAS).
-- **FSR RCAS-Schärfe (`0..100%`) & Qualitätsmodi:** stufenlose RCAS-Schärfe und 4 Qualitätsstufen (`Qualität 67% - 1.5x` bis `Ultra-Leistung 33% - 3.0x`) in den Einstellungen und im Pausenmenü auf beiden Plattformen.
-- **Optionale Frame Generation (`60 -> 120 FPS`):** Zwischenbild-Interpolation per optischem Fluss mit Szenenwechsel-Erkennung für 120-Hz-Displays (standardmäßig deaktiviert, ~16.7 ms Eingabeverzögerung, 100% kompatibel mit RetroAchievements Hardcore).
-- **Echte OpenGL ES- & Vulkan-Erkennung:** statische Bezeichnungen in den Videoeinstellungen wurden durch die tatsächlich unterstützten API-Versionen, den aktiven GPU-Renderer und Mindestanforderungen ersetzt.
-- **Benutzerdefinierter Vulkan-GPU-Treiber-Manager unter Android (wie STORM DS):** GPU-Erkennung, Katalog empfohlener Turnip- / Adreno- / Mali-Treiber, Live-Download-Fortschritt, sicheres ZIP-Entpacken und lokaler Import.
+- **Integrierter STORM GAMES WORLD Katalog (GB / GBC / GBA):** vollständiger Spielekatalog für Nintendo Game Boy, Game Boy Color und Game Boy Advance auf Android und Windows (im Stil der STORM GBCA-Themes, abgestimmt auf STORM SWITCH und STORM DS) mit `storm-games.world`-Mirror, Suche, Filtern und Live-Download-Fortschritt.
+- **Integration der Übersetzungen (`/translations`):** direkte Suche und Download offizieller russischer Übersetzungen von STORM TEAM für GB, GBC und GBA samt Version, Änderungsprotokoll und `RUS`-Badge.
+- **Hintergrundprüfung auf Spiel- und Übersetzungsupdates mit sicherem Austausch:** vergleicht lokale ROM-Versionen mit Hauptkatalog und `/translations`, löscht die alte Datei erst nach verifiziertem Download und überträgt automatisch 100% aller Spielstände (`.sav`), Speicherstände, `.raprog`, Cheats, Cover und Favoriten.
+- **Duale Update-Quellenauswahl (`GitHub` / `STORM GAMES WORLD`):** direkte Wahl der Download-Quelle im Update-Fenster sowie Standard-Update-Quelle in den Einstellungen auf Android und Windows.
 
 ## Français
-- **AMD FSR 1 (EASU + RCAS) et AMD FSR 3 (Temporal + RCAS) :** ajout de shaders GPU multi-passes sur Android (OpenGL ES 3.2, Vulkan et `.slangp`) et Windows (rendu GPU SkiaSharp SkSL avec EASU 12 points, jitter Halton 32 phases, écrêtage YCoCg, reprojection par flux optique et netteté RCAS 5 points).
-- **Netteté FSR RCAS (`0..100%`) et modes de qualité :** réglage de la netteté RCAS et 4 profils (`Qualité 67% - 1.5x` à `Ultra Performance 33% - 3.0x`) dans les Paramètres et le menu Pause sur les deux plateformes.
-- **Génération d'images optionnelle (`60 -> 120 FPS`) :** interpolation intermédiaire par flux optique avec repli sur changement de scène pour écrans 120 Hz (désactivée par défaut, ~16.7 ms de latence, 100% compatible RetroAchievements Hardcore).
-- **Détection réelle des versions OpenGL ES et Vulkan :** remplacement des mentions statiques par les versions réellement prises en charge par l'appareil et le moteur de rendu GPU actif avec les prérequis minimaux.
-- **Gestionnaire de pilotes GPU Vulkan personnalisés sur Android (comme STORM DS) :** détection du GPU, catalogue Turnip / Adreno / Mali recommandé, progression de téléchargement en direct, extraction ZIP sécurisée et import local.
+- **Catalogue intégré STORM GAMES WORLD (GB / GBC / GBA) :** ajout du catalogue complet de jeux Nintendo Game Boy, Game Boy Color et Game Boy Advance sur Android et Windows (adapté aux thèmes STORM GBCA, aligné sur STORM SWITCH et STORM DS), avec miroir `storm-games.world`, recherche, filtres et progression en direct.
+- **Intégration des traductions (`/translations`) :** recherche directe et téléchargement des traductions russes officielles de STORM TEAM pour GB, GBC et GBA avec version, notes de modification et badge `RUS`.
+- **Vérification en arrière-plan des mises à jour de jeux et traductions avec remplacement sécurisé :** compare les ROM locales au catalogue principal et à `/translations`, supprime l'ancien fichier uniquement après vérification du téléchargement et migre automatiquement 100% des sauvegardes (`.sav`), états, `.raprog`, codes, jaquettes et favoris.
+- **Sélecteur de source de mise à jour (`GitHub` / `STORM GAMES WORLD`) :** choisissez la source directement lorsqu'une mise à jour est disponible, ainsi que la source par défaut dans les Paramètres sur Android et Windows.
 
 ## Español
-- **AMD FSR 1 (EASU + RCAS) y AMD FSR 3 (Temporal + RCAS):** nuevos shaders GPU multipasada en Android (OpenGL ES 3.2, Vulkan y `.slangp`) y Windows (renderizador GPU SkiaSharp SkSL con EASU de 12 muestras, jitter Halton de 32 fases, recorte de varianza YCoCg, reproyección por flujo óptico y nitidez RCAS de 5 muestras).
-- **Nitidez FSR RCAS (`0..100%`) y modos de calidad:** ajuste de nitidez RCAS y 4 modos de calidad (`Calidad 67% - 1.5x` hasta `Ultra Rendimiento 33% - 3.0x`) en Ajustes y en el menú de Pausa en ambas plataformas.
-- **Generación de fotogramas opcional (`60 -> 120 FPS`):** interpolación intermedia por flujo óptico con detección de cortes de escena para pantallas de 120 Hz (desactivada por defecto, ~16.7 ms de latence, 100% compatible con RetroAchievements Hardcore).
-- **Detección real de versiones de OpenGL ES y Vulkan:** reemplaza las etiquetas estáticas en Ajustes de vídeo por las versiones reales compatibles del dispositivo, el renderizador GPU activo y los requisitos mínimos.
-- **Gestor y descargador de drivers Vulkan GPU personalizados en Android (como STORM DS):** detección de GPU, catálogo Turnip / Adreno / Mali recomendado, progreso en vivo, extracción ZIP segura e importación local.
+- **Catálogo integrado STORM GAMES WORLD (GB / GBC / GBA):** catálogo completo para Nintendo Game Boy, Game Boy Color y Game Boy Advance en Android y Windows (estilizado con los temas de STORM GBCA y alineado con STORM SWITCH y STORM DS), con espejo `storm-games.world`, búsqueda, filtros y progreso en vivo.
+- **Integración de traducciones (`/translations`):** búsqueda directa y descarga de traducciones rusas oficiales de STORM TEAM para GB, GBC y GBA con versión, registro de cambios y distintivo `RUS`.
+- **Comprobación en segundo plano de actualizaciones de juegos y traducciones con reemplazo seguro:** compara las ROM locales con el catálogo principal y `/translations`, elimina el archivo antiguo tras verificar la descarga y migra automáticamente el 100% de partidas (`.sav`), estados, `.raprog`, trucos, carátulas y favoritos.
+- **Selector dual de fuente de actualización (`GitHub` / `STORM GAMES WORLD`):** elige la fuente directamente al detectar una actualización y configura la fuente predeterminada en Ajustes tanto en Android como en Windows.
 
 ## Italiano
-- **AMD FSR 1 (EASU + RCAS) e AMD FSR 3 (Temporal + RCAS):** aggiunti shader GPU multi-pass su Android (OpenGL ES 3.2, Vulkan e `.slangp`) e Windows (renderer GPU SkiaSharp SkSL con EASU a 12 tap, jitter Halton a 32 fasi, variance clipping YCoCg, riproiezione con flusso ottico e nitidezza RCAS a 5 tap).
-- **Nitidezza FSR RCAS (`0..100%`) e modalità qualità:** controllo nitidezza RCAS e 4 preset (`Qualità 67% - 1.5x` fino a `Prestazioni Ultra 33% - 3.0x`) nelle Impostazioni e nel menu Pausa su entrambe le piattaforme.
-- **Generazione fotogrammi opzionale (`60 -> 120 FPS`):** interpolazione intermedia basata su flusso ottico con fallback sui cambi di scena per display a 120 Hz (disattivata di default, ~16.7 ms di latenza, 100% compatibile con RetroAchievements Hardcore).
-- **Rilevamento reale versioni OpenGL ES e Vulkan:** sostituite le etichette statiche nelle Impostazioni video con le versioni API effettivamente supportate dal dispositivo e il renderer GPU attivo con i requisiti minimi.
-- **Gestore e downloader driver Vulkan GPU personalizzati su Android (come STORM DS):** rilevamento GPU, catalogo Turnip / Adreno / Mali consigliato, avanzamento download in tempo reale, estrazione ZIP sicura e importazione locale.
+- **Catalogo integrato STORM GAMES WORLD (GB / GBC / GBA):** catalogo completo per Nintendo Game Boy, Game Boy Color e Game Boy Advance su Android e Windows (coerente con i temi STORM GBCA e allineato a STORM SWITCH e STORM DS), con mirror `storm-games.world`, ricerca, filtri e avanzamento in tempo reale.
+- **Integrazione traduzioni (`/translations`):** ricerca diretta e download delle traduzioni russe ufficiali STORM TEAM per GB, GBC e GBA con versione, changelog e badge `RUS`.
+- **Controllo in background degli aggiornamenti di giochi e traduzioni con sostituzione sicura:** confronta le ROM locali con il catalogo principale e `/translations`, rimuove il vecchio file solo dopo la verifica del download e migra automaticamente il 100% di salvataggi (`.sav`), stati, `.raprog`, trucchi, copertine e preferiti.
+- **Selettore doppia fonte aggiornamento (`GitHub` / `STORM GAMES WORLD`):** scegli la fonte di download direttamente alla rilevazione di un aggiornamento e imposta la fonte predefinita nelle Impostazioni su Android e Windows.
 
 ## Português
-- **AMD FSR 1 (EASU + RCAS) e AMD FSR 3 (Temporal + RCAS):** shaders GPU multipassagem no Android (OpenGL ES 3.2, Vulkan e `.slangp`) e Windows (renderizador GPU SkiaSharp SkSL com EASU de 12 amostras, jitter Halton de 32 fases, recorte de variância YCoCg, reprojeção por fluxo óptico e nitidez RCAS de 5 amostras).
-- **Nitidez FSR RCAS (`0..100%`) e modos de qualidade:** ajuste de nitidez RCAS e 4 modos (`Qualidade 67% - 1.5x` até `Desempenho Ultra 33% - 3.0x`) nas Configurações e no menu de Pausa em ambas as plataformas.
-- **Geração de quadros opcional (`60 -> 120 FPS`):** interpolação intermediária por fluxo óptico com proteção em cortes de cena para telas de 120 Hz (desativada por padrão, ~16.7 ms de latência, 100% compatível com RetroAchievements Hardcore).
-- **Detecção real das versões OpenGL ES e Vulkan:** substituiu rótulos estáticos nas Configurações de Vídeo pelas versões reais suportadas pelo dispositivo e pelo renderizador GPU ativo com requisitos mínimos.
-- **Gerenciador e baixador de drivers Vulkan GPU personalizados no Android (como no STORM DS):** detecção de GPU, catálogo Turnip / Adreno / Mali recomendado, progresso de download em tempo real, extração ZIP segura e importação local.
+- **Catálogo integrado STORM GAMES WORLD (GB / GBC / GBA):** catálogo completo para Nintendo Game Boy, Game Boy Color e Game Boy Advance no Android e Windows (combinando com os temas do STORM GBCA e alinhado ao STORM SWITCH e STORM DS), com espelho `storm-games.world`, busca, filtros e progresso ao vivo.
+- **Integração de traduções (`/translations`):** busca direta e download de traduções russas oficiais da STORM TEAM para GB, GBC e GBA com versão, registro de alterações e selo `RUS`.
+- **Verificação em segundo plano de atualizações de jogos e traduções com substituição segura:** compara as ROMs locais com o catálogo principal e `/translations`, remove o arquivo antigo somente após verificar o download e migra automaticamente 100% dos saves (`.sav`), estados, `.raprog`, cheats, capas e favoritos.
+- **Seletor de fonte de atualização (`GitHub` / `STORM GAMES WORLD`):** escolha a fonte diretamente quando uma atualização for encontrada e defina a fonte padrão nas Configurações no Android e Windows.
 
 ## 日本語
-- **AMD FSR 1 (EASU + RCAS) および AMD FSR 3 (Temporal + RCAS):** Android (OpenGL ES 3.2、Vulkan、`.slangp`) と Windows (12タップ EASU、32位相 Halton ジッター、YCoCg 分散クリッピング、オプティカルフロー再投影、5タップ RCAS を備えた SkiaSharp GPU SkSL レンダラー) にマルチパス GPU シェーダーを搭載しました。
-- **FSR RCAS シャープネス (`0..100%`) と品質モード:** 両プラットフォームの設定画面とポーズメニューに RCAS シャープネス調整と4段階の品質プリセット (`67% - 1.5x` から `33% - 3.0x`) を追加しました。
-- **任意フレーム生成 (`60 -> 120 FPS`):** 120 Hz ディスプレイ向けに輝度勾配オプティカルフローによる中間フレーム補間を追加 (既定でオフ、入力遅延約 16.7 ms、RetroAchievements Hardcore 完全対応)。
-- **OpenGL ES / Vulkan 実サポートバージョンの検出:** ビデオ設定の固定表記を廃止し、実機が対応する OpenGL ES / Vulkan バージョン、有効な GPU レンダラー情報、最小要件を表示します。
-- **Android 向けカスタム Vulkan GPU ドライバー管理・ダウンローダー (STORM DS 準拠):** GPU 自動判定、推奨 Turnip / Adreno / Mali カタログ、リアルタイム進捗表示、安全な ZIP 展開、ローカルインポートに対応しました。
+- **内蔵 STORM GAMES WORLD カタログ (GB / GBC / GBA):** Android と Windows の両方に Nintendo Game Boy、Game Boy Color、Game Boy Advance 向け公式カタログを追加しました (STORM GBCA のテーマに対応し、STORM SWITCH や STORM DS と統一されたデザイン、`storm-games.world` ミラー切替、検索・フィルター、リアルタイム進捗表示に対応)。
+- **翻訳セクション統合 (`/translations`):** GB、GBC、GBA 向けの公式 STORM TEAM ロシア語翻訳をバージョン情報、更新履歴、`RUS` バッジ付きで直接検索・ダウンロードできます。
+- **安全な ROM 置換付きバックグラウンドゲーム・翻訳アップデート確認:** ローカル ROM とメインカタログおよび `/translations` のバージョンを比較し、検証済みダウンロード後に旧 ROM を削除して、セーブデータ (`.sav`)、ステート、`.raprog`、チート、カバー画像、お気に入りを 100% 自動移行します。
+- **アップデート取得元選択 (`GitHub` / `STORM GAMES WORLD`):** アプリ更新ダイアログ上でダウンロード元を直接切り替えられるほか、Android と Windows の設定画面で既定の取得元を指定できます。
 
 ## 简体中文
-- **AMD FSR 1 (EASU + RCAS) 与 AMD FSR 3 (Temporal + RCAS)：** 为 Android (OpenGL ES 3.2、Vulkan、`.slangp`) 和 Windows (SkiaSharp GPU SkSL 渲染器，集成 12 采样 EASU、32 相位 Halton 抖动、YCoCg 方差裁剪、光流重投影与 5 采样 RCAS) 新增多通道 GPU 超分着色器。
-- **FSR RCAS 锐化 (`0..100%`) 与质量模式：** 在双端设置与游戏内暂停菜单中提供 RCAS 锐化滑块及 4 档质量预设 (`67% - 1.5x` 至 `33% - 3.0x`)。
-- **可选帧生成 (`60 -> 120 FPS`)：** 为 120 Hz 显示器新增基于亮度梯度光流的中间帧插值与切屏保护 (默认关闭，约 16.7 ms 输入延迟，100% 兼容 RetroAchievements Hardcore)。
-- **真实 OpenGL ES 与 Vulkan 版本检测：** 视频设置中不再显示静态版本号，改为实时显示设备支持的 API 版本、当前活动 GPU 渲染器信息及最低硬件要求。
-- **Android 自定义 Vulkan GPU 驱动管理器与下载器 (同步 STORM DS)：** 支持自动识别 GPU、推荐 Turnip / Adreno / Mali 驱动目录、实时下载进度、安全 ZIP 解压与本地导入。
+- **内置 STORM GAMES WORLD 目录 (GB / GBC / GBA)：** 在 Android 和 Windows 上集成 Nintendo Game Boy、Game Boy Color 与 Game Boy Advance 游戏目录 (完美适配 STORM GBCA 主题并与 STORM SWITCH、STORM DS 风格一致)，支持 `storm-games.world` 镜像回退、搜索、筛选与实时下载进度。
+- **翻译专区集成 (`/translations`)：** 直接浏览并下载 STORM TEAM 官方 GB、GBC 和 GBA 俄语汉化版本，显示版本号、更新日志与 `RUS` 标识。
+- **后台游戏与翻译更新检测及安全替换：** 自动对比本地 ROM 版本与主目录及 `/translations`，仅在校验新 ROM 下载完成后才删除旧文件，并自动 100% 迁移存档 (`.sav`)、即时存档、`.raprog`、金手指、封面与收藏夹。
+- **双源更新选择器 (`GitHub` / `STORM GAMES WORLD`)：** 发现更新时可直接在弹窗中切换下载来源，并在 Android 与 Windows 的设置中配置默认更新来源。
 
 ## 한국어
-- **AMD FSR 1 (EASU + RCAS) 및 AMD FSR 3 (Temporal + RCAS):** Android(OpenGL ES 3.2, Vulkan, `.slangp`)와 Windows(12탭 EASU, 32위상 Halton 지터, YCoCg 분산 클리핑, 광학 흐름 재투영, 5탭 RCAS를 구현한 SkiaSharp GPU SkSL 렌더러)에 멀티패스 GPU 셰이더를 추가했습니다.
-- **FSR RCAS 선명도 (`0..100%`) 및 품질 모드:** 양 플랫폼 설정과 일시정지 메뉴에서 RCAS 선명도 조절과 4단계 품질 프리셋(`67% - 1.5x` ~ `33% - 3.0x`)을 지원합니다.
-- **선택형 프레임 생성 (`60 -> 120 FPS`):** 120 Hz 디스플레이를 위한 휘도 기울기 광학 흐름 기반 중간 프레임 보간 및 장면 전환 보호 기능 추가 (기본 꺼짐, 입력 지연 약 16.7 ms, RetroAchievements Hardcore 100% 호환).
-- **실제 OpenGL ES 및 Vulkan 버전 감지:** 비디오 설정의 고정 라벨을 기기에서 실제 지원하는 API 버전, 활성 GPU 렌더러 정보 및 최소 사양 표시로 교체했습니다.
-- **Android 커스텀 Vulkan GPU 드라이버 관리자 및 다운로더 (STORM DS 방식):** GPU 자동 감지, 추천 Turnip / Adreno / Mali 카탈로그, 실시간 다운로드 진행률, 안전한 ZIP 압축 해제 및 로컬 가져오기를 제공합니다.
+- **내장 STORM GAMES WORLD 카탈로그 (GB / GBC / GBA):** Android 및 Windows에 Nintendo Game Boy, Game Boy Color, Game Boy Advance 게임 카탈로그를 추가했습니다 (STORM GBCA 테마에 맞추고 STORM SWITCH 및 STORM DS와 통일된 스타일, `storm-games.world` 미러 지원, 검색, 필터, 실시간 다운로드 진행률 제공).
+- **번역 섹션 통합 (`/translations`):** GB, GBC, GBA용 공식 STORM TEAM 러시아어 번역을 버전 정보, 변경 내역 및 `RUS` 배지와 함께 직접 검색하고 다운로드할 수 있습니다.
+- **안전한 교체를 지원하는 백그라운드 게임 및 번역 업데이트 확인:** 로컬 ROM 버전을 메인 카탈로그 및 `/translations`와 비교하여 다운로드 검증 후 이전 ROM을 삭제하고 세이브 (`.sav`), 상태 저장, `.raprog`, 치트, 커버 및 즐겨찾기를 100% 자동 마이그레이션합니다.
+- **이중 업데이트 소스 선택기 (`GitHub` / `STORM GAMES WORLD`):** 업데이트 발견 시 창에서 다운로드 소스를 직접 선택할 수 있으며 Android 및 Windows 설정에서 기본 업데이트 소스를 지정할 수 있습니다.
 
 ## हिन्दी
-- **AMD FSR 1 (EASU + RCAS) और AMD FSR 3 (Temporal + RCAS):** Android (OpenGL ES 3.2, Vulkan और `.slangp`) तथा Windows (12-टैप EASU, 32-फ़ेज़ Halton जिटर, YCoCg वैरिएंस क्लिपिंग, ऑप्टिकल-फ़्लो रीप्रोजेक्शन और 5-टैप RCAS के साथ SkiaSharp GPU SkSL रेंडरर) में मल्टी-पास GPU अपस्केलिंग शेडर जोड़े गए हैं।
-- **FSR RCAS शार्पनेस (`0..100%`) और गुणवत्ता मोड:** दोनों प्लेटफ़ॉर्म की सेटिंग्स और पॉज़ मेन्यू में RCAS शार्पनेस नियंत्रण तथा 4 गुणवत्ता प्रीसेट (`67% - 1.5x` से `33% - 3.0x`) जोड़े गए हैं।
-- **वैकल्पिक फ़्रेम जनरेशन (`60 -> 120 FPS`):** 120 Hz डिस्प्ले के लिए ल्यूमा-ग्रेडिएंट ऑप्टिकल फ़्लो मध्य-फ़्रेम इंटरपोलेशन और सीन-कट फ़ॉलबैक जोड़ा गया (डिफ़ॉल्ट रूप से बंद, ~16.7 ms विलंब, RetroAchievements Hardcore से 100% संगत)।
-- **वास्तविक OpenGL ES और Vulkan संस्करण पहचान:** वीडियो सेटिंग्स में स्थिर लेबल हटाकर डिवाइस द्वारा समर्थित वास्तविक API संस्करण, सक्रिय GPU रेंडरर जानकारी और न्यूनतम आवश्यकताएँ दिखाई गई हैं।
-- **Android पर कस्टम Vulkan GPU ड्राइवर प्रबंधक और डाउनलोडर (STORM DS जैसा):** स्वचालित GPU पहचान, अनुशंसित Turnip / Adreno / Mali कैटलॉग, लाइव डाउनलोड प्रगति, सुरक्षित ZIP अनपैक और स्थानीय आयात शामिल है।
+- **अंतर्निहित STORM GAMES WORLD कैटलॉग (GB / GBC / GBA):** Android और Windows दोनों पर Nintendo Game Boy, Game Boy Color और Game Boy Advance के लिए पूरा कैटलॉग जोड़ा गया है (STORM GBCA थीम के अनुरूप तथा STORM SWITCH और STORM DS के साथ एकरूप, `storm-games.world` मिरर फ़ॉलबैक, खोज, फ़िल्टर और लाइव डाउनलोड प्रगति सहित)।
+- **अनुवाद अनुभाग एकीकरण (`/translations`):** GB, GBC और GBA के लिए आधिकारिक STORM TEAM रूसी अनुवादों की सीधी खोज और डाउनलोड, संस्करण, बदलाव सूची और `RUS` बैज के साथ।
+- **सुरक्षित प्रतिस्थापन के साथ पृष्ठभूमि गेम और अनुवाद अपडेट जांच:** स्थानीय ROM संस्करणों की तुलना मुख्य कैटलॉग और `/translations` से करता है, सत्यापित डाउनलोड के बाद ही पुरानी फ़ाइल हटाता है और 100% सेव (`.sav`), सेव स्टेट, `.raprog`, चीट्स, कवर और पसंदीदा स्वचालित रूप से माइग्रेट करता है।
+- **दोहरे स्रोत वाला अपडेट चयनकर्ता (`GitHub` / `STORM GAMES WORLD`):** अपडेट मिलने पर सीधे डाउनलोड स्रोत चुनें, और Android तथा Windows की सेटिंग्स में डिफ़ॉल्ट अपडेट स्रोत निर्धारित करें।

@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit
  */
 object BoxArtRepository {
     private const val TAG = "BoxArtRepository"
-    private const val USER_AGENT = "STORM-GBCA/1.8.0 (Android)"
+    private const val USER_AGENT = "STORM-GBCA/1.9.0 (Android)"
 
     private const val REPO_GB = "Nintendo_-_Game_Boy"
     private const val REPO_GBC = "Nintendo_-_Game_Boy_Color"
@@ -138,8 +138,11 @@ object BoxArtRepository {
         return null
     }
 
+    fun getCustomCoverFile(context: Context, rom: RomEntry): File =
+        File(customDir(context), "${coverKey(rom)}.png")
+
     fun getCustomCoverPath(context: Context, rom: RomEntry): String? {
-        val custom = File(customDir(context), "${coverKey(rom)}.png")
+        val custom = getCustomCoverFile(context, rom)
         return if (custom.isFile && custom.length() > 128L) custom.absolutePath else null
     }
 

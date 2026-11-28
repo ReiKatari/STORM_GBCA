@@ -1495,6 +1495,16 @@ public class SettingsView : Grid
                 CommitSave();
             }));
         p.Children.Add(CreateCheck("Автоматически проверять обновления при запуске", s.AutoCheckUpdates, v => s.AutoCheckUpdates = v));
+        p.Children.Add(CreateCombo(
+            GbcaLoc.T("DefaultUpdateSourceSetting"),
+            ["STORM GAMES WORLD", "GitHub"],
+            string.Equals(s.DefaultUpdateSource, "github", StringComparison.OrdinalIgnoreCase) ? 1 : 0,
+            idx => s.DefaultUpdateSource = idx == 1 ? "github" : "storm"));
+        p.Children.Add(CreateCheck(GbcaLoc.T("AutoCheckGameUpdatesSetting"), s.AutoCheckGameUpdates, v =>
+        {
+            s.AutoCheckGameUpdates = v;
+            if (v) _ = StormGbcaUiState.Instance.RefreshCatalogAndUpdatesAsync(forceRefresh: false);
+        }));
 
         var updBtn = new AuroraVolumetricButton { Height = 34, Padding = new Thickness(16, 0), HorizontalAlignment = HorizontalAlignment.Left };
         updBtn.Content = new TextBlock { Text = "Проверить обновления сейчас", FontSize = 12, FontWeight = FontWeight.Bold, Foreground = StormThemeBrushes.PrimaryText, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };

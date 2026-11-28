@@ -31,6 +31,12 @@ data class UpdateReleaseInfo(
     val apkAsset: UpdateAsset?,
 )
 
+data class UpdateCheckResult(
+    val primary: UpdateReleaseInfo,
+    val stormRelease: UpdateReleaseInfo?,
+    val githubRelease: UpdateReleaseInfo?,
+)
+
 sealed interface UpdateDownloadState {
     data object Idle : UpdateDownloadState
     data class Downloading(val bytesRead: Long, val totalBytes: Long, val speedBytesPerSec: Long) : UpdateDownloadState
@@ -54,17 +60,39 @@ object StormUpdateMirrorClient {
             .build()
     }
 
-    suspend fun checkLatestUpdate(): UpdateReleaseInfo? = withContext(Dispatchers.IO) {
+    suspend fun checkLatestUpdate(preferredSource: String = "storm"): UpdateCheckResult? = withContext(Dispatchers.IO) {
         coroutineScope {
             val ghTask = async { fetchGitHubReleases() }
             val sgwTask = async { fetchSgwReleases() }
 
-            val all = (ghTask.await() + sgwTask.await())
-                .filter { it.apkAsset != null }
-                .sortedWith { a, b -> compareVersions(b.version, a.version) }
+            val ghReleases = ghTask.await().filter { it.apkAsset != null && compareVersions(it.version, BuildConfig.VERSION_NAME) > 0 }
+            val sgwReleases = sgwTask.await().filter { it.apkAsset != null && compareVersions(it.version, BuildConfig.VERSION_NAME) > 0 }
 
-            val best = all.firstOrNull() ?: return@coroutineScope null
-            if (compareVersions(best.version, BuildConfig.VERSION_NAME) > 0) best else null
+            val bestGh = ghReleases.maxWithOrNull { a, b -> compareVersions(a.version, b.version) }
+            val bestSgw = sgwReleases.maxWithOrNull { a, b -> compareVersions(a.version, b.version) }
+            if (bestGh == null && bestSgw == null) return@coroutineScope null
+
+            val highestVer = when {
+                bestGh != null && bestSgw != null ->
+                    if (compareVersions(bestSgw.version, bestGh.version) >= 0) bestSgw.version else bestGh.version
+                bestSgw != null -> bestSgw.version
+                else -> bestGh!!.version
+            }
+
+            val sgwForHighest = bestSgw?.takeIf { compareVersions(it.version, highestVer) == 0 }
+            val ghForHighest = bestGh?.takeIf { compareVersions(it.version, highestVer) == 0 }
+
+            val primary = if (preferredSource.equals("github", ignoreCase = true)) {
+                ghForHighest ?: sgwForHighest
+            } else {
+                sgwForHighest ?: ghForHighest
+            } ?: return@coroutineScope null
+
+            UpdateCheckResult(
+                primary = primary,
+                stormRelease = sgwForHighest,
+                githubRelease = ghForHighest,
+            )
         }
     }
 

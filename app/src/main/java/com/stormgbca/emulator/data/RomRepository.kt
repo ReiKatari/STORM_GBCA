@@ -17,6 +17,17 @@ object RomRepository {
     private val ROM_EXTENSIONS = setOf("gb", "gbc", "gba", "sgb")
     private val ARCHIVE_EXTENSIONS = setOf("zip", "7z")
 
+    fun getDefaultFallbackRomsDir(context: Context): File =
+        File(context.getExternalFilesDir(null) ?: context.filesDir, "roms").apply { mkdirs() }
+
+    fun hasLocalFallbackRoms(context: Context): Boolean {
+        val dir = File(context.getExternalFilesDir(null) ?: context.filesDir, "roms")
+        if (!dir.isDirectory) return false
+        return dir.listFiles()?.any { f ->
+            f.isFile && f.extension.lowercase() in (ROM_EXTENSIONS + ARCHIVE_EXTENSIONS)
+        } == true
+    }
+
     suspend fun scanFolders(context: Context): List<RomEntry> = withContext(Dispatchers.IO) {
         val existingByUri = GbcaPrefs.getCachedRoms().associateBy { it.uriString }
         val result = mutableListOf<RomEntry>()
@@ -24,14 +35,55 @@ object RomRepository {
 
         for (folderStr in folders) {
             val treeUri = runCatching { Uri.parse(folderStr) }.getOrNull() ?: continue
+            if (treeUri.scheme == "file") {
+                val dir = treeUri.path?.let { File(it) } ?: continue
+                if (dir.isDirectory) scanLocalDir(context, dir, existingByUri, result, depth = 0)
+                continue
+            }
             val rootDoc = DocumentFile.fromTreeUri(context, treeUri) ?: continue
             if (!rootDoc.exists() || !rootDoc.isDirectory) continue
             scanDocumentDir(context, rootDoc, existingByUri, result, depth = 0)
         }
 
+        val fallbackDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "roms")
+        if (fallbackDir.isDirectory) {
+            scanLocalDir(context, fallbackDir, existingByUri, result, depth = 0)
+        }
+
         val deduped = result.distinctBy { it.uriString }
         GbcaPrefs.saveCachedRoms(deduped)
         deduped
+    }
+
+    private fun scanLocalDir(
+        context: Context,
+        dir: File,
+        existingByUri: Map<String, RomEntry>,
+        out: MutableList<RomEntry>,
+        depth: Int,
+    ) {
+        if (depth > 8) return
+        val children = dir.listFiles() ?: return
+        for (child in children) {
+            if (child.isDirectory) {
+                scanLocalDir(context, child, existingByUri, out, depth + 1)
+                continue
+            }
+            val name = child.name
+            val ext = name.substringAfterLast('.', "").lowercase()
+            if (ext !in ROM_EXTENSIONS && ext !in ARCHIVE_EXTENSIONS) continue
+            val uri = Uri.fromFile(child)
+            val uriStr = uri.toString()
+            val prev = existingByUri[uriStr]
+            if (prev != null) {
+                out.add(prev)
+                continue
+            }
+            val inspected = inspectUri(context, uri, name)
+            if (inspected != null) {
+                out.add(inspected)
+            }
+        }
     }
 
     private fun scanDocumentDir(

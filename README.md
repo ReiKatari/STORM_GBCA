@@ -6,12 +6,12 @@
 
 <p align="center">
   <strong>Флагманский кроссплатформенный эмулятор Nintendo Game Boy, Game Boy Color и Game Boy Advance для Android и Windows x64 (mGBA + SameBoy + Vulkan 1.1 + RetroArch librashader + 40 аутентичных 3D-скинов + Link Cable / Wireless RFU / Dolphin JoyBus / GB Printer + интерфейс STORM DS Watermelon / AuroraFluid)</strong><br />
-  Версия <code>1.8.0</code> | Платформы: <code>Android (arm64-v8a, armeabi-v7a, x86_64)</code> и <code>Windows x64</code>
+  Версия <code>1.9.0</code> | Платформы: <code>Android (arm64-v8a, armeabi-v7a, x86_64)</code> и <code>Windows x64</code>
 </p>
 
 <p align="center">
   <a href="https://github.com/ReiKatari/STORM_GBCA">GitHub Repository</a> -
-  <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.8.0">Релиз STORM GBCA 1.8.0</a> -
+  <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.9.0">Релиз STORM GBCA 1.9.0</a> -
   <a href="https://stormgamesworld.ru/programs?repo=STORM_GBCA">Страница на STORM GAMES WORLD</a> -
   <a href="PRIVACY_POLICY.md">Политика конфиденциальности (Privacy Policy)</a> -
   <a href="THIRD_PARTY_LICENSES.md">Лицензии и компоненты (Third-Party Licenses)</a>
@@ -27,18 +27,16 @@
 
 ---
 
-## Что нового в версии 1.8.0
+## Что нового в версии 1.9.0
 
-- **AMD FSR 1 (EASU + RCAS) и AMD FSR 3 (Temporal + RCAS) на Android и Windows**:
-  - На Android реализованы многопроходные GPU-шейдеры **AMD FSR 1** и **AMD FSR 3** для OpenGL ES 3.2, Vulkan и RetroArch `.slangp`, а на Windows Desktop добавлен аппаратный GPU-рендерер **SkiaSharp 3.119.4** (`ISkiaSharpApiLeaseFeature` + SkSL) с двухпроходными пайплайнами EASU/Temporal + RCAS.
-- **Настройка резкости FSR RCAS (`0..100%`) и 4 режима качества (`67% - 1.5x` .. `33% - 3.0x`)**:
-  - Полный контроль детализации и масштаба в Настройках и в игровом меню паузы на обеих платформах.
-- **Необязательная генерация кадров (`60 -> 120 FPS`)**:
-  - Интерполяция промежуточного кадра на основе оптического потока по градиентам яркости для дисплеев 120 Гц (отключена по умолчанию, не меняет тайминг ядра `59.7275 Гц`, 100% совместима с RetroAchievements Hardcore).
-- **Реальное определение версий OpenGL ES / Vulkan и активного GPU-рендерера**:
-  - В настройках видео статичные подписи заменены на фактически поддерживаемые устройством версии OpenGL ES / Vulkan и активный Skia GPU-бэкенд с указанием минимальных требований (`OpenGL 3.0 / Vulkan 1.1`).
-- **Менеджер и загрузчик пользовательских драйверов Vulkan GPU на Android (как в STORM DS)**:
-  - Автоопределение модели GPU, каталог рекомендуемых драйверов Turnip / Adreno / Mali с GitHub, живой прогресс загрузки, безопасная распаковка ZIP-архивов и локальный импорт.
+- **Встроенный каталог STORM GAMES WORLD (GB / GBC / GBA)**:
+  - Полноценный каталог игр и официальных переводов прямо внутри **STORM GBCA** на Android и Windows (оформленный в стиле тем STORM GBCA, единый стандарт с **STORM SWITCH** и **STORM DS**), с поддержкой основного хоста `stormgamesworld.ru` и резервного зеркала `storm-games.world`, поиском, фильтрами по платформам (`GB`, `GBC`, `GBA`), живым прогрессом загрузки и безопасной распаковкой ZIP-архивов.
+- **Прямая интеграция раздела переводов (`/translations`)**:
+  - Удобный поиск и прямая загрузка официальных русских переводов команды **STORM TEAM** для Game Boy, Game Boy Color и Game Boy Advance с отображением версии, сборки, списка изменений и бейджа `RUS`.
+- **Фоновая проверка обновлений игр и переводов с безопасной заменой ROM**:
+  - Автоматически сверяет локальную библиотеку ROM с основным каталогом и `/translations`, находит новые версии и доступные русские переводы, при обновлении скачивает и проверяет новый ROM, удаляет старый файл и автоматически переносит 100% сохранений (`.sav`), слотов состояний, прогресса `.raprog`, читов, обложек и избранного.
+- **Выбор источника обновления (`GitHub` / `STORM GAMES WORLD`)**:
+  - Прямо в окне обновления приложения можно выбрать источник загрузки (`STORM GAMES WORLD` или `GitHub`), а в Настройках на Android и Windows задается источник обновлений по умолчанию и переключатель фоновой проверки обновлений игр.
 
 ---
 
@@ -63,13 +61,13 @@
 
 ---
 
-## Релиз 1.8.0
+## Релиз 1.9.0
 
 | Файл релиза | Назначение | Ключевые возможности |
 | --- | --- | --- |
-| `STORM_GBCA_1.8.0.apk` | Подписанная универсальная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`) | Шейдеры **AMD FSR 1** (EASU + RCAS) и **AMD FSR 3** (Temporal + RCAS) для GLES 3.2, Vulkan и `.slangp`, генерация кадров `60 -> 120 FPS`, менеджер и загрузчик драйверов Vulkan GPU (Turnip / Adreno / Mali) и реальное определение версий OpenGL ES / Vulkan |
-| `STORM_GBCA_1.8.0_Windows.zip` | Портативная сборка для Windows 10/11 (x64) | Автономный `STORM GBCA.exe` + нативное ядро `storm_gbca_core.dll`, новый GPU-рендерер **SkiaSharp 3.119.4** (SkSL) с **AMD FSR 1**, **AMD FSR 3**, настройкой резкости RCAS (`0..100%`) и режимов качества, генерацией кадров `60 -> 120 FPS` и определением активного GPU-бэкенда |
-| `STORM_GBCA_1.8.0_Setup.exe` | Установщик для Windows 10/11 (x64) | Эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`), распаковка в `%LOCALAPPDATA%\Programs\STORM GBCA`, создание ярлыков, регистрация в Windows и чистое удаление |
+| `STORM_GBCA_1.9.0.apk` | Подписанная универсальная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`) | Встроенный каталог **STORM GAMES WORLD** (GB / GBC / GBA), интеграция `/translations`, фоновая проверка обновлений игр с переносом сохранений, выбор источника обновлений (`STORM GAMES WORLD` / `GitHub`), шейдеры **AMD FSR 1** и **AMD FSR 3** |
+| `STORM_GBCA_1.9.0_Windows.zip` | Портативная сборка для Windows 10/11 (x64) | Автономный `STORM GBCA.exe` + нативное ядро `storm_gbca_core.dll`, встроенный каталог **STORM GAMES WORLD** и `/translations`, фоновая проверка обновлений ROM с переносом сохранений (`.sav`, слоты, `.raprog`, читы, избранное) и выбор источника обновлений (`STORM GAMES WORLD` / `GitHub`) |
+| `STORM_GBCA_1.9.0_Setup.exe` | Установщик для Windows 10/11 (x64) | Эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`), распаковка в `C:\Program Files\STORM GBCA`, создание ярлыков, регистрация в Windows и чистое удаление |
 
 ---
 
@@ -123,9 +121,9 @@ dotnet publish windows/src/StormGbca.Desktop/StormGbca.Desktop.csproj -c Release
 ./gradlew :app:assembleRelease --max-workers=3 -Dorg.gradle.priority=low
 ```
 Готовые артефакты релиза сохраняются в папку `releases/`:
-- `releases/STORM_GBCA_1.8.0.apk`
-- `releases/STORM_GBCA_1.8.0_Windows.zip`
-- `releases/STORM_GBCA_1.8.0_Setup.exe`
+- `releases/STORM_GBCA_1.9.0.apk`
+- `releases/STORM_GBCA_1.9.0_Windows.zip`
+- `releases/STORM_GBCA_1.9.0_Setup.exe`
 
 ---
 

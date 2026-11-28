@@ -25,7 +25,7 @@ object VulkanDriverRepository {
     private const val CACHE_TTL_MS = 30L * 60L * 1000L
     private const val RELEASES_PER_PAGE = 10
     private const val MAX_CONCURRENT_REQUESTS = 4
-    const val USER_AGENT = "STORM-GBCA/1.8.0 (Android)"
+    const val USER_AGENT = "STORM-GBCA/1.9.0 (Android)"
 
     val STORM_DRIVER_MIRRORS: List<String> = listOf(
         "https://stormgamesworld.ru/uploads/programs/STORM_DRIVER/STORM_DRIVER_12.0.0.zip",
