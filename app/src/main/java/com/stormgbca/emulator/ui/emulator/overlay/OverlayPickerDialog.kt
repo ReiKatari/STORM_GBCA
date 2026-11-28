@@ -453,6 +453,17 @@ fun OverlayPickerDialog(
                     )
 
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(stringResource(R.string.overlay_use_analog_stick), color = colors.text, fontSize = 13.sp)
+                            Text(stringResource(R.string.overlay_use_analog_stick_sub), color = colors.text2, fontSize = 10.5.sp)
+                        }
+                        WatermelonSwitch(
+                            checked = profile.useAnalogStick,
+                            onCheckedChange = { c -> GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(useAnalogStick = c) } },
+                        )
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.overlay_separate_ab), color = colors.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         WatermelonSwitch(
                             checked = profile.separateABButtons,

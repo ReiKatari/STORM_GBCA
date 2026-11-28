@@ -407,4 +407,12 @@
     <string name="update_dialog_remind_later">稍后提醒</string>
     <string name="update_dialog_skip_version">跳过版本</string>
     <string name="update_dialog_open_page">打开发布页面</string>
+    <string name="overlay_use_analog_stick">使用摇杆替代方向键</string>
+    <string name="overlay_use_analog_stick_sub">将屏幕方向键替换为顺滑的 360 度摇杆</string>
+    <string name="layout_stick">摇杆</string>
+    <string name="rom_folders_empty">尚未添加 ROM 文件夹。点击下方按钮添加。</string>
+    <string name="remove_rom_folder">移除文件夹</string>
+    <string name="ctrl_section_gb">Game Boy (GB)</string>
+    <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
+    <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
 </resources>

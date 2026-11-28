@@ -74,40 +74,40 @@ data class OrientationControlsLayout(
     val quickLoadBtnPos: CustomControlPos,
 ) {
     companion object {
+        @Suppress("UNUSED_PARAMETER")
         fun defaultPortrait(hasShoulders: Boolean = true): OrientationControlsLayout {
-            val qy = if (hasShoulders) 0.655f else 0.610f
+            val qy = 0.048f
             return OrientationControlsLayout(
-                dpadPos = CustomControlPos(0.175f, 0.810f, 1.0f),
-                abPos = CustomControlPos(0.825f, 0.810f, 1.0f),
-                btnAPos = CustomControlPos(0.895f, 0.765f, 1.0f),
-                btnBPos = CustomControlPos(0.735f, 0.855f, 1.0f),
-                selectPos = CustomControlPos(0.360f, 0.925f, 1.0f),
-                startPos = CustomControlPos(0.640f, 0.925f, 1.0f),
-                lPos = CustomControlPos(0.115f, 0.580f, 1.0f),
-                rPos = CustomControlPos(0.885f, 0.580f, 1.0f),
-                rewindBtnPos = CustomControlPos(0.140f, qy, 1.0f),
-                fastForwardBtnPos = CustomControlPos(0.320f, qy, 1.0f),
+                dpadPos = CustomControlPos(0.185f, 0.745f, 1.0f),
+                abPos = CustomControlPos(0.815f, 0.745f, 1.0f),
+                btnAPos = CustomControlPos(0.910f, 0.688f, 1.0f),
+                btnBPos = CustomControlPos(0.705f, 0.802f, 1.0f),
+                selectPos = CustomControlPos(0.335f, 0.922f, 1.0f),
+                startPos = CustomControlPos(0.665f, 0.922f, 1.0f),
+                lPos = CustomControlPos(0.185f, 0.565f, 1.0f),
+                rPos = CustomControlPos(0.815f, 0.565f, 1.0f),
+                rewindBtnPos = CustomControlPos(0.120f, qy, 1.0f),
+                fastForwardBtnPos = CustomControlPos(0.310f, qy, 1.0f),
                 menuBtnPos = CustomControlPos(0.500f, qy, 1.0f),
-                quickSaveBtnPos = CustomControlPos(0.680f, qy, 1.0f),
-                quickLoadBtnPos = CustomControlPos(0.860f, qy, 1.0f),
+                quickSaveBtnPos = CustomControlPos(0.690f, qy, 1.0f),
+                quickLoadBtnPos = CustomControlPos(0.880f, qy, 1.0f),
             )
         }
 
         fun defaultLandscape(): OrientationControlsLayout = OrientationControlsLayout(
-            // All controls lowered ergonomically outside the game screen, keeping SELECT & START unchanged
-            dpadPos = CustomControlPos(0.100f, 0.700f, 1.0f),
-            abPos = CustomControlPos(0.900f, 0.700f, 1.0f),
-            btnAPos = CustomControlPos(0.942f, 0.640f, 1.0f),
-            btnBPos = CustomControlPos(0.848f, 0.760f, 1.0f),
-            selectPos = CustomControlPos(0.105f, 0.905f, 1.0f),
-            startPos = CustomControlPos(0.865f, 0.905f, 1.0f),
-            lPos = CustomControlPos(0.088f, 0.210f, 1.0f),
-            rPos = CustomControlPos(0.912f, 0.210f, 1.0f),
-            rewindBtnPos = CustomControlPos(0.052f, 0.400f, 1.0f),
-            fastForwardBtnPos = CustomControlPos(0.130f, 0.400f, 1.0f),
-            quickSaveBtnPos = CustomControlPos(0.870f, 0.400f, 1.0f),
-            quickLoadBtnPos = CustomControlPos(0.948f, 0.400f, 1.0f),
-            menuBtnPos = CustomControlPos(0.955f, 0.925f, 1.0f),
+            dpadPos = CustomControlPos(0.100f, 0.615f, 1.0f),
+            abPos = CustomControlPos(0.895f, 0.615f, 1.0f),
+            btnAPos = CustomControlPos(0.948f, 0.530f, 1.0f),
+            btnBPos = CustomControlPos(0.825f, 0.695f, 1.0f),
+            selectPos = CustomControlPos(0.100f, 0.905f, 1.0f),
+            startPos = CustomControlPos(0.900f, 0.905f, 1.0f),
+            lPos = CustomControlPos(0.100f, 0.340f, 1.0f),
+            rPos = CustomControlPos(0.895f, 0.340f, 1.0f),
+            rewindBtnPos = CustomControlPos(0.055f, 0.090f, 1.0f),
+            fastForwardBtnPos = CustomControlPos(0.138f, 0.090f, 1.0f),
+            quickSaveBtnPos = CustomControlPos(0.862f, 0.090f, 1.0f),
+            quickLoadBtnPos = CustomControlPos(0.945f, 0.090f, 1.0f),
+            menuBtnPos = CustomControlPos(0.500f, 0.068f, 1.0f),
         )
     }
 }
@@ -145,7 +145,8 @@ data class SystemOverlayProfile(
     val showQuickSaveBtn: Boolean = true,
     val showQuickLoadBtn: Boolean = true,
     val separateABButtons: Boolean = false,
-    val abSpacingPercent: Int = 128, // 100..180% gap multiplier so A and B never overlap
+    val abSpacingPercent: Int = 150, // 100..180% gap multiplier so A and B never overlap
+    val useAnalogStick: Boolean = false,
     val portraitScreen: ScreenRectConfig = ScreenRectConfig(
         useCustom = false, screenPreset = 0, hideSkinInFullscreen = true, centerX = 0.50f, centerY = 0.28f, widthFraction = 0.94f, heightFraction = 0.46f, aspectMode = 0, rotationDeg = 0,
     ),
@@ -155,14 +156,14 @@ data class SystemOverlayProfile(
     val portraitControls: OrientationControlsLayout = OrientationControlsLayout.defaultPortrait(true),
     val landscapeControls: OrientationControlsLayout = OrientationControlsLayout.defaultLandscape(),
     // Legacy version 1 fields preserved for seamless JSON deserialization
-    val dpadPos: CustomControlPos = CustomControlPos(0.10f, 0.70f, 1.0f),
-    val abPos: CustomControlPos = CustomControlPos(0.90f, 0.70f, 1.0f),
-    val btnAPos: CustomControlPos = CustomControlPos(0.94f, 0.64f, 1.0f),
-    val btnBPos: CustomControlPos = CustomControlPos(0.85f, 0.76f, 1.0f),
-    val startSelectPos: CustomControlPos = CustomControlPos(0.50f, 0.92f, 1.0f),
-    val lPos: CustomControlPos = CustomControlPos(0.09f, 0.21f, 1.0f),
-    val rPos: CustomControlPos = CustomControlPos(0.91f, 0.21f, 1.0f),
-    val quickStripPos: CustomControlPos = CustomControlPos(0.50f, 0.14f, 1.0f),
+    val dpadPos: CustomControlPos = CustomControlPos(0.100f, 0.615f, 1.0f),
+    val abPos: CustomControlPos = CustomControlPos(0.895f, 0.615f, 1.0f),
+    val btnAPos: CustomControlPos = CustomControlPos(0.948f, 0.530f, 1.0f),
+    val btnBPos: CustomControlPos = CustomControlPos(0.825f, 0.695f, 1.0f),
+    val startSelectPos: CustomControlPos = CustomControlPos(0.500f, 0.922f, 1.0f),
+    val lPos: CustomControlPos = CustomControlPos(0.100f, 0.340f, 1.0f),
+    val rPos: CustomControlPos = CustomControlPos(0.895f, 0.340f, 1.0f),
+    val quickStripPos: CustomControlPos = CustomControlPos(0.500f, 0.068f, 1.0f),
 )
 
 @Serializable

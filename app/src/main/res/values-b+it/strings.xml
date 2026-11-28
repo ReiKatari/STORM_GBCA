@@ -407,4 +407,12 @@
     <string name="update_dialog_remind_later">Più tardi</string>
     <string name="update_dialog_skip_version">Salta</string>
     <string name="update_dialog_open_page">Apri pagina rilascio</string>
+    <string name="overlay_use_analog_stick">Stick analogico invece del D-Pad</string>
+    <string name="overlay_use_analog_stick_sub">Sostituisce il D-Pad su schermo con uno stick fluido a 360 gradi</string>
+    <string name="layout_stick">Stick</string>
+    <string name="rom_folders_empty">Nessuna cartella ROM aggiunta. Tocca sotto per aggiungerne una.</string>
+    <string name="remove_rom_folder">Rimuovi cartella</string>
+    <string name="ctrl_section_gb">Game Boy (GB)</string>
+    <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
+    <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
 </resources>

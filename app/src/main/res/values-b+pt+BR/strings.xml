@@ -407,4 +407,12 @@
     <string name="update_dialog_remind_later">Depois</string>
     <string name="update_dialog_skip_version">Ignorar</string>
     <string name="update_dialog_open_page">Abrir página da versão</string>
+    <string name="overlay_use_analog_stick">Analógico em vez do direcional</string>
+    <string name="overlay_use_analog_stick_sub">Substitui o direcional na tela por um analógico fluido de 360 graus</string>
+    <string name="layout_stick">Analógico</string>
+    <string name="rom_folders_empty">Nenhuma pasta ROM adicionada. Toque abaixo para adicionar.</string>
+    <string name="remove_rom_folder">Remover pasta</string>
+    <string name="ctrl_section_gb">Game Boy (GB)</string>
+    <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
+    <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
 </resources>

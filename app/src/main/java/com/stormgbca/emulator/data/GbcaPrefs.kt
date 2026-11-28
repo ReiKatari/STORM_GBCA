@@ -38,6 +38,14 @@ object GbcaPrefs {
     val gbOverlayState = mutableStateOf(defaultOverlayFor(ConsoleSystem.GB))
     val gbcOverlayState = mutableStateOf(defaultOverlayFor(ConsoleSystem.GBC))
     val gbaOverlayState = mutableStateOf(defaultOverlayFor(ConsoleSystem.GBA))
+    val romFoldersState = mutableStateOf<List<String>>(emptyList())
+    private var romFoldersDirty: Boolean = false
+
+    fun consumeRomFoldersDirty(): Boolean {
+        val d = romFoldersDirty
+        romFoldersDirty = false
+        return d
+    }
 
     var detectedTotalRamMb: Long = 4096L
         private set
@@ -48,7 +56,7 @@ object GbcaPrefs {
 
     fun defaultOverlayFor(system: ConsoleSystem): SystemOverlayProfile = when (system) {
         ConsoleSystem.GB -> SystemOverlayProfile(
-            layoutVersion = 3,
+            layoutVersion = 4,
             buttonStyle = "dmg_magenta",
             shaderOverlay = NativeCore.FILTER_LCD_GRID,
             showShoulders = false,
@@ -56,7 +64,7 @@ object GbcaPrefs {
             landscapeControls = OrientationControlsLayout.defaultLandscape(),
         )
         ConsoleSystem.GBC -> SystemOverlayProfile(
-            layoutVersion = 3,
+            layoutVersion = 4,
             buttonStyle = "gbc_atomic_purple",
             shaderOverlay = NativeCore.FILTER_RGB_SUBPIXEL,
             showShoulders = false,
@@ -64,7 +72,7 @@ object GbcaPrefs {
             landscapeControls = OrientationControlsLayout.defaultLandscape(),
         )
         ConsoleSystem.GBA -> SystemOverlayProfile(
-            layoutVersion = 3,
+            layoutVersion = 4,
             buttonStyle = "gba_indigo",
             shaderOverlay = NativeCore.FILTER_RGB_SUBPIXEL,
             showShoulders = true,
@@ -115,6 +123,7 @@ object GbcaPrefs {
         gbOverlayState.value = loadOverlayProfile(ConsoleSystem.GB)
         gbcOverlayState.value = loadOverlayProfile(ConsoleSystem.GBC)
         gbaOverlayState.value = loadOverlayProfile(ConsoleSystem.GBA)
+        romFoldersState.value = loadRomFolders()
     }
 
     private fun detectDeviceCapabilities(context: Context) {
@@ -217,17 +226,18 @@ object GbcaPrefs {
         if (!raw.isNullOrBlank()) {
             val decoded = runCatching { json.decodeFromString<SystemOverlayProfile>(raw) }.getOrNull()
             if (decoded != null) {
-                if (decoded.layoutVersion < 3) {
+                if (decoded.layoutVersion < 4) {
                     val hasLR = decoded.showShoulders || system == ConsoleSystem.GBA
                     val isCustom = decoded.layoutPreset.equals(OverlayLayoutPreset.CUSTOM.key, ignoreCase = true)
                     val migrated = if (decoded.layoutVersion < 2 || !isCustom) {
                         decoded.copy(
-                            layoutVersion = 3,
+                            layoutVersion = 4,
+                            abSpacingPercent = 150,
                             portraitControls = OrientationControlsLayout.defaultPortrait(hasShoulders = hasLR),
                             landscapeControls = OrientationControlsLayout.defaultLandscape(),
                         )
                     } else {
-                        decoded.copy(layoutVersion = 3)
+                        decoded.copy(layoutVersion = 4)
                     }
                     prefs.edit().putString(overlayPrefKey(system), json.encodeToString(migrated)).apply()
                     return migrated
@@ -254,18 +264,53 @@ object GbcaPrefs {
         prefs.edit().putString(overlayPrefKey(system), json.encodeToString(next)).apply()
     }
 
-    fun getRomFolders(): Set<String> = prefs.getStringSet("rom_folder_uris", emptySet()) ?: emptySet()
+    private fun loadRomFolders(): List<String> {
+        val raw = prefs.getString("rom_folder_uris_json", null)
+        if (!raw.isNullOrBlank()) {
+            val parsed = runCatching { json.decodeFromString<List<String>>(raw) }.getOrNull()
+            if (parsed != null) {
+                return parsed.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            }
+        }
+        val legacy = prefs.getStringSet("rom_folder_uris", null)
+        if (!legacy.isNullOrEmpty()) {
+            val migrated = legacy.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            saveRomFolders(migrated)
+            return migrated
+        }
+        return emptyList()
+    }
+
+    private fun saveRomFolders(list: List<String>) {
+        val clean = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        prefs.edit()
+            .putString("rom_folder_uris_json", json.encodeToString(clean))
+            .putStringSet("rom_folder_uris", HashSet(clean))
+            .apply()
+    }
+
+    fun getRomFolders(): Set<String> = romFoldersState.value.toSet()
+
+    fun getRomFoldersList(): List<String> = romFoldersState.value
 
     fun addRomFolder(uriString: String) {
-        val set = getRomFolders().toMutableSet()
-        set.add(uriString)
-        prefs.edit().putStringSet("rom_folder_uris", set).apply()
+        val trimmed = uriString.trim()
+        if (trimmed.isBlank()) return
+        val current = romFoldersState.value
+        if (trimmed in current) return
+        val next = current + trimmed
+        saveRomFolders(next)
+        romFoldersState.value = next
+        romFoldersDirty = true
     }
 
     fun removeRomFolder(uriString: String) {
-        val set = getRomFolders().toMutableSet()
-        set.remove(uriString)
-        prefs.edit().putStringSet("rom_folder_uris", set).apply()
+        val current = romFoldersState.value
+        if (uriString !in current) return
+        val next = current.filterNot { it == uriString }
+        saveRomFolders(next)
+        romFoldersState.value = next
+        romFoldersDirty = true
     }
 
     fun getCachedRoms(): List<RomEntry> {

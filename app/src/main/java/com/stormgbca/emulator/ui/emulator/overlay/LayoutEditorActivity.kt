@@ -292,7 +292,7 @@ private fun LayoutEditorScreen(
 
         // Draggable Main Virtual Controls (per-orientation!)
         DraggableNode(
-            label = stringResource(R.string.layout_dpad),
+            label = stringResource(if (profile.useAnalogStick) R.string.layout_stick else R.string.layout_dpad),
             pos = currentControls.dpadPos,
             containerW = w,
             containerH = h,
@@ -338,7 +338,7 @@ private fun LayoutEditorScreen(
             pos = currentControls.selectPos,
             containerW = w,
             containerH = h,
-            sizeDp = 62,
+            sizeDp = 68,
             accent = colors.green,
             onMove = { next -> updateControls { it.copy(selectPos = next) } },
         )
@@ -347,7 +347,7 @@ private fun LayoutEditorScreen(
             pos = currentControls.startPos,
             containerW = w,
             containerH = h,
-            sizeDp = 62,
+            sizeDp = 68,
             accent = colors.green,
             onMove = { next -> updateControls { it.copy(startPos = next) } },
         )
@@ -358,7 +358,7 @@ private fun LayoutEditorScreen(
                 pos = currentControls.lPos,
                 containerW = w,
                 containerH = h,
-                sizeDp = 64,
+                sizeDp = 78,
                 accent = colors.green,
                 onMove = { next -> updateControls { it.copy(lPos = next) } },
             )
@@ -367,7 +367,7 @@ private fun LayoutEditorScreen(
                 pos = currentControls.rPos,
                 containerW = w,
                 containerH = h,
-                sizeDp = 64,
+                sizeDp = 78,
                 accent = colors.green,
                 onMove = { next -> updateControls { it.copy(rPos = next) } },
             )
@@ -649,6 +649,18 @@ private fun LayoutEditorScreen(
                     }
                     ScreenSliderRow(stringResource(R.string.layout_pos_y), "${(currentScreenCfg.centerY * 100).roundToInt()}%", currentScreenCfg.centerY, 0.05f..0.95f) { v ->
                         updateScreenCfg { it.copy(useCustom = true, screenPreset = 4, centerY = v) }
+                    }
+
+                    // Virtual Analog Stick vs D-Pad Toggle
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(stringResource(R.string.overlay_use_analog_stick), color = colors.text, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.overlay_use_analog_stick_sub), color = colors.text2, fontSize = 9.5.sp)
+                        }
+                        WatermelonSwitch(
+                            checked = profile.useAnalogStick,
+                            onCheckedChange = { c -> profile = profile.copy(useAnalogStick = c) },
+                        )
                     }
 
                     // Separate A/B Toggle & Spacing

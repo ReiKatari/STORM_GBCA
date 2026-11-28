@@ -407,4 +407,12 @@
     <string name="update_dialog_remind_later">Remind Later</string>
     <string name="update_dialog_skip_version">Skip Version</string>
     <string name="update_dialog_open_page">Open Release Page</string>
+    <string name="overlay_use_analog_stick">Use Analog Stick instead of D-Pad</string>
+    <string name="overlay_use_analog_stick_sub">Replace on-screen D-Pad with a smooth 360-degree thumbstick</string>
+    <string name="layout_stick">Stick</string>
+    <string name="rom_folders_empty">No ROM folders added yet. Tap below to add one.</string>
+    <string name="remove_rom_folder">Remove folder</string>
+    <string name="ctrl_section_gb">Game Boy (GB)</string>
+    <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
+    <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
 </resources>

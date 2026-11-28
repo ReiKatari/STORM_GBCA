@@ -407,4 +407,12 @@
     <string name="update_dialog_remind_later">나중에</string>
     <string name="update_dialog_skip_version">건너뛰기</string>
     <string name="update_dialog_open_page">릴리스 페이지 열기</string>
+    <string name="overlay_use_analog_stick">십자키 대신 아날로그 스틱 사용</string>
+    <string name="overlay_use_analog_stick_sub">화면 십자키를 부드러운 360도 스틱으로 대체</string>
+    <string name="layout_stick">스틱</string>
+    <string name="rom_folders_empty">추가된 ROM 폴더가 없습니다. 아래를 눌러 추가하세요.</string>
+    <string name="remove_rom_folder">폴더 제거</string>
+    <string name="ctrl_section_gb">Game Boy (GB)</string>
+    <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
+    <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
 </resources>

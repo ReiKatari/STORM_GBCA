@@ -302,7 +302,16 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         supportActionBar?.hide()
         AppThemeManager.applyImmersiveFullscreen(this)
-        romsState.value = GbcaPrefs.getCachedRoms()
+        if (GbcaPrefs.consumeRomFoldersDirty()) {
+            if (GbcaPrefs.getRomFolders().isEmpty()) {
+                GbcaPrefs.saveCachedRoms(emptyList())
+                romsState.value = emptyList()
+            } else {
+                rescanLibrary()
+            }
+        } else {
+            romsState.value = GbcaPrefs.getCachedRoms()
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -334,7 +343,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun rescanLibrary() {
-        if (GbcaPrefs.getRomFolders().isEmpty()) return
+        if (GbcaPrefs.getRomFolders().isEmpty()) {
+            GbcaPrefs.saveCachedRoms(emptyList())
+            romsState.value = emptyList()
+            isScanningState.value = false
+            return
+        }
         lifecycleScope.launch {
             isScanningState.value = true
             val scanned = RomRepository.scanFolders(this@MainActivity)

@@ -407,4 +407,12 @@
     <string name="update_dialog_remind_later">後で</string>
     <string name="update_dialog_skip_version">スキップ</string>
     <string name="update_dialog_open_page">リリースページを開く</string>
+    <string name="overlay_use_analog_stick">十字キーの代わりにアナログスティック</string>
+    <string name="overlay_use_analog_stick_sub">画面上の十字キーを滑らかな360度スティックに切替</string>
+    <string name="layout_stick">スティック</string>
+    <string name="rom_folders_empty">ROMフォルダがまだありません。下から追加してください。</string>
+    <string name="remove_rom_folder">フォルダを削除</string>
+    <string name="ctrl_section_gb">Game Boy (GB)</string>
+    <string name="ctrl_section_gbc">Game Boy Color (GBC)</string>
+    <string name="ctrl_section_gba">Game Boy Advance (GBA)</string>
 </resources>

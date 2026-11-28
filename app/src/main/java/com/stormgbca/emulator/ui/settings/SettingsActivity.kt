@@ -1,6 +1,7 @@
 package com.stormgbca.emulator.ui.settings
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -28,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Surface
@@ -37,6 +39,8 @@ import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -734,19 +738,23 @@ private fun SettingsScreen(
                 }
 
                 SettingsPage.CONTROLS -> {
-                    WatermelonSectionLabel(stringResource(R.string.set_controls_title))
-                    WatermelonCard {
-                        ConsoleSystem.entries.forEachIndexed { idx, sys ->
-                            if (idx > 0) WatermelonRowSeparator()
-                            val ov = when (sys) {
-                                ConsoleSystem.GB -> GbcaPrefs.gbOverlayState.value
-                                ConsoleSystem.GBC -> GbcaPrefs.gbcOverlayState.value
-                                ConsoleSystem.GBA -> GbcaPrefs.gbaOverlayState.value
-                            }
+                    ConsoleSystem.entries.forEach { sys ->
+                        val ov = when (sys) {
+                            ConsoleSystem.GB -> GbcaPrefs.gbOverlayState.value
+                            ConsoleSystem.GBC -> GbcaPrefs.gbcOverlayState.value
+                            ConsoleSystem.GBA -> GbcaPrefs.gbaOverlayState.value
+                        }
+                        val sectionTitleRes = when (sys) {
+                            ConsoleSystem.GB -> R.string.ctrl_section_gb
+                            ConsoleSystem.GBC -> R.string.ctrl_section_gbc
+                            ConsoleSystem.GBA -> R.string.ctrl_section_gba
+                        }
+                        WatermelonSectionLabel(stringResource(sectionTitleRes))
+                        WatermelonCard {
                             SettingsNavRow(
                                 icon = Icons.Filled.AspectRatio,
                                 title = stringResource(R.string.ctrl_screen_fmt, sys.label),
-                                subtitle = if (ov.portraitScreen.useCustom || ov.landscapeScreen.useCustom) "Custom" else stringResource(R.string.auto),
+                                subtitle = if (ov.portraitScreen.useCustom || ov.landscapeScreen.useCustom) stringResource(R.string.screen_preset_custom) else stringResource(R.string.auto),
                             ) { onOpenLayoutEditor(sys) }
                             WatermelonRowSeparator()
                             SettingsNavRow(
@@ -760,8 +768,19 @@ private fun SettingsScreen(
                                 title = stringResource(R.string.ctrl_overlay_fmt, sys.label),
                                 subtitle = ov.buttonStyle,
                             ) { overlayDialogSystem = sys }
+                            WatermelonRowSeparator()
+                            SettingsSwitchSubRow(
+                                title = stringResource(R.string.overlay_use_analog_stick),
+                                subtitle = stringResource(R.string.overlay_use_analog_stick_sub),
+                                checked = ov.useAnalogStick,
+                            ) { c ->
+                                GbcaPrefs.updateOverlayProfile(sys) { it.copy(useAnalogStick = c) }
+                            }
                         }
-                        WatermelonRowSeparator()
+                    }
+
+                    WatermelonSectionLabel(stringResource(R.string.ctrl_gamepad))
+                    WatermelonCard {
                         SettingsNavRow(
                             icon = Icons.Filled.Gamepad,
                             title = stringResource(R.string.ctrl_gamepad),
@@ -787,14 +806,86 @@ private fun SettingsScreen(
                 }
 
                 SettingsPage.LIBRARY -> {
-                    // ROM Folders Management (moved cleanly from header into Library Settings, matching STORM DS)
+                    // ROM Folders Management (multi-folder list + add/remove, matching STORM DS)
+                    val romFolders = GbcaPrefs.romFoldersState.value
                     WatermelonSectionLabel(stringResource(R.string.rom_folders_section))
                     WatermelonCard {
-                        val folderCount = GbcaPrefs.getRomFolders().size
+                        if (romFolders.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.rom_folders_empty),
+                                color = colors.text2,
+                                fontSize = 12.5.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                            )
+                        } else {
+                            romFolders.forEachIndexed { idx, uriStr ->
+                                if (idx > 0) WatermelonRowSeparator()
+                                val (folderTitle, folderSubtitle) = remember(uriStr) { formatSafFolderLabel(uriStr) }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(colors.green.copy(alpha = 0.16f)),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Folder,
+                                            contentDescription = null,
+                                            tint = colors.green,
+                                            modifier = Modifier.size(19.dp),
+                                        )
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = folderTitle,
+                                            color = colors.text,
+                                            fontFamily = SpaceGrotesk,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            text = folderSubtitle,
+                                            color = colors.text2,
+                                            fontSize = 11.5.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            runCatching {
+                                                context.contentResolver.releasePersistableUriPermission(
+                                                    Uri.parse(uriStr),
+                                                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                                                )
+                                            }
+                                            GbcaPrefs.removeRomFolder(uriStr)
+                                        },
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Delete,
+                                            contentDescription = stringResource(R.string.remove_rom_folder),
+                                            tint = colors.red,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        WatermelonRowSeparator()
                         SettingsNavRow(
-                            icon = Icons.Filled.Folder,
+                            icon = Icons.Filled.CreateNewFolder,
                             title = stringResource(R.string.add_rom_folder),
-                            subtitle = stringResource(R.string.rom_folders_count_fmt, folderCount),
+                            subtitle = stringResource(R.string.rom_folders_count_fmt, romFolders.size),
                         ) { onAddRomFolder() }
                     }
 
@@ -1169,4 +1260,24 @@ private fun BiosChip(label: String, loaded: Boolean, modifier: Modifier = Modifi
             fontWeight = FontWeight.Bold,
         )
     }
+}
+
+private fun formatSafFolderLabel(uriString: String): Pair<String, String> {
+    val decoded = Uri.decode(uriString)
+    val afterTree = decoded.substringAfter("/tree/", decoded).substringBefore("/document/")
+    val colonIdx = afterTree.indexOf(':')
+    if (colonIdx >= 0) {
+        val volume = afterTree.substring(0, colonIdx)
+        val relPath = afterTree.substring(colonIdx + 1).trim('/')
+        val storageLabel = if (volume.equals("primary", ignoreCase = true)) "Internal Storage" else "SD"
+        if (relPath.isEmpty()) {
+            return storageLabel to storageLabel
+        }
+        val segments = relPath.split('/').filter { it.isNotBlank() }
+        val title = segments.lastOrNull() ?: storageLabel
+        val fullPath = (listOf(storageLabel) + segments).joinToString(" / ")
+        return title to fullPath
+    }
+    val fallback = afterTree.substringAfterLast('/').ifBlank { decoded }
+    return fallback to afterTree
 }
