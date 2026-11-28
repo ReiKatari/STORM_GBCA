@@ -75,6 +75,8 @@ public enum StormVideoFilter : int
     XbrzLite = 4,
     CrtScanlines = 5,
     SharpBilinear = 6,
+    Fsr1 = 7,
+    Fsr3 = 8,
 }
 
 public enum StormAudioHighpassMode : int

@@ -6,12 +6,12 @@
 
 <p align="center">
   <strong>Флагманский кроссплатформенный эмулятор Nintendo Game Boy, Game Boy Color и Game Boy Advance для Android и Windows x64 (mGBA + SameBoy + Vulkan 1.1 + RetroArch librashader + 40 аутентичных 3D-скинов + Link Cable / Wireless RFU / Dolphin JoyBus / GB Printer + интерфейс STORM DS Watermelon / AuroraFluid)</strong><br />
-  Версия <code>1.7.1</code> | Платформы: <code>Android (arm64-v8a, armeabi-v7a, x86_64)</code> и <code>Windows x64</code>
+  Версия <code>1.8.0</code> | Платформы: <code>Android (arm64-v8a, armeabi-v7a, x86_64)</code> и <code>Windows x64</code>
 </p>
 
 <p align="center">
   <a href="https://github.com/ReiKatari/STORM_GBCA">GitHub Repository</a> -
-  <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.7.1">Релиз STORM GBCA 1.7.1</a> -
+  <a href="https://github.com/ReiKatari/STORM_GBCA/releases/tag/1.8.0">Релиз STORM GBCA 1.8.0</a> -
   <a href="https://stormgamesworld.ru/programs?repo=STORM_GBCA">Страница на STORM GAMES WORLD</a> -
   <a href="PRIVACY_POLICY.md">Политика конфиденциальности (Privacy Policy)</a> -
   <a href="THIRD_PARTY_LICENSES.md">Лицензии и компоненты (Third-Party Licenses)</a>
@@ -27,15 +27,18 @@
 
 ---
 
-## Что нового в версии 1.7.1
+## Что нового в версии 1.8.0
 
-- **Полное усиление защиты RetroAchievements Hardcore (Red-Team Hardening)**:
-  - Предзагрузочный мягкий патч (`.ips` / `.ups` / `.bps`) применяется строго до блокировки Hardcore, а хэш сессии вычисляется непосредственно из загруженного/патченного буфера в памяти (`storm_gbca_get_loaded_ra_hash`) для корректной работы поддерживаемых RA переводов и хаков; патчирование на лету во время сессии в Hardcore по-прежнему заблокировано.
-  - Переключение Casual -> Hardcore на лету выполняет полную чистую перезагрузку ядра (очищая даже патчи-читы в ROM), блокирует отключение системного RTC и внешние Link Cable / Wireless / IR / Dolphin JoyBus в Hardcore (разрешён только GB Printer), а неофициальные достижения (`Flags == 5`) никогда не активируются и не отправляются с `h=1`.
-- **Защита токена, единый 3-сегментный User-Agent (`mgba/0.11.0`) и точность протокола Connect API**:
-  - Поиск обложек RA на Windows переведён на HTTPS POST с единым 3-сегментным User-Agent (`STORM-GBCA/1.7.1 (...) mgba/0.11.0` / `sameboy/1.0.5`), проверка ответов API валидирует JSON `"Success": true`, режим Encore не дублирует уже полученные награды на сервер, а офлайн-очередь и `r=ping` полностью выровнены со спецификацией `rcheevos 12.5.0`.
-- **Синхронизация настроек и юридическая прозрачность (MPL-2.0 / GDPR)**:
-  - Заблокированы переключатели Rich Presence, Leaderboards и Unofficial в Hardcore на Windows и синхронизирован `SettingsActivity` на Android; все C#-файлы переведены на единые заголовки **MPL-2.0**, а `PRIVACY_POLICY.md` и `THIRD_PARTY_LICENSES.md` приведены к 100% точности по сетевым доменам, `zlib 1.3.2`, `LZMA SDK` и `librashader`.
+- **AMD FSR 1 (EASU + RCAS) и AMD FSR 3 (Temporal + RCAS) на Android и Windows**:
+  - На Android реализованы многопроходные GPU-шейдеры **AMD FSR 1** и **AMD FSR 3** для OpenGL ES 3.2, Vulkan и RetroArch `.slangp`, а на Windows Desktop добавлен аппаратный GPU-рендерер **SkiaSharp 3.119.4** (`ISkiaSharpApiLeaseFeature` + SkSL) с двухпроходными пайплайнами EASU/Temporal + RCAS.
+- **Настройка резкости FSR RCAS (`0..100%`) и 4 режима качества (`67% - 1.5x` .. `33% - 3.0x`)**:
+  - Полный контроль детализации и масштаба в Настройках и в игровом меню паузы на обеих платформах.
+- **Необязательная генерация кадров (`60 -> 120 FPS`)**:
+  - Интерполяция промежуточного кадра на основе оптического потока по градиентам яркости для дисплеев 120 Гц (отключена по умолчанию, не меняет тайминг ядра `59.7275 Гц`, 100% совместима с RetroAchievements Hardcore).
+- **Реальное определение версий OpenGL ES / Vulkan и активного GPU-рендерера**:
+  - В настройках видео статичные подписи заменены на фактически поддерживаемые устройством версии OpenGL ES / Vulkan и активный Skia GPU-бэкенд с указанием минимальных требований (`OpenGL 3.0 / Vulkan 1.1`).
+- **Менеджер и загрузчик пользовательских драйверов Vulkan GPU на Android (как в STORM DS)**:
+  - Автоопределение модели GPU, каталог рекомендуемых драйверов Turnip / Adreno / Mali с GitHub, живой прогресс загрузки, безопасная распаковка ZIP-архивов и локальный импорт.
 
 ---
 
@@ -60,13 +63,13 @@
 
 ---
 
-## Релиз 1.7.1
+## Релиз 1.8.0
 
 | Файл релиза | Назначение | Ключевые возможности |
 | --- | --- | --- |
-| `STORM_GBCA_1.7.1.apk` | Подписанная универсальная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`) | Усиленная защита RetroAchievements Hardcore (`rcheevos 12.5.0`), хэш загруженного буфера после предзагрузочного патча, чистая перезагрузка ядра при переключении в Hardcore, блокировка `Flags == 5` и Link/RTC в Hardcore, синхронизация `SettingsActivity` и точные документы MPL-2.0 / GDPR |
-| `STORM_GBCA_1.7.1_Windows.zip` | Портативная сборка для Windows 10/11 (x64) | Автономный `STORM GBCA.exe` + нативное ядро `storm_gbca_core.dll` (1.7.1), хэш загруженного буфера, HTTPS POST без токенов в GET, 3-сегментный User-Agent (`mgba/0.11.0`), валидация `"Success": true`, защита Encore и переназначаемые клавиши QuickSave/QuickLoad |
-| `STORM_GBCA_1.7.1_Setup.exe` | Установщик для Windows 10/11 (x64) | Эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`), распаковка в `%LOCALAPPDATA%\Programs\STORM GBCA`, создание ярлыков, регистрация в Windows и чистое удаление |
+| `STORM_GBCA_1.8.0.apk` | Подписанная универсальная сборка для Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64`) | Шейдеры **AMD FSR 1** (EASU + RCAS) и **AMD FSR 3** (Temporal + RCAS) для GLES 3.2, Vulkan и `.slangp`, генерация кадров `60 -> 120 FPS`, менеджер и загрузчик драйверов Vulkan GPU (Turnip / Adreno / Mali) и реальное определение версий OpenGL ES / Vulkan |
+| `STORM_GBCA_1.8.0_Windows.zip` | Портативная сборка для Windows 10/11 (x64) | Автономный `STORM GBCA.exe` + нативное ядро `storm_gbca_core.dll`, новый GPU-рендерер **SkiaSharp 3.119.4** (SkSL) с **AMD FSR 1**, **AMD FSR 3**, настройкой резкости RCAS (`0..100%`) и режимов качества, генерацией кадров `60 -> 120 FPS` и определением активного GPU-бэкенда |
+| `STORM_GBCA_1.8.0_Setup.exe` | Установщик для Windows 10/11 (x64) | Эталонный `STORM INSTALLER` (`840x580`, 11 языков, 9 тем, 13 акцентов, Standard/Portable, Drag-and-Drop, подпись `STORM TEAM`), распаковка в `%LOCALAPPDATA%\Programs\STORM GBCA`, создание ярлыков, регистрация в Windows и чистое удаление |
 
 ---
 
@@ -120,9 +123,9 @@ dotnet publish windows/src/StormGbca.Desktop/StormGbca.Desktop.csproj -c Release
 ./gradlew :app:assembleRelease --max-workers=3 -Dorg.gradle.priority=low
 ```
 Готовые артефакты релиза сохраняются в папку `releases/`:
-- `releases/STORM_GBCA_1.7.1.apk`
-- `releases/STORM_GBCA_1.7.1_Windows.zip`
-- `releases/STORM_GBCA_1.7.1_Setup.exe`
+- `releases/STORM_GBCA_1.8.0.apk`
+- `releases/STORM_GBCA_1.8.0_Windows.zip`
+- `releases/STORM_GBCA_1.8.0_Setup.exe`
 
 ---
 

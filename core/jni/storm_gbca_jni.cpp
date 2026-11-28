@@ -3,6 +3,7 @@
 #include <jni.h>
 #include <android/native_window_jni.h>
 #include "storm_gbca_core.h"
+#include "storm_postprocess.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -20,11 +21,13 @@ void gles_set_rotation(int deg);
 void gles_render(const uint32_t* rgba, int w, int h, int vp_x, int vp_y, int vp_w, int vp_h,
                  int display_mode, float ghosting, float cc_strength, bool is_grayscale, bool integer_scaling);
 void gles_destroy();
+std::string gles_get_version_string();
 
 bool librashader_is_available();
 std::string librashader_status();
 void librashader_set_preset(const std::string& path);
 
+bool vk_probe_info(std::string& out_device_name, std::string& out_device_api_ver, std::string& out_instance_api_ver);
 bool vk_probe_support(std::string& device_name);
 bool vk_init(ANativeWindow* window, const std::string& custom_driver_path);
 void vk_resize(int w, int h);
@@ -584,6 +587,38 @@ Java_ru_stormgames_gbca_NativeCore_nativeGetVulkanDeviceName(JNIEnv* env, jclass
     std::string dev;
     storm::vk_probe_support(dev);
     return env->NewStringUTF(dev.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeGetVulkanInfo(JNIEnv* env, jclass) {
+    std::string dev, dev_ver, inst_ver;
+    if (!storm::vk_probe_info(dev, dev_ver, inst_ver)) {
+        return env->NewStringUTF("||");
+    }
+    std::string out = dev + "|" + dev_ver + "|" + inst_ver;
+    return env->NewStringUTF(out.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeGetGlesVersion(JNIEnv* env, jclass) {
+    return env->NewStringUTF(storm::gles_get_version_string().c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeSetPostProcess(
+    JNIEnv*, jclass, jint fsrMode, jfloat rcasSharpness, jint fsrQuality, jboolean frameGenEnabled
+) {
+    auto& st = storm::post_process_state();
+    st.fsr_mode.store(std::clamp(static_cast<int>(fsrMode), 0, 2), std::memory_order_relaxed);
+    st.rcas_sharpness.store(std::clamp(static_cast<float>(rcasSharpness), 0.0f, 1.0f), std::memory_order_relaxed);
+    st.fsr_quality.store(std::clamp(static_cast<int>(fsrQuality), 0, 3), std::memory_order_relaxed);
+    st.frame_gen_enabled.store(frameGenEnabled == JNI_TRUE, std::memory_order_relaxed);
+}
+
+JNIEXPORT void JNICALL
+Java_ru_stormgames_gbca_NativeCore_nativeSetFrameGenAlpha(JNIEnv*, jclass, jfloat alpha) {
+    auto& st = storm::post_process_state();
+    st.frame_gen_alpha.store(std::clamp(static_cast<float>(alpha), 0.0f, 1.0f), std::memory_order_relaxed);
 }
 
 JNIEXPORT jboolean JNICALL

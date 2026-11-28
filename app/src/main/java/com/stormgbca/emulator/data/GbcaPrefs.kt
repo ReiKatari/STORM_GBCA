@@ -20,6 +20,7 @@ import com.stormgbca.emulator.model.RomFilter
 import com.stormgbca.emulator.model.RomSortMode
 import com.stormgbca.emulator.model.RomViewMode
 import com.stormgbca.emulator.model.SystemOverlayProfile
+import com.stormgbca.emulator.vulkandriver.InstalledVulkanDriver
 import kotlinx.serialization.json.Json
 import ru.stormgames.gbca.NativeCore
 
@@ -40,6 +41,7 @@ object GbcaPrefs {
     val gbaOverlayState = mutableStateOf(defaultOverlayFor(ConsoleSystem.GBA))
     val romFoldersState = mutableStateOf<List<String>>(emptyList())
     val raHardcoreState = mutableStateOf(false)
+    val installedVulkanDriversState = mutableStateOf<List<InstalledVulkanDriver>>(emptyList())
     private var romFoldersDirty: Boolean = false
 
     fun consumeRomFoldersDirty(): Boolean {
@@ -126,6 +128,7 @@ object GbcaPrefs {
         gbaOverlayState.value = loadOverlayProfile(ConsoleSystem.GBA)
         romFoldersState.value = loadRomFolders()
         raHardcoreState.value = prefs.getBoolean("ra_hardcore", false)
+        installedVulkanDriversState.value = loadInstalledVulkanDrivers()
     }
 
     private fun detectDeviceCapabilities(context: Context) {
@@ -503,6 +506,27 @@ object GbcaPrefs {
     fun setSkippedUpdateVersion(ver: String) {
         prefs.edit().putString("skipped_update_version", ver).apply()
     }
+
+    private fun loadInstalledVulkanDrivers(): List<InstalledVulkanDriver> {
+        val raw = prefs.getString("installed_vulkan_drivers", null) ?: return emptyList()
+        return runCatching { json.decodeFromString<List<InstalledVulkanDriver>>(raw) }
+            .getOrDefault(emptyList())
+            .filter { java.io.File(it.soPath).isFile }
+    }
+
+    fun getInstalledVulkanDrivers(): List<InstalledVulkanDriver> {
+        if (!::prefs.isInitialized) return emptyList()
+        return installedVulkanDriversState.value
+    }
+
+    fun saveInstalledVulkanDrivers(drivers: List<InstalledVulkanDriver>) {
+        installedVulkanDriversState.value = drivers
+        prefs.edit().putString("installed_vulkan_drivers", json.encodeToString(drivers)).apply()
+    }
+
+    fun getFsrSharpness(): Int = coreConfigState.value.fsrSharpness.coerceIn(0, 100)
+    fun getFsrQualityMode(): Int = coreConfigState.value.fsrQualityMode.coerceIn(0, 3)
+    fun isFrameGenerationEnabled(): Boolean = coreConfigState.value.frameGenerationEnabled
 
     fun exportAllPrefsJson(): String = buildString {
         appendLine("{")

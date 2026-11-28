@@ -73,6 +73,8 @@ private val SHADER_OPTIONS = listOf(
     NativeCore.FILTER_XBRZ_LITE to R.string.filter_xbrz_lite,
     NativeCore.FILTER_NEAREST to R.string.filter_nearest,
     NativeCore.FILTER_BILINEAR to R.string.filter_bilinear,
+    NativeCore.FILTER_FSR1 to R.string.filter_fsr1,
+    NativeCore.FILTER_FSR3 to R.string.filter_fsr3,
 )
 
 private fun OverlayLayoutPreset.labelRes(): Int = when (this) {
@@ -420,6 +422,7 @@ fun OverlayPickerDialog(
                                     .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(10.dp))
                                     .clickable {
                                         GbcaPrefs.updateOverlayProfile(activeTab) { it.copy(shaderOverlay = mode) }
+                                        GbcaPrefs.updateCoreConfig { it.copy(videoFilter = mode) }
                                     }
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                             ) {

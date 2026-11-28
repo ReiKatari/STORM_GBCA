@@ -316,4 +316,18 @@ object NativeCore {
     @JvmStatic external fun raBuildLboardRequest(username: String, apiToken: String, lboardId: Int, score: Int, gameHash: String): Array<String>?
     @JvmStatic external fun raBuildPingRequest(username: String, apiToken: String, gameId: Int, richPresence: String, gameHash: String, hardcore: Boolean): Array<String>?
     @JvmStatic external fun raGetLoadedRomHash(ctx: Long): String?
+
+    // 1.8.0 FSR 1 (EASU + RCAS), FSR 3 (Temporal + RCAS), Frame Generation (60->120 FPS) & Real GL/Vulkan Version Info
+    const val FILTER_FSR1 = 7
+    const val FILTER_FSR3 = 8
+
+    const val FSR_QUALITY_QUALITY = 0
+    const val FSR_QUALITY_BALANCED = 1
+    const val FSR_QUALITY_PERFORMANCE = 2
+    const val FSR_QUALITY_ULTRA_PERFORMANCE = 3
+
+    @JvmStatic external fun nativeGetVulkanInfo(): String
+    @JvmStatic external fun nativeGetGlesVersion(): String
+    @JvmStatic external fun nativeSetPostProcess(fsrMode: Int, rcasSharpness: Float, fsrQuality: Int, frameGenEnabled: Boolean)
+    @JvmStatic external fun nativeSetFrameGenAlpha(alpha: Float)
 }

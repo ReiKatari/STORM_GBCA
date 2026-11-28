@@ -797,7 +797,7 @@ fun PauseMenuOverlay(
             },
             onDismiss = { subDialog = PauseSubDialog.NONE },
         )
-        PauseSubDialog.VIDEO -> VideoSettingsDialog(onConfigApplied = onConfigApplied, onDismiss = { subDialog = PauseSubDialog.NONE })
+        PauseSubDialog.VIDEO -> VideoSettingsDialog(system = system, onConfigApplied = onConfigApplied, onDismiss = { subDialog = PauseSubDialog.NONE })
         PauseSubDialog.AUDIO_MIXER -> AudioMixerDialog(onConfigApplied = onConfigApplied, onDismiss = { subDialog = PauseSubDialog.NONE })
         PauseSubDialog.CHEATS -> CheatsDialog(rom = rom, onCheatsUpdated = onCheatsUpdated, onDismiss = { subDialog = PauseSubDialog.NONE })
         PauseSubDialog.SENSORS -> SensorsDialog(onConfigApplied = onConfigApplied, onDismiss = { subDialog = PauseSubDialog.NONE })
@@ -1097,11 +1097,18 @@ private fun SaveSlotsDialog(
 
 @Composable
 private fun VideoSettingsDialog(
+    system: ConsoleSystem,
     onConfigApplied: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = watermelon
     val cfg = GbcaPrefs.coreConfigState.value
+    val overlayProf = when (system) {
+        ConsoleSystem.GB -> GbcaPrefs.gbOverlayState.value
+        ConsoleSystem.GBC -> GbcaPrefs.gbcOverlayState.value
+        ConsoleSystem.GBA -> GbcaPrefs.gbaOverlayState.value
+    }
+    val activeFilter = overlayProf.shaderOverlay
     val paletteCount = remember { NativeCore.nativeGetDmgPaletteCount().coerceAtLeast(1) }
     val upscaleModes = listOf(
         NativeCore.UPSCALE_NONE to "Nearest",
@@ -1110,6 +1117,23 @@ private fun VideoSettingsDialog(
         NativeCore.UPSCALE_MMPX to "MMPX Sharp",
         NativeCore.UPSCALE_LCD_HD to "LCD Subpixel HD",
         NativeCore.UPSCALE_CRT_HD to "CRT Scanlines HD",
+    )
+    val filterModes = listOf(
+        NativeCore.FILTER_RGB_SUBPIXEL to R.string.filter_rgb_subpixel,
+        NativeCore.FILTER_LCD_GRID to R.string.filter_lcd_grid,
+        NativeCore.FILTER_SHARP_BILINEAR to R.string.filter_sharp_bilinear,
+        NativeCore.FILTER_CRT_SCANLINES to R.string.filter_crt_scanlines,
+        NativeCore.FILTER_XBRZ_LITE to R.string.filter_xbrz_lite,
+        NativeCore.FILTER_NEAREST to R.string.filter_nearest,
+        NativeCore.FILTER_BILINEAR to R.string.filter_bilinear,
+        NativeCore.FILTER_FSR1 to R.string.filter_fsr1,
+        NativeCore.FILTER_FSR3 to R.string.filter_fsr3,
+    )
+    val fsrQualities = listOf(
+        NativeCore.FSR_QUALITY_QUALITY to R.string.vid_fsr_q_quality,
+        NativeCore.FSR_QUALITY_BALANCED to R.string.vid_fsr_q_balanced,
+        NativeCore.FSR_QUALITY_PERFORMANCE to R.string.vid_fsr_q_performance,
+        NativeCore.FSR_QUALITY_ULTRA_PERFORMANCE to R.string.vid_fsr_q_ultra,
     )
 
     Dialog(onDismissRequest = onDismiss) {
@@ -1214,6 +1238,83 @@ private fun VideoSettingsDialog(
                         checked = cfg.sgbBorders,
                         onCheckedChange = { c ->
                             GbcaPrefs.updateCoreConfig { it.copy(sgbBorders = c) }
+                            onConfigApplied()
+                        },
+                    )
+                }
+
+                Text(stringResource(R.string.vid_builtin_filter), color = colors.text, fontFamily = WatermelonMono, fontSize = 11.5.sp)
+                filterModes.forEach { (id, titleRes) ->
+                    val sel = activeFilter == id
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(if (sel) colors.greenDim else colors.surface2)
+                            .border(1.dp, if (sel) colors.green else colors.line, RoundedCornerShape(9.dp))
+                            .clickable {
+                                GbcaPrefs.updateOverlayProfile(system) { it.copy(shaderOverlay = id) }
+                                GbcaPrefs.updateCoreConfig { it.copy(videoFilter = id) }
+                                onConfigApplied()
+                            }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            text = stringResource(titleRes),
+                            color = if (sel) colors.green else colors.text,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+
+                Text(stringResource(R.string.vid_fsr_quality), color = colors.text, fontFamily = WatermelonMono, fontSize = 11.5.sp)
+                fsrQualities.forEach { (qId, qRes) ->
+                    val sel = cfg.fsrQualityMode == qId
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(if (sel) colors.greenDim else colors.surface2)
+                            .border(1.dp, if (sel) colors.green else colors.line, RoundedCornerShape(9.dp))
+                            .clickable {
+                                GbcaPrefs.updateCoreConfig { it.copy(fsrQualityMode = qId) }
+                                onConfigApplied()
+                            }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            text = stringResource(qRes),
+                            color = if (sel) colors.green else colors.text,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(stringResource(R.string.vid_fsr_sharpness), color = colors.text, fontSize = 12.sp)
+                    Text("${cfg.fsrSharpness}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 11.sp)
+                }
+                Slider(
+                    value = cfg.fsrSharpness.toFloat(),
+                    onValueChange = { v ->
+                        GbcaPrefs.updateCoreConfig { it.copy(fsrSharpness = v.toInt().coerceIn(0, 100)) }
+                        onConfigApplied()
+                    },
+                    valueRange = 0f..100f,
+                    colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
+                )
+
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(stringResource(R.string.vid_frame_gen_title), color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.vid_frame_gen_sub), color = colors.text2, fontSize = 10.5.sp)
+                    }
+                    WatermelonSwitch(
+                        checked = cfg.frameGenerationEnabled,
+                        onCheckedChange = { c ->
+                            GbcaPrefs.updateCoreConfig { it.copy(frameGenerationEnabled = c) }
                             onConfigApplied()
                         },
                     )

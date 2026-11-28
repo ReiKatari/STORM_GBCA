@@ -281,11 +281,14 @@ data class GbcaCoreConfig(
     val showRaBadge: Boolean = false,
     val romDisplayNameMode: Int = 0, // 0=File name, 1=Internal ROM header
 
-    // Graphics, Vulkan, Upscaling & Device Optimization (Old + New devices)
-    val graphicsBackend: Int = 0, // 0=OpenGL ES 3.2, 1=Vulkan 1.1
+    // Graphics, Vulkan, Upscaling, AMD FSR & Device Optimization (Old + New devices)
+    val graphicsBackend: Int = 0, // 0=OpenGL ES, 1=Vulkan
     val customVulkanDriverPath: String = "",
     val resolutionScale: Int = 1, // 1..4x internal upscaling
     val upscaleMode: Int = NativeCore.UPSCALE_NONE,
+    val fsrSharpness: Int = 65, // 0..100 RCAS sharpness
+    val fsrQualityMode: Int = 0, // 0=Quality 67% - 1.5x, 1=Balanced 59% - 1.7x, 2=Performance 50% - 2.0x, 3=Ultra Performance 33% - 3.0x
+    val frameGenerationEnabled: Boolean = false, // Optional 60 -> 120 FPS optical-flow interpolation
     val cpuOverclockPct: Int = 100, // 50..400%
     val frameSkip: Int = 0, // 0..4
     val optimizationProfile: Int = -1, // -1=Auto-detect hardware, 0=Lite, 1=Balanced, 2=Performance, 3=High Accuracy

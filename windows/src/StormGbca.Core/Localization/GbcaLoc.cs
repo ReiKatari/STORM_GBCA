@@ -8,12 +8,12 @@ namespace StormGbca.Core.Localization;
 public sealed record GbcaLanguageInfo(string Code, string NativeName, string EnglishName);
 
 /// <summary>
-/// Complete 11-language localization dictionary for STORM GBCA 1.7.1.
+/// Complete 11-language localization dictionary for STORM GBCA 1.8.0.
 /// Enforces 100% key parity across all 11 languages, full words, and zero em-dashes.
 /// </summary>
 public static class GbcaLoc
 {
-    public const string AppVersion = "1.7.1";
+    public const string AppVersion = "1.8.0";
 
     public static event Action<string>? LanguageChanged;
 
@@ -186,6 +186,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "Пользовательские папки с ROM ещё не добавлены.",
             ["MpDolphinClockPort"] = "Порт синхронизации Dolphin (Clock Port):",
             ["BtnBrowse"] = "Обзор",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "Режим качества AMD FSR:",
+            ["FsrQuality0"] = "Качество (67% - 1.5x)",
+            ["FsrQuality1"] = "Баланс (59% - 1.7x)",
+            ["FsrQuality2"] = "Производительность (50% - 2.0x)",
+            ["FsrQuality3"] = "Ультра производительность (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "Резкость AMD FSR RCAS:",
+            ["FrameGenToggle"] = "Генерация кадров (60 -> 120 FPS, оптический поток)",
+            ["FrameGenNote"] = "Необязательная интерполяция между кадрами для экранов 120 Гц (+~16.7 мс задержки ввода). Совместимо с RetroAchievements Hardcore.",
+            ["GpuRendererLabel"] = "Активный рендерер GPU:",
+            ["GpuMinReqLabel"] = "Минимум: OpenGL 3.0 / Vulkan 1.1",
         },
         ["en"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -303,6 +315,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "No custom ROM folders added yet.",
             ["MpDolphinClockPort"] = "Dolphin Clock Port:",
             ["BtnBrowse"] = "Browse",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "AMD FSR Quality Mode:",
+            ["FsrQuality0"] = "Quality (67% - 1.5x)",
+            ["FsrQuality1"] = "Balanced (59% - 1.7x)",
+            ["FsrQuality2"] = "Performance (50% - 2.0x)",
+            ["FsrQuality3"] = "Ultra Performance (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "AMD FSR RCAS Sharpness:",
+            ["FrameGenToggle"] = "Frame Generation (60 -> 120 FPS, optical flow)",
+            ["FrameGenNote"] = "Optional midpoint interpolation for 120 Hz displays (+~16.7 ms input latency). RetroAchievements Hardcore compatible.",
+            ["GpuRendererLabel"] = "Active GPU Renderer:",
+            ["GpuMinReqLabel"] = "Minimum: OpenGL 3.0 / Vulkan 1.1",
         },
         ["de"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -420,6 +444,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "Noch keine eigenen ROM-Ordner hinzugefügt.",
             ["MpDolphinClockPort"] = "Dolphin Clock-Port:",
             ["BtnBrowse"] = "Durchsuchen",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "AMD FSR-Qualitätsmodus:",
+            ["FsrQuality0"] = "Qualität (67% - 1.5x)",
+            ["FsrQuality1"] = "Ausgewogen (59% - 1.7x)",
+            ["FsrQuality2"] = "Leistung (50% - 2.0x)",
+            ["FsrQuality3"] = "Ultra-Leistung (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "AMD FSR RCAS-Schärfe:",
+            ["FrameGenToggle"] = "Frame Generation (60 -> 120 FPS, optischer Fluss)",
+            ["FrameGenNote"] = "Optionale Zwischenbild-Interpolation für 120-Hz-Displays (+~16.7 ms Eingabeverzögerung). Mit RetroAchievements Hardcore kompatibel.",
+            ["GpuRendererLabel"] = "Aktiver GPU-Renderer:",
+            ["GpuMinReqLabel"] = "Minimum: OpenGL 3.0 / Vulkan 1.1",
         },
         ["fr"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -537,6 +573,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "Aucun dossier de ROM personnalisé ajouté.",
             ["MpDolphinClockPort"] = "Port horloge Dolphin (Clock Port) :",
             ["BtnBrowse"] = "Parcourir",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "Mode de qualité AMD FSR :",
+            ["FsrQuality0"] = "Qualité (67% - 1.5x)",
+            ["FsrQuality1"] = "Équilibré (59% - 1.7x)",
+            ["FsrQuality2"] = "Performance (50% - 2.0x)",
+            ["FsrQuality3"] = "Ultra Performance (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "Netteté AMD FSR RCAS :",
+            ["FrameGenToggle"] = "Génération d'images (60 -> 120 FPS, flux optique)",
+            ["FrameGenNote"] = "Interpolation intermédiaire optionnelle pour écrans 120 Hz (+~16.7 ms de latence d'entrée). Compatible RetroAchievements Hardcore.",
+            ["GpuRendererLabel"] = "Moteur de rendu GPU actif :",
+            ["GpuMinReqLabel"] = "Minimum : OpenGL 3.0 / Vulkan 1.1",
         },
         ["es"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -654,6 +702,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "Aún no se han añadido carpetas de ROMs personalizadas.",
             ["MpDolphinClockPort"] = "Puerto de reloj Dolphin (Clock Port):",
             ["BtnBrowse"] = "Examinar",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "Modo de calidad AMD FSR:",
+            ["FsrQuality0"] = "Calidad (67% - 1.5x)",
+            ["FsrQuality1"] = "Equilibrado (59% - 1.7x)",
+            ["FsrQuality2"] = "Rendimiento (50% - 2.0x)",
+            ["FsrQuality3"] = "Ultra Rendimiento (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "Nitidez AMD FSR RCAS:",
+            ["FrameGenToggle"] = "Generación de fotogramas (60 -> 120 FPS, flujo óptico)",
+            ["FrameGenNote"] = "Interpolación opcional de punto medio para pantallas de 120 Hz (+~16.7 ms de latencia de entrada). Compatible con RetroAchievements Hardcore.",
+            ["GpuRendererLabel"] = "Renderizador GPU activo:",
+            ["GpuMinReqLabel"] = "Mínimo: OpenGL 3.0 / Vulkan 1.1",
         },
         ["it"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -771,6 +831,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "Nessuna cartella ROM personalizzata aggiunta.",
             ["MpDolphinClockPort"] = "Porta clock Dolphin (Clock Port):",
             ["BtnBrowse"] = "Sfoglia",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "Modalità qualità AMD FSR:",
+            ["FsrQuality0"] = "Qualità (67% - 1.5x)",
+            ["FsrQuality1"] = "Bilanciato (59% - 1.7x)",
+            ["FsrQuality2"] = "Prestazioni (50% - 2.0x)",
+            ["FsrQuality3"] = "Prestazioni Ultra (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "Nitidezza AMD FSR RCAS:",
+            ["FrameGenToggle"] = "Generazione fotogrammi (60 -> 120 FPS, flusso ottico)",
+            ["FrameGenNote"] = "Interpolazione opzionale intermedia per schermi a 120 Hz (+~16.7 ms di latenza di input). Compatibile con RetroAchievements Hardcore.",
+            ["GpuRendererLabel"] = "Renderer GPU attivo:",
+            ["GpuMinReqLabel"] = "Minimo: OpenGL 3.0 / Vulkan 1.1",
         },
         ["pt"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -888,6 +960,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "Nenhuma pasta de ROMs personalizada adicionada.",
             ["MpDolphinClockPort"] = "Porta de clock Dolphin (Clock Port):",
             ["BtnBrowse"] = "Procurar",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "Modo de qualidade AMD FSR:",
+            ["FsrQuality0"] = "Qualidade (67% - 1.5x)",
+            ["FsrQuality1"] = "Equilibrado (59% - 1.7x)",
+            ["FsrQuality2"] = "Desempenho (50% - 2.0x)",
+            ["FsrQuality3"] = "Desempenho Ultra (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "Nitidez AMD FSR RCAS:",
+            ["FrameGenToggle"] = "Geração de quadros (60 -> 120 FPS, fluxo óptico)",
+            ["FrameGenNote"] = "Interpolação opcional de ponto médio para telas de 120 Hz (+~16.7 ms de latência de entrada). Compatível com RetroAchievements Hardcore.",
+            ["GpuRendererLabel"] = "Renderizador GPU ativo:",
+            ["GpuMinReqLabel"] = "Mínimo: OpenGL 3.0 / Vulkan 1.1",
         },
         ["ja"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -1005,6 +1089,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "カスタムROMフォルダはまだ追加されていません。",
             ["MpDolphinClockPort"] = "Dolphin クロックポート (Clock Port):",
             ["BtnBrowse"] = "参照",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "AMD FSR 品質モード:",
+            ["FsrQuality0"] = "品質 (67% - 1.5x)",
+            ["FsrQuality1"] = "バランス (59% - 1.7x)",
+            ["FsrQuality2"] = "パフォーマンス (50% - 2.0x)",
+            ["FsrQuality3"] = "ウルトラパフォーマンス (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "AMD FSR RCAS シャープネス:",
+            ["FrameGenToggle"] = "フレーム生成 (60 -> 120 FPS, オプティカルフロー)",
+            ["FrameGenNote"] = "120 Hz ディスプレイ向けの任意の中間フレーム補間 (+約 16.7 ms の入力遅延)。RetroAchievements Hardcore 対応。",
+            ["GpuRendererLabel"] = "有効な GPU レンダラー:",
+            ["GpuMinReqLabel"] = "最小要件: OpenGL 3.0 / Vulkan 1.1",
         },
         ["zh"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -1122,6 +1218,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "尚未添加自定义 ROM 文件夹。",
             ["MpDolphinClockPort"] = "Dolphin 时钟端口 (Clock Port):",
             ["BtnBrowse"] = "浏览",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "AMD FSR 质量模式:",
+            ["FsrQuality0"] = "质量 (67% - 1.5x)",
+            ["FsrQuality1"] = "平衡 (59% - 1.7x)",
+            ["FsrQuality2"] = "性能 (50% - 2.0x)",
+            ["FsrQuality3"] = "超级性能 (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "AMD FSR RCAS 锐化强度:",
+            ["FrameGenToggle"] = "帧生成 (60 -> 120 FPS, 光流法)",
+            ["FrameGenNote"] = "面向 120 Hz 屏幕的可选中间帧插值 (增加约 16.7 ms 输入延迟)。完全兼容 RetroAchievements Hardcore。",
+            ["GpuRendererLabel"] = "当前 GPU 渲染器:",
+            ["GpuMinReqLabel"] = "最低要求: OpenGL 3.0 / Vulkan 1.1",
         },
         ["ko"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -1239,6 +1347,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "사용자 지정 ROM 폴더가 아직 추가되지 않았습니다.",
             ["MpDolphinClockPort"] = "Dolphin 클록 포트 (Clock Port):",
             ["BtnBrowse"] = "찾아보기",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "AMD FSR 품질 모드:",
+            ["FsrQuality0"] = "품질 (67% - 1.5x)",
+            ["FsrQuality1"] = "균형 (59% - 1.7x)",
+            ["FsrQuality2"] = "성능 (50% - 2.0x)",
+            ["FsrQuality3"] = "울트라 성능 (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "AMD FSR RCAS 선명도:",
+            ["FrameGenToggle"] = "프레임 생성 (60 -> 120 FPS, 광학 흐름)",
+            ["FrameGenNote"] = "120 Hz 디스플레이용 선택형 중간 프레임 보간 (+약 16.7 ms 입력 지연). RetroAchievements Hardcore 호환.",
+            ["GpuRendererLabel"] = "활성 GPU 렌더러:",
+            ["GpuMinReqLabel"] = "최소 사양: OpenGL 3.0 / Vulkan 1.1",
         },
         ["hi"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -1356,6 +1476,18 @@ public static class GbcaLoc
             ["RomFoldersEmpty"] = "अभी तक कोई कस्टम ROM फ़ोल्डर नहीं जोड़ा गया है।",
             ["MpDolphinClockPort"] = "Dolphin क्लॉक पोर्ट (Clock Port):",
             ["BtnBrowse"] = "ब्राउज़ करें",
+            ["FilterFsr1"] = "AMD FSR 1 (EASU + RCAS)",
+            ["FilterFsr3"] = "AMD FSR 3 (Temporal + RCAS)",
+            ["FsrQualityLabel"] = "AMD FSR गुणवत्ता मोड:",
+            ["FsrQuality0"] = "गुणवत्ता (67% - 1.5x)",
+            ["FsrQuality1"] = "संतुलित (59% - 1.7x)",
+            ["FsrQuality2"] = "प्रदर्शन (50% - 2.0x)",
+            ["FsrQuality3"] = "अल्ट्रा प्रदर्शन (33% - 3.0x)",
+            ["FsrSharpnessLabel"] = "AMD FSR RCAS शार्पनेस:",
+            ["FrameGenToggle"] = "फ़्रेम जनरेशन (60 -> 120 FPS, ऑप्टिकल फ़्लो)",
+            ["FrameGenNote"] = "120 Hz डिस्प्ले के लिए वैकल्पिक मध्य-फ़्रेम इंटरपोलेशन (+~16.7 ms इनपुट विलंब)। RetroAchievements Hardcore संगत।",
+            ["GpuRendererLabel"] = "सक्रिय GPU रेंडरर:",
+            ["GpuMinReqLabel"] = "न्यूनतम: OpenGL 3.0 / Vulkan 1.1",
         },
     };
 }

@@ -36,11 +36,12 @@ public class SingleScreenSessionView : Grid
     private readonly List<TextBlock> _collapsibleHudLabels = [];
     private readonly Grid _stageHost;
     private readonly Image _chassisImage;
-    private readonly Image _lcdImage;
+    private readonly SkiaLcdViewportControl _lcdViewport;
     private readonly Image _overlayImage;
     private readonly Gbca3DBootOverlay _bootSplash;
     private readonly EmulationPauseOverlay _pauseOverlay;
     private readonly DispatcherTimer _uiTimer;
+    private bool _fgLoopActive;
 
     // Live RetroAchievements HUD overlays
     private readonly Border _raBannerCard;
@@ -63,10 +64,8 @@ public class SingleScreenSessionView : Grid
     private readonly TextBlock _raLeaderboardText;
     private readonly DispatcherTimer _raLeaderboardTimer;
 
-    private WriteableBitmap? _lcdBitmap;
     private int _lcdW;
     private int _lcdH;
-    private byte[] _frameStaging = [];
     private Rect _lastViewportRect;
 
     private StormPlatform _lastSkinPlatform = StormPlatform.None;
@@ -168,8 +167,12 @@ public class SingleScreenSessionView : Grid
         // Stage Viewport
         _stageHost = new Grid { ClipToBounds = true, Background = new SolidColorBrush(Color.Parse("#070911")) };
         _chassisImage = new Image { Stretch = Stretch.Fill, IsHitTestVisible = false };
-        _lcdImage = new Image { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Stretch = Stretch.Fill };
-        RenderOptions.SetBitmapInterpolationMode(_lcdImage, BitmapInterpolationMode.None);
+        _lcdViewport = new SkiaLcdViewportControl
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            IsHitTestVisible = false
+        };
         _overlayImage = new Image { Stretch = Stretch.Fill, Cursor = new Cursor(StandardCursorType.Hand) };
 
         _overlayImage.PointerPressed += OnOverlayPointerPressed;
@@ -177,7 +180,7 @@ public class SingleScreenSessionView : Grid
         _overlayImage.PointerReleased += (_, _) => ReleaseOverlayButtons();
 
         _stageHost.Children.Add(_chassisImage);
-        _stageHost.Children.Add(_lcdImage);
+        _stageHost.Children.Add(_lcdViewport);
         _stageHost.Children.Add(_overlayImage);
 
         // Live RetroAchievements HUD Layer
@@ -331,8 +334,16 @@ public class SingleScreenSessionView : Grid
 
         StormGbcaUiState.Instance.EmulationStarted += OnEmulationStarted;
         StormGbcaUiState.Instance.EmulationStopped += OnEmulationStopped;
-        StormGbcaUiState.Instance.SettingsSaved += () => Dispatcher.UIThread.Post(UpdateHardcoreHudButtons);
-        StormGbcaUiState.Instance.SkinOrOverlayChanged += () => InvalidateStageVisuals(force: true);
+        StormGbcaUiState.Instance.SettingsSaved += () => Dispatcher.UIThread.Post(() =>
+        {
+            UpdateHardcoreHudButtons();
+            EnsureFrameGenLoop();
+        });
+        StormGbcaUiState.Instance.SkinOrOverlayChanged += () =>
+        {
+            InvalidateStageVisuals(force: true);
+            EnsureFrameGenLoop();
+        };
         StormGbcaUiState.Instance.FullscreenChanged += fs =>
         {
             _hudBar.IsVisible = !fs;
@@ -383,12 +394,15 @@ public class SingleScreenSessionView : Grid
             _bootSplash.PlayForPlatform(rom.Platform, coreName);
         }
         if (!_uiTimer.IsEnabled) _uiTimer.Start();
+        EnsureFrameGenLoop();
         Focus();
     }
 
     private void OnEmulationStopped()
     {
+        _fgLoopActive = false;
         _uiTimer.Stop();
+        _lcdViewport.ResetHistory();
         _raBannerTimer.Stop();
         _raToastTimer.Stop();
         _raMeasuredTimer.Stop();
@@ -498,20 +512,19 @@ public class SingleScreenSessionView : Grid
 
         var emu = StormGbcaUiState.Instance.Emulator;
         emu.PollRaEvents();
-        int copied = emu.CopyCurrentFrameBgra(ref _frameStaging, out int w, out int h);
-        if (copied > 0 && w > 0 && h > 0)
-        {
-            if (_lcdBitmap == null || _lcdW != w || _lcdH != h)
-            {
-                _lcdW = w;
-                _lcdH = h;
-                _lcdBitmap = new WriteableBitmap(new PixelSize(w, h), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
-                _lcdImage.Source = _lcdBitmap;
-                InvalidateStageVisuals(force: true);
-            }
 
-            BitmapHelper.UpdateBgraBitmap(_lcdBitmap, _frameStaging, w, h);
-            _lcdImage.InvalidateVisual();
+        if (StormGbcaUiState.Instance.Settings.FrameGeneration)
+        {
+            EnsureFrameGenLoop();
+        }
+        else
+        {
+            _fgLoopActive = false;
+        }
+
+        if (!_fgLoopActive)
+        {
+            PushFrameToViewport();
         }
 
         uint gpMask = emu.Gamepad.PollButtonMask(out _, out _);
@@ -526,8 +539,93 @@ public class SingleScreenSessionView : Grid
         if (metrics.Width > 0)
         {
             string rumbleTxt = metrics.RumbleIntensity > 0.05f ? " | Вибрация" : string.Empty;
-            _statsText.Text = $"{metrics.MeasuredFps:0.0} FPS | {metrics.ActiveCore} ({metrics.Width}x{metrics.Height}){rumbleTxt}";
+            string fgTxt = StormGbcaUiState.Instance.Settings.FrameGeneration ? " | FG 120" : string.Empty;
+            _statsText.Text = $"{metrics.MeasuredFps:0.0} FPS{fgTxt} | {metrics.ActiveCore} ({metrics.Width}x{metrics.Height}){rumbleTxt}";
         }
+    }
+
+    private void EnsureFrameGenLoop()
+    {
+        if (!StormGbcaUiState.Instance.Settings.FrameGeneration ||
+            !StormGbcaUiState.Instance.IsEmulationActive)
+        {
+            _fgLoopActive = false;
+            return;
+        }
+
+        if (_fgLoopActive) return;
+        if (TopLevel.GetTopLevel(this) == null) return;
+
+        _fgLoopActive = true;
+        ScheduleNextFgFrame();
+    }
+
+    private void ScheduleNextFgFrame()
+    {
+        if (!_fgLoopActive ||
+            !StormGbcaUiState.Instance.Settings.FrameGeneration ||
+            !StormGbcaUiState.Instance.IsEmulationActive)
+        {
+            _fgLoopActive = false;
+            return;
+        }
+
+        var top = TopLevel.GetTopLevel(this);
+        if (top == null)
+        {
+            _fgLoopActive = false;
+            return;
+        }
+
+        top.RequestAnimationFrame(_ =>
+        {
+            if (!_fgLoopActive ||
+                !StormGbcaUiState.Instance.Settings.FrameGeneration ||
+                !StormGbcaUiState.Instance.IsEmulationActive)
+            {
+                _fgLoopActive = false;
+                return;
+            }
+
+            if (!StormGbcaUiState.Instance.IsPaused)
+            {
+                PushFrameToViewport();
+            }
+            ScheduleNextFgFrame();
+        });
+    }
+
+    private void PushFrameToViewport()
+    {
+        var emu = StormGbcaUiState.Instance.Emulator;
+        var settings = StormGbcaUiState.Instance.Settings;
+        var plat = emu.ActivePlatform;
+        if (plat == StormPlatform.None) plat = StormPlatform.Gba;
+        var activeProf = settings.GetOverlayProfileForPlatform(plat);
+        var effectiveFilter = activeProf.LcdFilter != StormVideoFilter.LcdGrid
+            ? activeProf.LcdFilter
+            : settings.VideoFilter;
+
+        _lcdViewport.UpdateFromSession(
+            emu,
+            effectiveFilter,
+            settings.FsrSharpness,
+            settings.FsrQualityMode,
+            settings.FrameGeneration);
+
+        if (_lcdViewport.SourceWidth > 0 && _lcdViewport.SourceHeight > 0 &&
+            (_lcdW != _lcdViewport.SourceWidth || _lcdH != _lcdViewport.SourceHeight))
+        {
+            _lcdW = _lcdViewport.SourceWidth;
+            _lcdH = _lcdViewport.SourceHeight;
+            InvalidateStageVisuals(force: true);
+        }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _fgLoopActive = false;
+        base.OnDetachedFromVisualTree(e);
     }
 
     private void InvalidateStageVisuals(bool force)
@@ -556,19 +654,12 @@ public class SingleScreenSessionView : Grid
         double imgX = vp.X + (vp.Width - imgW) * 0.5;
         double imgY = vp.Y + (vp.Height - imgH) * 0.5;
 
-        _lcdImage.Width = imgW;
-        _lcdImage.Height = imgH;
-        _lcdImage.Margin = new Thickness(imgX, imgY, 0, 0);
-        _lcdImage.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
-        _lcdImage.RenderTransform = rot != 0 ? new RotateTransform(rot) : null;
-
-        var effectiveFilter = activeProf.LcdFilter != StormVideoFilter.LcdGrid
-            ? activeProf.LcdFilter
-            : settings.VideoFilter;
-        var interp = effectiveFilter is StormVideoFilter.Nearest or StormVideoFilter.LcdGrid or StormVideoFilter.RgbSubpixel
-            ? BitmapInterpolationMode.None
-            : BitmapInterpolationMode.MediumQuality;
-        RenderOptions.SetBitmapInterpolationMode(_lcdImage, interp);
+        _lcdViewport.Width = imgW;
+        _lcdViewport.Height = imgH;
+        _lcdViewport.Margin = new Thickness(imgX, imgY, 0, 0);
+        _lcdViewport.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+        _lcdViewport.RenderTransform = rot != 0 ? new RotateTransform(rot) : null;
+        _lcdViewport.InvalidateVisual();
 
         bool hideSkin = GbcaConsoleSkinRenderer.ShouldHideSkinForScreen(plat, settings);
         _chassisImage.IsVisible = !hideSkin;
@@ -602,7 +693,7 @@ public class SingleScreenSessionView : Grid
         var prof = settings.GetOverlayProfileForPlatform(plat);
         var vp = _lastViewportRect.Width > 0
             ? _lastViewportRect
-            : new Rect(_lcdImage.Margin.Left, _lcdImage.Margin.Top, _lcdImage.Width, _lcdImage.Height);
+            : new Rect(_lcdViewport.Margin.Left, _lcdViewport.Margin.Top, _lcdViewport.Width, _lcdViewport.Height);
         _overlayImage.Source = GbcaOverlayRenderer.RenderOverlayBitmap(w, h, vp, plat, prof, pressedMask);
     }
 

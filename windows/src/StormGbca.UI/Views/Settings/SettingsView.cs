@@ -20,6 +20,7 @@ using StormGbca.Core.Localization;
 using StormGbca.Core.Native;
 using StormGbca.Core.Paths;
 using StormGbca.UI.Common;
+using StormGbca.UI.Views.Emulation;
 
 namespace StormGbca.UI.Views.Settings;
 
@@ -55,6 +56,7 @@ public class SettingsView : Grid
     private readonly List<GbcaLanRoomInfo> _discoveredRooms = [];
     private string _mpFeedback = string.Empty;
     private bool _pendingHardcoreConfirm;
+    private TextBlock? _videoRendererTitle;
 
     public SettingsView()
     {
@@ -175,6 +177,13 @@ public class SettingsView : Grid
         SizeChanged += (_, e) => UpdateResponsiveLayout(e.NewSize.Width);
         GbcaLoc.LanguageChanged += _ => Dispatcher.UIThread.Post(() => RefreshTabLabelsAndContent(force: false));
         StormThemeBrushes.BindTheme(this, () => RefreshTabLabelsAndContent(force: false));
+        SkiaLcdViewportControl.RendererInfoDetected += info =>
+        {
+            if (_videoRendererTitle != null)
+            {
+                _videoRendererTitle.Text = $"{GbcaLoc.T("GpuRendererLabel")} {info}";
+            }
+        };
     }
 
     private static IBrush GetSuccessTextBrush()
@@ -607,6 +616,39 @@ public class SettingsView : Grid
     private void BuildVideoTab(StackPanel p)
     {
         var s = StormGbcaUiState.Instance.Settings;
+
+        var gpuCard = new Border
+        {
+            Padding = new Thickness(12, 9),
+            Margin = new Thickness(0, 0, 0, 8),
+            CornerRadius = new CornerRadius(10),
+            Background = StormThemeBrushes.RowSurface,
+            BorderBrush = StormThemeBrushes.SubtleBorder,
+            BorderThickness = new Thickness(1)
+        };
+        var gpuRow = new StackPanel { Spacing = 3 };
+        var rendererTitle = new TextBlock
+        {
+            Text = $"{GbcaLoc.T("GpuRendererLabel")} {SkiaLcdViewportControl.ActiveRendererInfo}",
+            FontSize = 12,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = StormThemeBrushes.Accent,
+            TextWrapping = TextWrapping.Wrap
+        };
+        _videoRendererTitle = rendererTitle;
+        var probe = new SkiaRendererProbeControl();
+        gpuRow.Children.Add(rendererTitle);
+        gpuRow.Children.Add(new TextBlock
+        {
+            Text = $"{GbcaLoc.T("GpuMinReqLabel")} | SkiaSharp 3.119.4 GPU SkSL (FSR 1 EASU+RCAS / FSR 3 Temporal+RCAS / Frame Generation)",
+            FontSize = 11,
+            Foreground = StormThemeBrushes.SecondaryText,
+            TextWrapping = TextWrapping.Wrap
+        });
+        gpuRow.Children.Add(probe);
+        gpuCard.Child = gpuRow;
+        p.Children.Add(gpuCard);
+
         p.Children.Add(CreateSectionTitle("Увеличение разрешения (1x..4x), апскейлинг и производительность"));
         p.Children.Add(CreateCombo("Внутреннее увеличение разрешения (Internal Scale):",
         [
@@ -677,8 +719,42 @@ public class SettingsView : Grid
             "Субпиксельная матрица (RGB Subpixel)",
             "Улучшение деталей (xBRZ Lite)",
             "Строки развертки (CRT Scanlines)",
-            "Резкое сглаживание (Sharp Bilinear)"
-        ], (int)s.VideoFilter, i => s.VideoFilter = (StormVideoFilter)i));
+            "Резкое сглаживание (Sharp Bilinear)",
+            GbcaLoc.T("FilterFsr1"),
+            GbcaLoc.T("FilterFsr3")
+        ], (int)s.VideoFilter, i =>
+        {
+            var filter = (StormVideoFilter)i;
+            s.VideoFilter = filter;
+            s.GbOverlayProfile.LcdFilter = filter;
+            s.GbcOverlayProfile.LcdFilter = filter;
+            s.GbaOverlayProfile.LcdFilter = filter;
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+        }));
+
+        p.Children.Add(CreateCombo(GbcaLoc.T("FsrQualityLabel"),
+        [
+            GbcaLoc.T("FsrQuality0"),
+            GbcaLoc.T("FsrQuality1"),
+            GbcaLoc.T("FsrQuality2"),
+            GbcaLoc.T("FsrQuality3")
+        ], Math.Clamp(s.FsrQualityMode, 0, 3), i => s.FsrQualityMode = i));
+
+        p.Children.Add(CreateSlider(GbcaLoc.T("FsrSharpnessLabel"), 0, 100, s.FsrSharpness, "%", v => s.FsrSharpness = Math.Clamp((int)Math.Round(v), 0, 100)));
+
+        p.Children.Add(CreateCheck(GbcaLoc.T("FrameGenToggle"), s.FrameGeneration, v =>
+        {
+            s.FrameGeneration = v;
+            StormGbcaUiState.Instance.NotifySkinOrOverlayChanged();
+        }));
+        p.Children.Add(new TextBlock
+        {
+            Text = GbcaLoc.T("FrameGenNote"),
+            FontSize = 10.5,
+            Foreground = StormThemeBrushes.SecondaryText,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(24, 0, 0, 6)
+        });
 
         p.Children.Add(CreateCombo("Масштабирование экрана:", ["Вписать с сохранением пропорций", "Целочисленное (Pixel-Perfect)", "Растянуть на область экрана"], (int)s.ScaleMode, i =>
         {

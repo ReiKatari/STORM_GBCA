@@ -19,6 +19,7 @@ import android.os.VibratorManager
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.WindowManager
@@ -154,7 +155,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
     private val showRaAccountState = androidx.compose.runtime.mutableStateOf(false)
     private val linkStatusState = androidx.compose.runtime.mutableStateOf(LinkStatusInfo())
     private val activeCoreLabelState = androidx.compose.runtime.mutableStateOf("mGBA")
-    private val activeBackendLabelState = androidx.compose.runtime.mutableStateOf("GLES 3.2")
+    private val activeBackendLabelState = androidx.compose.runtime.mutableStateOf("GLES")
     private val rewindFramesState = androidx.compose.runtime.mutableIntStateOf(0)
     private val statusToastState = androidx.compose.runtime.mutableStateOf<String?>(null)
     private val raSessionState = androidx.compose.runtime.mutableStateOf<RaGameSession?>(null)
@@ -218,10 +219,14 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         val initOverlay = GbcaPrefs.getOverlayProfile(activeSystem)
         NativeCore.nativeSetRetroArchShader(initOverlay.retroArchShaderPath)
 
-        val wantVulkan = GbcaPrefs.coreConfigState.value.graphicsBackend == 1 &&
-            runCatching { NativeCore.nativeIsVulkanSupported() }.getOrDefault(false)
+        val tel = com.stormgbca.emulator.vulkandriver.VulkanDriverRepository.readGraphicsTelemetry(this)
+        val wantVulkan = GbcaPrefs.coreConfigState.value.graphicsBackend == 1 && tel.vulkanSupported
         useVulkanState.value = wantVulkan
-        activeBackendLabelState.value = if (wantVulkan) "Vulkan 1.1" else "GLES 3.2"
+        val vkLabel = tel.vulkanDeviceApi.ifBlank { tel.vulkanInstanceApi }.let { ver ->
+            if (ver.isNotBlank()) "Vulkan $ver" else "Vulkan"
+        }
+        val glesLabel = if (tel.glesVersion.isNotBlank()) "GLES ${tel.glesVersion}" else "GLES"
+        activeBackendLabelState.value = if (wantVulkan) vkLabel else glesLabel
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -272,6 +277,16 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
                 LaunchedEffect(overlayProfile.retroArchShaderPath) {
                     NativeCore.nativeSetRetroArchShader(overlayProfile.retroArchShaderPath)
+                }
+
+                LaunchedEffect(
+                    overlayProfile.shaderOverlay,
+                    coreCfg.fsrSharpness,
+                    coreCfg.fsrQualityMode,
+                    coreCfg.frameGenerationEnabled,
+                ) {
+                    syncPostProcessConfig()
+                    requestVideoRender()
                 }
 
                 BackHandler {
@@ -664,12 +679,14 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
                 NativeCore.nativeGlesInit(shaderSource)
                 NativeCore.nativeSetRetroArchShader(GbcaPrefs.getOverlayProfile(activeSystem).retroArchShaderPath)
+                syncPostProcessConfig()
             }
 
             override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
                 glSurfaceW = width.coerceAtLeast(1)
                 glSurfaceH = height.coerceAtLeast(1)
                 NativeCore.nativeGlesResize(glSurfaceW, glSurfaceH)
+                updateSurfaceFrameRateHint(GbcaPrefs.coreConfigState.value.frameGenerationEnabled)
             }
 
             override fun onDrawFrame(gl: GL10?) {
@@ -700,14 +717,17 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 val ok = vkLock.withLock {
                     NativeCore.nativeVkInit(holder.surface, driverPath)
                 }
+                val tel = com.stormgbca.emulator.vulkandriver.VulkanDriverRepository.readGraphicsTelemetry(this@EmulatorActivity)
                 if (ok) {
                     vulkanReady.set(true)
-                    activeBackendLabelState.value = "Vulkan 1.1"
+                    val vkVer = tel.vulkanDeviceApi.ifBlank { tel.vulkanInstanceApi }
+                    activeBackendLabelState.value = if (vkVer.isNotBlank()) "Vulkan $vkVer" else "Vulkan"
                     NativeCore.nativeSetRetroArchShader(GbcaPrefs.getOverlayProfile(activeSystem).retroArchShaderPath)
+                    syncPostProcessConfig()
                 } else {
                     vulkanReady.set(false)
                     useVulkanState.value = false
-                    activeBackendLabelState.value = "GLES 3.2"
+                    activeBackendLabelState.value = if (tel.glesVersion.isNotBlank()) "GLES ${tel.glesVersion}" else "GLES"
                     showToast(getString(R.string.toast_vulkan_fallback))
                 }
             }
@@ -717,6 +737,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 glSurfaceH = height.coerceAtLeast(1)
                 if (vulkanReady.get()) {
                     vkLock.withLock { NativeCore.nativeVkResize(glSurfaceW, glSurfaceH) }
+                    updateSurfaceFrameRateHint(GbcaPrefs.coreConfigState.value.frameGenerationEnabled)
                 }
             }
 
@@ -840,6 +861,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             }
 
             sessionStartMs = System.currentTimeMillis()
+            syncPostProcessConfig()
             startEmulationLoop()
 
             // Lookup RetroAchievements & activate live rcheevos runtime if signed in
@@ -920,6 +942,73 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
+    private fun sleepUntilNs(targetNs: Long, thermalThrottle: Boolean) {
+        var remainingNs = targetNs - System.nanoTime()
+        if (remainingNs <= 0L) return
+        if (thermalThrottle) {
+            LockSupport.parkNanos(remainingNs)
+            return
+        }
+        if (remainingNs > 2_000_000L) {
+            LockSupport.parkNanos(remainingNs - 1_500_000L)
+        }
+        while (isRunning.get() && !isPaused.get()) {
+            remainingNs = targetNs - System.nanoTime()
+            if (remainingNs <= 0L) break
+            if (remainingNs > 400_000L) {
+                Thread.yield()
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Thread.onSpinWait()
+            } else {
+                Thread.yield()
+            }
+        }
+    }
+
+    @Volatile private var lastHintedFrameRate: Float = -1f
+
+    private fun updateSurfaceFrameRateHint(frameGenEnabled: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val targetRate = if (frameGenEnabled) 120f else 60f
+        if (lastHintedFrameRate == targetRate) return
+        lastHintedFrameRate = targetRate
+        runOnUiThread {
+            val activeSurface = if (useVulkanState.value) {
+                vkView?.holder?.surface
+            } else {
+                glView?.holder?.surface
+            }
+            if (activeSurface != null && activeSurface.isValid) {
+                runCatching {
+                    activeSurface.setFrameRate(targetRate, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+                }
+            }
+        }
+    }
+
+    private fun syncPostProcessConfig() {
+        val cfg = GbcaPrefs.coreConfigState.value
+        val overlayProf = GbcaPrefs.getOverlayProfile(activeSystem)
+        val effectiveFilter = overlayProf.shaderOverlay
+        val fsrMode = when (effectiveFilter) {
+            NativeCore.FILTER_FSR1 -> 1
+            NativeCore.FILTER_FSR3 -> 2
+            else -> 0
+        }
+        runCatching {
+            NativeCore.nativeSetPostProcess(
+                fsrMode,
+                cfg.fsrSharpness.coerceIn(0, 100) / 100f,
+                cfg.fsrQualityMode.coerceIn(0, 3),
+                cfg.frameGenerationEnabled,
+            )
+        }
+        if (!cfg.frameGenerationEnabled) {
+            runCatching { NativeCore.nativeSetFrameGenAlpha(0.0f) }
+        }
+        updateSurfaceFrameRateHint(cfg.frameGenerationEnabled)
+    }
+
     private fun startEmulationLoop() {
         isRunning.set(true)
         emuThread = Thread({
@@ -964,8 +1053,15 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 }
 
                 val skip = cfg.frameSkip.coerceIn(0, 4)
-                if (skip == 0 || (frameCounter % (skip + 1)) == 0) {
+                val thermalThrottle = isThermalThrottled.get()
+                val shouldRender = skip == 0 || (frameCounter % (skip + 1)) == 0
+                val frameGenActive = cfg.frameGenerationEnabled && !ff && !thermalThrottle && skip == 0
+
+                if (shouldRender) {
+                    NativeCore.nativeSetFrameGenAlpha(0.0f)
                     requestVideoRender()
+                } else if (!frameGenActive) {
+                    NativeCore.nativeSetFrameGenAlpha(0.0f)
                 }
 
                 frameCounter++
@@ -981,31 +1077,22 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
 
                 if (!ff) {
                     nextTickNs += FRAME_DURATION_NS
-                    val thermalThrottle = isThermalThrottled.get()
-                    var remainingNs = nextTickNs - System.nanoTime()
-                    if (remainingNs < -FRAME_DURATION_NS * 4) {
+                    val remainingBefore = nextTickNs - System.nanoTime()
+                    if (remainingBefore < -FRAME_DURATION_NS * 4) {
                         nextTickNs = System.nanoTime()
-                    } else if (remainingNs > 0L) {
-                        if (thermalThrottle) {
-                            LockSupport.parkNanos(remainingNs)
-                        } else {
-                            if (remainingNs > 2_000_000L) {
-                                LockSupport.parkNanos(remainingNs - 1_500_000L)
-                            }
-                            while (isRunning.get() && !isPaused.get()) {
-                                remainingNs = nextTickNs - System.nanoTime()
-                                if (remainingNs <= 0L) break
-                                if (remainingNs > 400_000L) {
-                                    Thread.yield()
-                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    Thread.onSpinWait()
-                                } else {
-                                    Thread.yield()
-                                }
+                    } else if (remainingBefore > 0L) {
+                        if (frameGenActive) {
+                            val midTickNs = nextTickNs - (FRAME_DURATION_NS / 2L)
+                            sleepUntilNs(midTickNs, thermalThrottle)
+                            if (isRunning.get() && !isPaused.get() && !fastForward.get()) {
+                                NativeCore.nativeSetFrameGenAlpha(0.5f)
+                                requestVideoRender()
                             }
                         }
+                        sleepUntilNs(nextTickNs, thermalThrottle)
                     }
                 } else {
+                    NativeCore.nativeSetFrameGenAlpha(0.0f)
                     nextTickNs = System.nanoTime()
                 }
             }
@@ -1017,11 +1104,14 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         coreLock.withLock {
             if (nativeHandle != 0L) applyCoreConfigLocked(nativeHandle, rom)
         }
+        syncPostProcessConfig()
         requestVideoRender()
     }
 
     private fun applyCoreConfigLocked(h: Long, rom: RomEntry) {
         val cfg = GbcaPrefs.coreConfigState.value
+        val overlayProf = GbcaPrefs.getOverlayProfile(activeSystem)
+        val effFilter = overlayProf.shaderOverlay
         val hc = raHardcoreActive.get()
         val ov = rom.coreOverride
         val gbCore = if (ov >= 0) ov else cfg.preferredCoreGb
@@ -1039,7 +1129,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             h,
             gbCore, gbcCore, gbaCore,
             cfg.gbModel, cfg.sgbBorders, cfg.colorCorrectionMode,
-            cfg.dmgPaletteIndex, null, effLcdGhosting, cfg.videoFilter,
+            cfg.dmgPaletteIndex, null, effLcdGhosting, effFilter,
             cfg.audioHighpassMode, cfg.audioInterpMode,
             cfg.channelVolumes.toFloatArray(), cfg.masterVolume,
             effRunAhead, effRewindEnabled, cfg.rewindBufferMb, cfg.rewindInterval,

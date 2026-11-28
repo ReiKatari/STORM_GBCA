@@ -77,10 +77,14 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
     private bool _fastForwardActive;
 
     private byte[] _frameBgra = new byte[240 * 160 * 4];
+    private byte[] _prevFrameBgra = new byte[240 * 160 * 4];
     private int _frameWidth = 240;
     private int _frameHeight = 160;
     private float _targetFps = (float)NominalGbaFps;
     private long _frameCounter;
+    private long _frameSeq;
+    private long _lastFrameTicks;
+    private long _framePeriodTicks = (long)Math.Round(Stopwatch.Frequency / NominalGbaFps);
     private double _measuredFps = NominalGbaFps;
     private double _lastFrameMs = 16.74;
     private float _lastRumble;
@@ -634,6 +638,47 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             if (dst.Length != need) dst = new byte[need];
             Buffer.BlockCopy(_frameBgra, 0, dst, 0, Math.Min(need, _frameBgra.Length));
             return need;
+        }
+    }
+
+    public bool CopyFramePairBgra(ref byte[] prevDst, ref byte[] currDst, out int width, out int height, out long seq, out float progress)
+    {
+        lock (_frameLock)
+        {
+            width = _frameWidth;
+            height = _frameHeight;
+            seq = _frameSeq;
+            int need = width * height * 4;
+            if (need <= 0 || _frameBgra.Length < need || _frameSeq <= 0)
+            {
+                progress = 0f;
+                return false;
+            }
+
+            if (currDst.Length != need) currDst = new byte[need];
+            if (prevDst.Length != need) prevDst = new byte[need];
+
+            Buffer.BlockCopy(_frameBgra, 0, currDst, 0, need);
+            if (_prevFrameBgra.Length >= need)
+            {
+                Buffer.BlockCopy(_prevFrameBgra, 0, prevDst, 0, need);
+            }
+            else
+            {
+                Buffer.BlockCopy(_frameBgra, 0, prevDst, 0, need);
+            }
+
+            if (_isPaused || _fastForwardActive || !_isRunning)
+            {
+                progress = 0f;
+            }
+            else
+            {
+                long now = Stopwatch.GetTimestamp();
+                long period = Math.Max(1L, _framePeriodTicks);
+                progress = Math.Clamp((float)((now - _lastFrameTicks) / (double)period), 0f, 1f);
+            }
+            return true;
         }
     }
 
@@ -1372,8 +1417,18 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
                 _frameWidth = w;
                 _frameHeight = h;
                 _targetFps = fps > 10f ? fps : (float)NominalGbaFps;
+                _framePeriodTicks = (long)Math.Round(Stopwatch.Frequency / Math.Max(30.0, _targetFps));
                 int bytes = w * h * 4;
-                if (_frameBgra.Length != bytes) _frameBgra = new byte[bytes];
+                if (_frameBgra.Length != bytes)
+                {
+                    _frameBgra = new byte[bytes];
+                    _prevFrameBgra = new byte[bytes];
+                    _frameSeq = 0;
+                }
+                else if (_prevFrameBgra.Length != bytes)
+                {
+                    _prevFrameBgra = new byte[bytes];
+                }
             }
         }
     }
@@ -1390,12 +1445,34 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             _frameWidth = w;
             _frameHeight = h;
             int need = w * h * 4;
-            if (_frameBgra.Length != need) _frameBgra = new byte[need];
+            if (_frameBgra.Length == need)
+            {
+                if (_prevFrameBgra.Length != need)
+                {
+                    _prevFrameBgra = new byte[need];
+                }
+                if (_frameSeq > 0)
+                {
+                    (_prevFrameBgra, _frameBgra) = (_frameBgra, _prevFrameBgra);
+                }
+            }
+            else
+            {
+                _frameBgra = new byte[need];
+                _prevFrameBgra = new byte[need];
+                _frameSeq = 0;
+            }
             fixed (byte* dst = _frameBgra)
             {
                 int outW = w, outH = h;
                 NativeCoreBindings.storm_gbca_copy_upscaled_frame(_ctx, (uint*)dst, w, (int)StormPixelFormat.Bgra8888, &outW, &outH);
             }
+            if (_frameSeq == 0)
+            {
+                Buffer.BlockCopy(_frameBgra, 0, _prevFrameBgra, 0, need);
+            }
+            _frameSeq++;
+            _lastFrameTicks = Stopwatch.GetTimestamp();
         }
     }
 

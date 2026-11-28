@@ -187,6 +187,9 @@ public sealed class GbcaAppSettings
     public uint[] CustomDmgPalette { get; set; } = [0x9BBC0F, 0x8BAC0F, 0x306230, 0x0F380F];
     public int LcdGhosting { get; set; } = 15;
     public StormVideoFilter VideoFilter { get; set; } = StormVideoFilter.LcdGrid;
+    public int FsrSharpness { get; set; } = 65;
+    public int FsrQualityMode { get; set; } = 0; // 0=Quality 67%-1.5x, 1=Balanced 59%-1.7x, 2=Performance 50%-2.0x, 3=Ultra Performance 33%-3.0x
+    public bool FrameGeneration { get; set; } = false;
     public GbcaScaleMode ScaleMode { get; set; } = GbcaScaleMode.AspectFit;
     public int ResolutionScale { get; set; } = 1; // 1..4x internal upscaling
     public StormUpscaleMode UpscaleMode { get; set; } = StormUpscaleMode.None;
@@ -456,6 +459,8 @@ public static class GbcaSettingsStore
         s.GbcOverlayProfile.ScreenRect ??= new ScreenRectSettings();
         s.GbaOverlayProfile.ScreenRect ??= new ScreenRectSettings();
         s.ResolutionScale = Math.Clamp(s.ResolutionScale, 1, 4);
+        s.FsrSharpness = Math.Clamp(s.FsrSharpness, 0, 100);
+        s.FsrQualityMode = Math.Clamp(s.FsrQualityMode, 0, 3);
         s.CpuOverclockPct = Math.Clamp(s.CpuOverclockPct, 50, 400);
         s.FrameSkip = Math.Clamp(s.FrameSkip, 0, 4);
         s.KeyBindings ??= new Dictionary<string, string>();

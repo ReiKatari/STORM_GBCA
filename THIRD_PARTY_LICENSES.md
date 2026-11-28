@@ -1,6 +1,6 @@
 # Third-Party Licenses & Open-Source Attributions - STORM GBCA
 
-**STORM GBCA (version 1.7.1)** is distributed under the **Mozilla Public License Version 2.0 (MPL-2.0)**. See [LICENSE](LICENSE) for the full project license notice.
+**STORM GBCA (version 1.8.0)** is distributed under the **Mozilla Public License Version 2.0 (MPL-2.0)**. See [LICENSE](LICENSE) for the full project license notice.
 
 ---
 
@@ -27,6 +27,7 @@
 | **rcheevos** | 12.5.0 | **MIT** | RetroAchievements.org (Jamiras & contributors) | https://github.com/RetroAchievements/rcheevos |
 | **librashader** | 0.8+ | **MPL-2.0 / MIT** | Ronny Chan (SnowflakePowered) | https://github.com/SnowflakePowered/librashader |
 | **Google Oboe** | 1.11.2 | **Apache-2.0** | Google LLC | https://github.com/google/oboe |
+| **AMD FidelityFX FSR (EASU / RCAS)** | 1.0 | **MIT** | Advanced Micro Devices, Inc. | https://github.com/GPUOpen-Effects/FidelityFX-FSR |
 
 ### MPL-2.0 Source Availability Notice (mGBA & librashader)
 
@@ -34,6 +35,7 @@ In compliance with **MPL-2.0 Section 3.2**:
 - The complete source code of **mGBA** (including bundled `zlib` and `LZMA SDK`), along with all modifications and CMake build scripts used by STORM GBCA, is included directly in this public repository under [`core/third_party/mgba`](core/third_party/mgba).
 - For **librashader**, the MIT C integration headers (`librashader.h`, `librashader_ld.h`) are vendored in [`core/third_party/librashader`](core/third_party/librashader), and the complete upstream source code for the prebuilt Android `liblibrashader.so` binaries (MPL-2.0 / MIT) is publicly available at https://github.com/SnowflakePowered/librashader.
 - All original STORM GBCA core wrapper code (`core/src/`, `core/include/`) is also licensed under **MPL-2.0**.
+- Our GPU shaders across Android (OpenGL ES 3.2, Vulkan, `.slangp`) and Windows (`SkiaSharp` SkSL) implement the MIT-licensed AMD FidelityFX FSR 1.0 EASU/RCAS algorithm alongside original STORM GBCA **MPL-2.0** temporal accumulation and optical-flow passes.
 
 ---
 

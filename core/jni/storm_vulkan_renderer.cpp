@@ -8,7 +8,11 @@
 #include <android/log.h>
 #include <dlfcn.h>
 
+#include "storm_postprocess.hpp"
+
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -19,6 +23,7 @@
 
 namespace storm {
 
+extern bool librashader_has_preset();
 extern bool librashader_apply_vk(VkInstance instance, VkPhysicalDevice phys, VkDevice device, VkQueue queue,
                                  PFN_vkGetInstanceProcAddr vk_entry, VkCommandBuffer cmd,
                                  VkImage src_img, VkFormat src_fmt, uint32_t src_w, uint32_t src_h,
@@ -27,6 +32,466 @@ extern bool librashader_apply_vk(VkInstance instance, VkPhysicalDevice phys, VkD
 extern void librashader_reset_vk();
 
 namespace {
+
+static std::string format_vk_version(uint32_t ver) {
+    uint32_t major = (ver >> 22) & 0x7Fu;
+    uint32_t minor = (ver >> 12) & 0x3FFu;
+    uint32_t patch = ver & 0xFFFu;
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%u.%u.%u", major, minor, patch);
+    return buf;
+}
+
+struct RgbF {
+    float r, g, b;
+};
+
+static inline RgbF unpack_rgba(uint32_t px) {
+    return {
+        static_cast<float>(px & 0xFFu) * (1.0f / 255.0f),
+        static_cast<float>((px >> 8) & 0xFFu) * (1.0f / 255.0f),
+        static_cast<float>((px >> 16) & 0xFFu) * (1.0f / 255.0f),
+    };
+}
+
+static inline uint32_t pack_rgba(float r, float g, float b) {
+    uint32_t ri = static_cast<uint32_t>(std::clamp(r * 255.0f + 0.5f, 0.0f, 255.0f));
+    uint32_t gi = static_cast<uint32_t>(std::clamp(g * 255.0f + 0.5f, 0.0f, 255.0f));
+    uint32_t bi = static_cast<uint32_t>(std::clamp(b * 255.0f + 0.5f, 0.0f, 255.0f));
+    return ri | (gi << 8) | (bi << 16) | 0xFF000000u;
+}
+
+static inline float rgb_luma(const RgbF& c) {
+    return 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
+}
+
+static inline float fsr_luma(const RgbF& c) {
+    return 0.5f * c.g + 0.25f * (c.r + c.b);
+}
+
+static RgbF sample_bilinear_rgba(const uint32_t* img, int w, int h, float fx, float fy) {
+    fx = std::clamp(fx, 0.0f, static_cast<float>(w - 1));
+    fy = std::clamp(fy, 0.0f, static_cast<float>(h - 1));
+    int x0 = static_cast<int>(fx);
+    int y0 = static_cast<int>(fy);
+    int x1 = std::min(x0 + 1, w - 1);
+    int y1 = std::min(y0 + 1, h - 1);
+    float tx = fx - static_cast<float>(x0);
+    float ty = fy - static_cast<float>(y0);
+    RgbF c00 = unpack_rgba(img[y0 * w + x0]);
+    RgbF c10 = unpack_rgba(img[y0 * w + x1]);
+    RgbF c01 = unpack_rgba(img[y1 * w + x0]);
+    RgbF c11 = unpack_rgba(img[y1 * w + x1]);
+    float w00 = (1.0f - tx) * (1.0f - ty);
+    float w10 = tx * (1.0f - ty);
+    float w01 = (1.0f - tx) * ty;
+    float w11 = tx * ty;
+    return {
+        c00.r * w00 + c10.r * w10 + c01.r * w01 + c11.r * w11,
+        c00.g * w00 + c10.g * w10 + c01.g * w01 + c11.g * w11,
+        c00.b * w00 + c10.b * w10 + c01.b * w01 + c11.b * w11,
+    };
+}
+
+static void synthesize_optical_flow_midpoint(
+    const uint32_t* prev_rgba, const uint32_t* cur_rgba, int w, int h, float alpha,
+    std::vector<float>& l0_buf, std::vector<float>& l1_buf, std::vector<uint32_t>& out_rgba
+) {
+    const size_t count = static_cast<size_t>(w) * static_cast<size_t>(h);
+    l0_buf.resize(count);
+    l1_buf.resize(count);
+    out_rgba.resize(count);
+
+    float scene_diff_sum = 0.0f;
+    size_t scene_samples = 0;
+    for (size_t i = 0; i < count; ++i) {
+        float l0 = rgb_luma(unpack_rgba(prev_rgba[i]));
+        float l1 = rgb_luma(unpack_rgba(cur_rgba[i]));
+        l0_buf[i] = l0;
+        l1_buf[i] = l1;
+        if ((i & 3u) == 0u) {
+            scene_diff_sum += std::abs(l1 - l0);
+            scene_samples++;
+        }
+    }
+
+    const float avg_scene_diff = scene_samples > 0 ? (scene_diff_sum / static_cast<float>(scene_samples)) : 0.0f;
+    if (avg_scene_diff > 0.35f) {
+        // Hard scene transition: avoid motion smearing
+        const uint32_t* src = (alpha >= 0.5f) ? cur_rgba : prev_rgba;
+        std::memcpy(out_rgba.data(), src, count * 4);
+        return;
+    }
+
+    auto at_l0 = [&](int x, int y) -> float {
+        return l0_buf[std::clamp(y, 0, h - 1) * w + std::clamp(x, 0, w - 1)];
+    };
+    auto at_l1 = [&](int x, int y) -> float {
+        return l1_buf[std::clamp(y, 0, h - 1) * w + std::clamp(x, 0, w - 1)];
+    };
+
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            float sum_ix2 = 0.0f, sum_iy2 = 0.0f, sum_ixiy = 0.0f;
+            float sum_ixit = 0.0f, sum_iyit = 0.0f, sum_it_abs = 0.0f;
+            for (int oy = -1; oy <= 1; ++oy) {
+                for (int ox = -1; ox <= 1; ++ox) {
+                    int sx = x + ox;
+                    int sy = y + oy;
+                    float ix = 0.25f * ((at_l0(sx + 1, sy) - at_l0(sx - 1, sy)) +
+                                        (at_l1(sx + 1, sy) - at_l1(sx - 1, sy)));
+                    float iy = 0.25f * ((at_l0(sx, sy + 1) - at_l0(sx, sy - 1)) +
+                                        (at_l1(sx, sy + 1) - at_l1(sx, sy - 1)));
+                    float it = at_l1(sx, sy) - at_l0(sx, sy);
+                    sum_ix2 += ix * ix;
+                    sum_iy2 += iy * iy;
+                    sum_ixiy += ix * iy;
+                    sum_ixit += ix * it;
+                    sum_iyit += iy * it;
+                    sum_it_abs += std::abs(it);
+                }
+            }
+
+            float vx = 0.0f, vy = 0.0f;
+            if (sum_it_abs > 0.025f) {
+                float det = sum_ix2 * sum_iy2 - sum_ixiy * sum_ixiy + 0.0025f;
+                vx = std::clamp((-sum_iy2 * sum_ixit + sum_ixiy * sum_iyit) / det, -4.0f, 4.0f);
+                vy = std::clamp((-sum_ix2 * sum_iyit + sum_ixiy * sum_ixit) / det, -4.0f, 4.0f);
+            }
+
+            RgbF p0 = unpack_rgba(prev_rgba[y * w + x]);
+            RgbF p1 = unpack_rgba(cur_rgba[y * w + x]);
+            RgbF w0 = sample_bilinear_rgba(prev_rgba, w, h, static_cast<float>(x) - vx * alpha, static_cast<float>(y) - vy * alpha);
+            RgbF w1 = sample_bilinear_rgba(cur_rgba,  w, h, static_cast<float>(x) + vx * (1.0f - alpha), static_cast<float>(y) + vy * (1.0f - alpha));
+
+            float warped_sad = rgb_luma({std::abs(w0.r - w1.r), std::abs(w0.g - w1.g), std::abs(w0.b - w1.b)});
+            float disocc = std::clamp((warped_sad - 0.12f) / 0.24f, 0.0f, 1.0f);
+            float raw_sad = rgb_luma({std::abs(p0.r - p1.r), std::abs(p0.g - p1.g), std::abs(p0.b - p1.b)});
+            float cut_t = std::clamp((raw_sad - 0.40f) / 0.25f, 0.0f, 1.0f);
+
+            RgbF lin{
+                p0.r + (p1.r - p0.r) * alpha,
+                p0.g + (p1.g - p0.g) * alpha,
+                p0.b + (p1.b - p0.b) * alpha,
+            };
+            RgbF wrp{
+                w0.r + (w1.r - w0.r) * alpha,
+                w0.g + (w1.g - w0.g) * alpha,
+                w0.b + (w1.b - w0.b) * alpha,
+            };
+            RgbF res{
+                wrp.r + (lin.r - wrp.r) * disocc,
+                wrp.g + (lin.g - wrp.g) * disocc,
+                wrp.b + (lin.b - wrp.b) * disocc,
+            };
+            const RgbF& hc = (alpha >= 0.5f) ? p1 : p0;
+            res.r += (hc.r - res.r) * cut_t;
+            res.g += (hc.g - res.g) * cut_t;
+            res.b += (hc.b - res.b) * cut_t;
+            out_rgba[y * w + x] = pack_rgba(res.r, res.g, res.b);
+        }
+    }
+}
+
+static inline void easu_set_cpu(float& dirX, float& dirY, float& len, float ppx, float ppy,
+                                bool biS, bool biT, bool biU, bool biV,
+                                float lA, float lB, float lC, float lD, float lE) {
+    float w = 0.0f;
+    if (biS) w = (1.0f - ppx) * (1.0f - ppy);
+    if (biT) w = ppx * (1.0f - ppy);
+    if (biU) w = (1.0f - ppx) * ppy;
+    if (biV) w = ppx * ppy;
+
+    float lenX = std::max(std::abs(lD - lC), std::abs(lC - lB));
+    float dX = lD - lB;
+    dirX += dX * w;
+    float lx = std::clamp(std::abs(dX) / std::max(lenX, 1e-5f), 0.0f, 1.0f);
+    len += (lx * lx) * w;
+
+    float lenY = std::max(std::abs(lE - lC), std::abs(lC - lA));
+    float dY = lE - lA;
+    dirY += dY * w;
+    float ly = std::clamp(std::abs(dY) / std::max(lenY, 1e-5f), 0.0f, 1.0f);
+    len += (ly * ly) * w;
+}
+
+static inline void easu_tap_cpu(RgbF& aC, float& aW, float ox, float oy,
+                                float dirX, float dirY, float len2X, float len2Y,
+                                float lob, float clp, const RgbF& c) {
+    float vx = (ox * dirX + oy * dirY) * len2X;
+    float vy = (ox * (-dirY) + oy * dirX) * len2Y;
+    float d2 = std::min(vx * vx + vy * vy, clp);
+    float wB = 0.4f * d2 - 1.0f;
+    float wA = lob * d2 - 1.0f;
+    wB *= wB;
+    wA *= wA;
+    wB = (25.0f / 16.0f) * wB - (25.0f / 16.0f - 1.0f);
+    float w = wB * wA;
+    aC.r += c.r * w;
+    aC.g += c.g * w;
+    aC.b += c.b * w;
+    aW += w;
+}
+
+static void run_rcas_cpu(const std::vector<RgbF>& stage, int w, int h, float sharpness, std::vector<uint32_t>& out_rgba) {
+    out_rgba.resize(static_cast<size_t>(w) * static_cast<size_t>(h));
+    auto at = [&](int x, int y) -> const RgbF& {
+        return stage[static_cast<size_t>(std::clamp(y, 0, h - 1)) * w + std::clamp(x, 0, w - 1)];
+    };
+    const float sharp = std::clamp(sharpness, 0.0f, 1.0f);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const RgbF& b = at(x, y - 1);
+            const RgbF& d = at(x - 1, y);
+            const RgbF& e = at(x, y);
+            const RgbF& f = at(x + 1, y);
+            const RgbF& h_px = at(x, y + 1);
+
+            float bL = fsr_luma(b), dL = fsr_luma(d), eL = fsr_luma(e), fL = fsr_luma(f), hL = fsr_luma(h_px);
+            float mnL = std::min({bL, dL, fL, hL});
+            float mxL = std::max({bL, dL, fL, hL});
+            float nz = 0.25f * (bL + dL + fL + hL) - eL;
+            nz = std::clamp(std::abs(nz) / std::max(std::max(mxL, eL) - std::min(mnL, eL), 1e-5f), 0.0f, 1.0f);
+            nz = -0.5f * nz + 1.0f;
+
+            auto calc_lobe = [&](float bv, float dv, float ev, float fv, float hv) -> float {
+                float mn4 = std::min({bv, dv, fv, hv});
+                float mx4 = std::max({bv, dv, fv, hv});
+                float hitMin = std::min(mn4, ev) / std::max(4.0f * mx4, 1e-5f);
+                float hitMax = (1.0f - std::max(mx4, ev)) / std::max(4.0f * (1.0f - mn4), 1e-5f);
+                return std::max(-0.1875f, -std::min(hitMin, hitMax));
+            };
+
+            float lobe = std::max({
+                calc_lobe(b.r, d.r, e.r, f.r, h_px.r),
+                calc_lobe(b.g, d.g, e.g, f.g, h_px.g),
+                calc_lobe(b.b, d.b, e.b, f.b, h_px.b)
+            });
+            lobe *= sharp * nz;
+            float rcpL = 1.0f / (4.0f * lobe + 1.0f);
+            out_rgba[static_cast<size_t>(y) * w + x] = pack_rgba(
+                (lobe * (b.r + d.r + f.r + h_px.r) + e.r) * rcpL,
+                (lobe * (b.g + d.g + f.g + h_px.g) + e.g) * rcpL,
+                (lobe * (b.b + d.b + f.b + h_px.b) + e.b) * rcpL
+            );
+        }
+    }
+}
+
+static void run_fsr1_cpu(const uint32_t* src, int sw, int sh, int dw, int dh, float sharpness,
+                         std::vector<RgbF>& stage, std::vector<uint32_t>& out_rgba) {
+    stage.resize(static_cast<size_t>(dw) * static_cast<size_t>(dh));
+    auto at_src = [&](int x, int y) -> RgbF {
+        return unpack_rgba(src[std::clamp(y, 0, sh - 1) * sw + std::clamp(x, 0, sw - 1)]);
+    };
+    const float sx = static_cast<float>(sw) / static_cast<float>(dw);
+    const float sy = static_cast<float>(sh) / static_cast<float>(dh);
+
+    for (int y = 0; y < dh; ++y) {
+        float py = (static_cast<float>(y) + 0.5f) * sy - 0.5f;
+        int iy = static_cast<int>(std::floor(py));
+        float fpy = py - static_cast<float>(iy);
+        for (int x = 0; x < dw; ++x) {
+            float px = (static_cast<float>(x) + 0.5f) * sx - 0.5f;
+            int ix = static_cast<int>(std::floor(px));
+            float fpx = px - static_cast<float>(ix);
+
+            RgbF b = at_src(ix + 0, iy - 1), c = at_src(ix + 1, iy - 1);
+            RgbF e = at_src(ix - 1, iy + 0), f = at_src(ix + 0, iy + 0), g = at_src(ix + 1, iy + 0), h = at_src(ix + 2, iy + 0);
+            RgbF i = at_src(ix - 1, iy + 1), j = at_src(ix + 0, iy + 1), k = at_src(ix + 1, iy + 1), l = at_src(ix + 2, iy + 1);
+            RgbF n = at_src(ix + 0, iy + 2), o = at_src(ix + 1, iy + 2);
+
+            float bL = fsr_luma(b), cL = fsr_luma(c);
+            float eL = fsr_luma(e), fL = fsr_luma(f), gL = fsr_luma(g), hL = fsr_luma(h);
+            float iL = fsr_luma(i), jL = fsr_luma(j), kL = fsr_luma(k), lL = fsr_luma(l);
+            float nL = fsr_luma(n), oL = fsr_luma(o);
+
+            float dirX = 0.0f, dirY = 0.0f, len = 0.0f;
+            easu_set_cpu(dirX, dirY, len, fpx, fpy, true,  false, false, false, bL, eL, fL, gL, jL);
+            easu_set_cpu(dirX, dirY, len, fpx, fpy, false, true,  false, false, cL, fL, gL, hL, kL);
+            easu_set_cpu(dirX, dirY, len, fpx, fpy, false, false, true,  false, fL, iL, jL, kL, nL);
+            easu_set_cpu(dirX, dirY, len, fpx, fpy, false, false, false, true,  gL, jL, kL, lL, oL);
+
+            float dirR = dirX * dirX + dirY * dirY;
+            if (dirR < (1.0f / 32768.0f)) {
+                dirX = 1.0f; dirY = 0.0f;
+            } else {
+                float inv = 1.0f / std::sqrt(dirR);
+                dirX *= inv; dirY *= inv;
+            }
+            len = len * 0.5f;
+            len *= len;
+            float stretch = 1.0f / std::max(std::abs(dirX), std::abs(dirY));
+            float len2X = 1.0f + (stretch - 1.0f) * len;
+            float len2Y = 1.0f - 0.5f * len;
+            float lob = 0.5f + (0.29f - 0.5f) * len;
+            float clp = 1.0f / lob;
+
+            RgbF min4{ std::min({f.r, g.r, j.r, k.r}), std::min({f.g, g.g, j.g, k.g}), std::min({f.b, g.b, j.b, k.b}) };
+            RgbF max4{ std::max({f.r, g.r, j.r, k.r}), std::max({f.g, g.g, j.g, k.g}), std::max({f.b, g.b, j.b, k.b}) };
+
+            RgbF aC{0.0f, 0.0f, 0.0f};
+            float aW = 0.0f;
+            easu_tap_cpu(aC, aW,  0.0f - fpx, -1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, b);
+            easu_tap_cpu(aC, aW,  1.0f - fpx, -1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, c);
+            easu_tap_cpu(aC, aW, -1.0f - fpx,  0.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, e);
+            easu_tap_cpu(aC, aW,  0.0f - fpx,  0.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, f);
+            easu_tap_cpu(aC, aW,  1.0f - fpx,  0.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, g);
+            easu_tap_cpu(aC, aW,  2.0f - fpx,  0.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, h);
+            easu_tap_cpu(aC, aW, -1.0f - fpx,  1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, i);
+            easu_tap_cpu(aC, aW,  0.0f - fpx,  1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, j);
+            easu_tap_cpu(aC, aW,  1.0f - fpx,  1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, k);
+            easu_tap_cpu(aC, aW,  2.0f - fpx,  1.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, l);
+            easu_tap_cpu(aC, aW,  0.0f - fpx,  2.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, n);
+            easu_tap_cpu(aC, aW,  1.0f - fpx,  2.0f - fpy, dirX, dirY, len2X, len2Y, lob, clp, o);
+
+            float invW = 1.0f / std::max(aW, 1e-5f);
+            stage[static_cast<size_t>(y) * dw + x] = {
+                std::clamp(aC.r * invW, min4.r, max4.r),
+                std::clamp(aC.g * invW, min4.g, max4.g),
+                std::clamp(aC.b * invW, min4.b, max4.b)
+            };
+        }
+    }
+    run_rcas_cpu(stage, dw, dh, sharpness, out_rgba);
+}
+
+static float halton_cpu(int index, int base) {
+    float f = 1.0f, r = 0.0f;
+    int i = index;
+    while (i > 0) {
+        f /= static_cast<float>(base);
+        r += f * static_cast<float>(i % base);
+        i /= base;
+    }
+    return r;
+}
+
+static void run_fsr3_cpu(const uint32_t* src, int sw, int sh, int dw, int dh, float sharpness,
+                         int frame_idx, bool& history_valid,
+                         std::vector<RgbF>& history_stage, std::vector<RgbF>& work_stage,
+                         std::vector<uint32_t>& out_rgba) {
+    work_stage.resize(static_cast<size_t>(dw) * static_cast<size_t>(dh));
+    if (history_stage.size() != work_stage.size()) {
+        history_stage.assign(work_stage.size(), {0.0f, 0.0f, 0.0f});
+        history_valid = false;
+    }
+
+    auto at_src = [&](int x, int y) -> RgbF {
+        return unpack_rgba(src[std::clamp(y, 0, sh - 1) * sw + std::clamp(x, 0, sw - 1)]);
+    };
+    auto catmull = [&](float t, float& w0, float& w1, float& w2, float& w3) {
+        float t2 = t * t, t3 = t2 * t;
+        w0 = -0.5f * t + t2 - 0.5f * t3;
+        w1 = 1.0f - 2.5f * t2 + 1.5f * t3;
+        w2 = 0.5f * t + 2.0f * t2 - 1.5f * t3;
+        w3 = -0.5f * t2 + 0.5f * t3;
+    };
+
+    const float jx = (halton_cpu(frame_idx + 1, 2) - 0.5f) * 0.5f;
+    const float jy = (halton_cpu(frame_idx + 1, 3) - 0.5f) * 0.5f;
+    const float sx = static_cast<float>(sw) / static_cast<float>(dw);
+    const float sy = static_cast<float>(sh) / static_cast<float>(dh);
+
+    for (int y = 0; y < dh; ++y) {
+        float src_y = (static_cast<float>(y) + 0.5f) * sy - 0.5f + jy;
+        int iy = static_cast<int>(std::floor(src_y));
+        float fy = src_y - static_cast<float>(iy);
+        float wy[4];
+        catmull(fy, wy[0], wy[1], wy[2], wy[3]);
+
+        for (int x = 0; x < dw; ++x) {
+            float src_x = (static_cast<float>(x) + 0.5f) * sx - 0.5f + jx;
+            int ix = static_cast<int>(std::floor(src_x));
+            float fx = src_x - static_cast<float>(ix);
+            float wx[4];
+            catmull(fx, wx[0], wx[1], wx[2], wx[3]);
+
+            RgbF cur{0.0f, 0.0f, 0.0f};
+            RgbF nmin{1.0f, 1.0f, 1.0f}, nmax{0.0f, 0.0f, 0.0f};
+            for (int j = -1; j <= 2; ++j) {
+                RgbF row{0.0f, 0.0f, 0.0f};
+                for (int i = -1; i <= 2; ++i) {
+                    RgbF s = at_src(ix + i, iy + j);
+                    float weight_x = wx[i + 1];
+                    row.r += s.r * weight_x;
+                    row.g += s.g * weight_x;
+                    row.b += s.b * weight_x;
+                    if (j >= 0 && j <= 1 && i >= 0 && i <= 1) {
+                        nmin.r = std::min(nmin.r, s.r); nmin.g = std::min(nmin.g, s.g); nmin.b = std::min(nmin.b, s.b);
+                        nmax.r = std::max(nmax.r, s.r); nmax.g = std::max(nmax.g, s.g); nmax.b = std::max(nmax.b, s.b);
+                    }
+                }
+                float weight_y = wy[j + 1];
+                cur.r += row.r * weight_y;
+                cur.g += row.g * weight_y;
+                cur.b += row.b * weight_y;
+            }
+            cur.r = std::clamp(cur.r, nmin.r, nmax.r);
+            cur.g = std::clamp(cur.g, nmin.g, nmax.g);
+            cur.b = std::clamp(cur.b, nmin.b, nmax.b);
+
+            if (!history_valid) {
+                work_stage[static_cast<size_t>(y) * dw + x] = cur;
+                continue;
+            }
+
+            // 3x3 YCoCg variance clip (gamma = 1.25)
+            float m1y = 0, m1co = 0, m1cg = 0, m2y = 0, m2co = 0, m2cg = 0;
+            int cx = std::clamp(static_cast<int>(std::round(src_x)), 0, sw - 1);
+            int cy = std::clamp(static_cast<int>(std::round(src_y)), 0, sh - 1);
+            for (int oy = -1; oy <= 1; ++oy) {
+                for (int ox = -1; ox <= 1; ++ox) {
+                    RgbF s = at_src(cx + ox, cy + oy);
+                    float yv = 0.25f * s.r + 0.5f * s.g + 0.25f * s.b;
+                    float co = 0.5f * s.r - 0.5f * s.b;
+                    float cg = -0.25f * s.r + 0.5f * s.g - 0.25f * s.b;
+                    m1y += yv; m1co += co; m1cg += cg;
+                    m2y += yv * yv; m2co += co * co; m2cg += cg * cg;
+                }
+            }
+            float muy = m1y / 9.0f, muco = m1co / 9.0f, mucg = m1cg / 9.0f;
+            float sy_v = std::sqrt(std::max(0.0f, m2y / 9.0f - muy * muy)) * 1.25f;
+            float sco_v = std::sqrt(std::max(0.0f, m2co / 9.0f - muco * muco)) * 1.25f;
+            float scg_v = std::sqrt(std::max(0.0f, m2cg / 9.0f - mucg * mucg)) * 1.25f;
+
+            const RgbF& h_px = history_stage[static_cast<size_t>(y) * dw + x];
+            float hy = 0.25f * h_px.r + 0.5f * h_px.g + 0.25f * h_px.b;
+            float hco = 0.5f * h_px.r - 0.5f * h_px.b;
+            float hcg = -0.25f * h_px.r + 0.5f * h_px.g - 0.25f * h_px.b;
+
+            float vy = hy - muy, vco = hco - muco, vcg = hcg - mucg;
+            float ma = std::max({
+                std::abs(vy) / (sy_v + 1e-5f),
+                std::abs(vco) / (sco_v + 1e-5f),
+                std::abs(vcg) / (scg_v + 1e-5f)
+            });
+            if (ma > 1.0f) {
+                hy = muy + vy / ma;
+                hco = muco + vco / ma;
+                hcg = mucg + vcg / ma;
+            }
+            float tmp = hy - hcg;
+            RgbF clipped{
+                std::clamp(tmp + hco, 0.0f, 1.0f),
+                std::clamp(hy + hcg, 0.0f, 1.0f),
+                std::clamp(tmp - hco, 0.0f, 1.0f)
+            };
+
+            float disocc = rgb_luma({std::abs(cur.r - h_px.r), std::abs(cur.g - h_px.g), std::abs(cur.b - h_px.b)});
+            float hw = 0.72f * (1.0f - std::clamp((disocc - 0.08f) / 0.27f, 0.0f, 1.0f));
+            work_stage[static_cast<size_t>(y) * dw + x] = {
+                cur.r + (clipped.r - cur.r) * hw,
+                cur.g + (clipped.g - cur.g) * hw,
+                cur.b + (clipped.b - cur.b) * hw
+            };
+        }
+    }
+
+    run_rcas_cpu(work_stage, dw, dh, sharpness, out_rgba);
+    history_stage.swap(work_stage);
+    history_valid = true;
+}
 
 struct VkFuncs {
     void* lib = nullptr;
@@ -103,6 +568,17 @@ struct VkFuncs {
         return createInstance != nullptr;
     }
 
+    uint32_t query_instance_version() const {
+        if (!getInstanceProcAddr) return VK_API_VERSION_1_1;
+        auto fn = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+            getInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
+        uint32_t ver = VK_API_VERSION_1_1;
+        if (fn && fn(&ver) == VK_SUCCESS && ver >= VK_API_VERSION_1_0) {
+            return ver;
+        }
+        return VK_API_VERSION_1_1;
+    }
+
     bool load_instance(VkInstance inst) {
         auto g = [&](auto& fn, const char* name) {
             fn = reinterpret_cast<std::decay_t<decltype(fn)>>(getInstanceProcAddr(inst, name));
@@ -161,18 +637,24 @@ struct VkFuncs {
 
 class VulkanRenderer {
 public:
-    bool probe_support(std::string& out_device_name) {
+    bool probe_info(std::string& out_device_name, std::string& out_device_api_ver, std::string& out_instance_api_ver) {
         std::lock_guard<std::mutex> lock(mu_);
-        if (!device_name_.empty()) {
+        if (!device_name_.empty() && !device_api_ver_.empty() && !instance_api_ver_.empty()) {
             out_device_name = device_name_;
+            out_device_api_ver = device_api_ver_;
+            out_instance_api_ver = instance_api_ver_;
             return true;
         }
         VkFuncs tmp{};
         if (!tmp.load_library("")) return false;
+        uint32_t inst_ver = tmp.query_instance_version();
+        std::string inst_ver_str = format_vk_version(inst_ver);
+        uint32_t req_api = std::max<uint32_t>(VK_API_VERSION_1_1, std::min<uint32_t>(inst_ver, VK_MAKE_VERSION(1, 3, 0)));
+
         VkApplicationInfo app{};
         app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         app.pApplicationName = "STORM GBCA";
-        app.apiVersion = VK_API_VERSION_1_1;
+        app.apiVersion = req_api;
         const char* exts[] = { "VK_KHR_surface", "VK_KHR_android_surface" };
         VkInstanceCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -180,7 +662,12 @@ public:
         ci.enabledExtensionCount = 2;
         ci.ppEnabledExtensionNames = exts;
         VkInstance inst = VK_NULL_HANDLE;
-        if (tmp.createInstance(&ci, nullptr, &inst) != VK_SUCCESS) {
+        VkResult cres = tmp.createInstance(&ci, nullptr, &inst);
+        if (cres == VK_ERROR_INCOMPATIBLE_DRIVER) {
+            app.apiVersion = VK_API_VERSION_1_0;
+            cres = tmp.createInstance(&ci, nullptr, &inst);
+        }
+        if (cres != VK_SUCCESS) {
             if (tmp.lib) dlclose(tmp.lib);
             return false;
         }
@@ -193,7 +680,11 @@ public:
             VkPhysicalDeviceProperties props{};
             tmp.getPhysicalDeviceProperties(devs[0], &props);
             device_name_ = props.deviceName;
+            device_api_ver_ = format_vk_version(props.apiVersion);
+            instance_api_ver_ = inst_ver_str;
             out_device_name = device_name_;
+            out_device_api_ver = device_api_ver_;
+            out_instance_api_ver = instance_api_ver_;
             ok = true;
         }
         if (tmp.destroyInstance) tmp.destroyInstance(inst, nullptr);
@@ -213,12 +704,16 @@ public:
             return false;
         }
 
+        uint32_t inst_ver = vk_.query_instance_version();
+        instance_api_ver_ = format_vk_version(inst_ver);
+        uint32_t req_api = std::max<uint32_t>(VK_API_VERSION_1_1, std::min<uint32_t>(inst_ver, VK_MAKE_VERSION(1, 3, 0)));
+
         VkApplicationInfo app{};
         app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         app.pApplicationName = "STORM GBCA";
-        app.applicationVersion = VK_MAKE_VERSION(1, 1, 0);
+        app.applicationVersion = VK_MAKE_VERSION(1, 8, 0);
         app.pEngineName = "STORM GBCA Core";
-        app.apiVersion = VK_API_VERSION_1_1;
+        app.apiVersion = req_api;
 
         const char* inst_exts[] = { "VK_KHR_surface", "VK_KHR_android_surface" };
         VkInstanceCreateInfo ici{};
@@ -227,7 +722,12 @@ public:
         ici.enabledExtensionCount = 2;
         ici.ppEnabledExtensionNames = inst_exts;
 
-        if (vk_.createInstance(&ici, nullptr, &instance_) != VK_SUCCESS) {
+        VkResult cres = vk_.createInstance(&ici, nullptr, &instance_);
+        if (cres == VK_ERROR_INCOMPATIBLE_DRIVER) {
+            app.apiVersion = VK_API_VERSION_1_0;
+            cres = vk_.createInstance(&ici, nullptr, &instance_);
+        }
+        if (cres != VK_SUCCESS) {
             destroy_locked();
             return false;
         }
@@ -257,6 +757,7 @@ public:
         VkPhysicalDeviceProperties props{};
         vk_.getPhysicalDeviceProperties(phys_, &props);
         device_name_ = props.deviceName;
+        device_api_ver_ = format_vk_version(props.apiVersion);
         vk_.getPhysicalDeviceMemoryProperties(phys_, &mem_props_);
 
         uint32_t qf_count = 0;
@@ -327,7 +828,9 @@ public:
             return false;
         }
         ready_ = true;
-        LOGI("Vulkan initialized on %s (%ux%u)", device_name_.c_str(), swap_extent_.width, swap_extent_.height);
+        LOGI("Vulkan %s (instance %s) initialized on %s (%ux%u)",
+             device_api_ver_.c_str(), instance_api_ver_.c_str(),
+             device_name_.c_str(), swap_extent_.width, swap_extent_.height);
         return true;
     }
 
@@ -357,12 +860,64 @@ public:
         }
         if (acq != VK_SUCCESS && acq != VK_SUBOPTIMAL_KHR) return;
 
-        if (!ensure_source_image_locked(static_cast<uint32_t>(w), static_cast<uint32_t>(h))) return;
+        const PostProcessParams post = get_post_process_params();
+        const bool fg_midpoint = post.frame_gen_enabled &&
+                                 post.frame_gen_alpha > 0.01f &&
+                                 post.frame_gen_alpha < 0.99f;
+
+        const size_t raw_count = static_cast<size_t>(w) * static_cast<size_t>(h);
+        if (!fg_midpoint || cached_w_ != w || cached_h_ != h || cur_frame_rgba_.size() != raw_count) {
+            if (cached_w_ != w || cached_h_ != h || cur_frame_rgba_.size() != raw_count) {
+                prev_frame_rgba_.assign(rgba, rgba + raw_count);
+                cur_frame_rgba_.assign(rgba, rgba + raw_count);
+                cached_w_ = w;
+                cached_h_ = h;
+                fsr3_history_valid_ = false;
+                fsr3_frame_idx_ = 0;
+            } else {
+                prev_frame_rgba_.swap(cur_frame_rgba_);
+                std::memcpy(cur_frame_rgba_.data(), rgba, raw_count * 4);
+            }
+        }
+
+        const uint32_t* base_rgba = cur_frame_rgba_.data();
+        if (fg_midpoint && prev_frame_rgba_.size() == raw_count && cur_frame_rgba_.size() == raw_count) {
+            synthesize_optical_flow_midpoint(
+                prev_frame_rgba_.data(), cur_frame_rgba_.data(), w, h, post.frame_gen_alpha,
+                fg_luma0_, fg_luma1_, fg_frame_rgba_);
+            base_rgba = fg_frame_rgba_.data();
+        }
+
+        int upload_w = w;
+        int upload_h = h;
+        const uint32_t* upload_rgba = base_rgba;
+        bool native_fsr_used = false;
+
+        if (!librashader_has_preset() && (post.fsr_mode == 1 || post.fsr_mode == 2)) {
+            float sharp = std::clamp(post.rcas_sharpness + fsr_quality_sharpness_bias(post.fsr_quality), 0.0f, 1.0f);
+            float mult = (post.fsr_quality <= 1) ? 2.0f : 1.5f;
+            if (w > 320 || h > 240) mult = 1.5f;
+            int target_w = std::max(w, static_cast<int>(std::lround(static_cast<float>(w) * mult)));
+            int target_h = std::max(h, static_cast<int>(std::lround(static_cast<float>(h) * mult)));
+            if (post.fsr_mode == 1) {
+                run_fsr1_cpu(base_rgba, w, h, target_w, target_h, sharp, fsr_stage_, fsr_out_rgba_);
+            } else {
+                run_fsr3_cpu(base_rgba, w, h, target_w, target_h, sharp,
+                             fsr3_frame_idx_, fsr3_history_valid_, fsr3_history_stage_, fsr_stage_, fsr_out_rgba_);
+                fsr3_frame_idx_ = (fsr3_frame_idx_ + 1) & 31;
+            }
+            upload_w = target_w;
+            upload_h = target_h;
+            upload_rgba = fsr_out_rgba_.data();
+            native_fsr_used = true;
+        }
+
+        if (!ensure_source_image_locked(static_cast<uint32_t>(upload_w), static_cast<uint32_t>(upload_h))) return;
 
         // Upload RGBA frame into persistently mapped host-visible staging buffer
-        size_t bytes = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
+        size_t bytes = static_cast<size_t>(upload_w) * static_cast<size_t>(upload_h) * 4;
         if (mapped_ptr_) {
-            std::memcpy(mapped_ptr_, rgba, bytes);
+            std::memcpy(mapped_ptr_, upload_rgba, bytes);
         }
 
         vk_.resetFences(device_, 1, &in_flight_fence_);
@@ -378,7 +933,7 @@ public:
 
         VkBufferImageCopy region{};
         region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-        region.imageExtent = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+        region.imageExtent = { static_cast<uint32_t>(upload_w), static_cast<uint32_t>(upload_h), 1 };
         vk_.cmdCopyBufferToImage(cmd_buf_, staging_buf_, src_img_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
         // Clear swapchain image to pure black
@@ -397,7 +952,7 @@ public:
         uint32_t dst_h = static_cast<uint32_t>(dy1 - dy0);
 
         bool shaded = false;
-        if (ensure_shader_out_image_locked(dst_w, dst_h)) {
+        if (!native_fsr_used && librashader_has_preset() && ensure_shader_out_image_locked(dst_w, dst_h)) {
             transition_image(cmd_buf_, src_img_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                              VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
@@ -407,7 +962,7 @@ public:
 
             shaded = librashader_apply_vk(
                 instance_, phys_, device_, queue_, vk_.getInstanceProcAddr, cmd_buf_,
-                src_img_, VK_FORMAT_R8G8B8A8_UNORM, static_cast<uint32_t>(w), static_cast<uint32_t>(h),
+                src_img_, VK_FORMAT_R8G8B8A8_UNORM, static_cast<uint32_t>(upload_w), static_cast<uint32_t>(upload_h),
                 shader_out_img_, VK_FORMAT_R8G8B8A8_UNORM, dst_w, dst_h,
                 static_cast<uint32_t>(swap_images_.size()), rotation_deg);
 
@@ -425,7 +980,6 @@ public:
                 vk_.cmdBlitImage(cmd_buf_, shader_out_img_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                  swap_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
             } else {
-                // Transition src_img back from SHADER_READ_ONLY to TRANSFER_SRC for direct blit
                 transition_image(cmd_buf_, src_img_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                  VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT,
                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -440,13 +994,14 @@ public:
             VkImageBlit blit{};
             blit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
             blit.srcOffsets[0] = { 0, 0, 0 };
-            blit.srcOffsets[1] = { w, h, 1 };
+            blit.srcOffsets[1] = { upload_w, upload_h, 1 };
             blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
             blit.dstOffsets[0] = { dx0, dy0, 0 };
             blit.dstOffsets[1] = { dx1, dy1, 1 };
+            const bool use_linear = linear_filter || native_fsr_used;
             vk_.cmdBlitImage(cmd_buf_, src_img_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                              swap_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
-                             linear_filter ? VK_FILTER_LINEAR : VK_FILTER_NEAREST);
+                             use_linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST);
         }
 
         transition_image(cmd_buf_, swap_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
@@ -685,6 +1240,15 @@ private:
         if (window_) { ANativeWindow_release(window_); window_ = nullptr; }
         if (vk_.lib) { dlclose(vk_.lib); vk_.lib = nullptr; }
         swap_images_.clear();
+        prev_frame_rgba_.clear();
+        cur_frame_rgba_.clear();
+        fg_frame_rgba_.clear();
+        fsr_stage_.clear();
+        fsr3_history_stage_.clear();
+        fsr_out_rgba_.clear();
+        cached_w_ = cached_h_ = 0;
+        fsr3_history_valid_ = false;
+        fsr3_frame_idx_ = 0;
     }
 
     std::mutex mu_;
@@ -718,16 +1282,36 @@ private:
     VkDeviceMemory shader_out_mem_ = VK_NULL_HANDLE;
     uint32_t shader_out_w_ = 0, shader_out_h_ = 0;
 
+    std::vector<uint32_t> prev_frame_rgba_;
+    std::vector<uint32_t> cur_frame_rgba_;
+    std::vector<uint32_t> fg_frame_rgba_;
+    std::vector<float> fg_luma0_;
+    std::vector<float> fg_luma1_;
+    std::vector<RgbF> fsr_stage_;
+    std::vector<RgbF> fsr3_history_stage_;
+    std::vector<uint32_t> fsr_out_rgba_;
+    int cached_w_ = 0, cached_h_ = 0;
+    bool fsr3_history_valid_ = false;
+    int fsr3_frame_idx_ = 0;
+
     bool ready_ = false;
     bool need_recreate_ = false;
     std::string device_name_;
+    std::string device_api_ver_;
+    std::string instance_api_ver_;
 };
 
 static VulkanRenderer g_vk;
 
 } // namespace
 
-bool vk_probe_support(std::string& device_name) { return g_vk.probe_support(device_name); }
+bool vk_probe_info(std::string& out_device_name, std::string& out_device_api_ver, std::string& out_instance_api_ver) {
+    return g_vk.probe_info(out_device_name, out_device_api_ver, out_instance_api_ver);
+}
+bool vk_probe_support(std::string& device_name) {
+    std::string dev_ver, inst_ver;
+    return vk_probe_info(device_name, dev_ver, inst_ver);
+}
 bool vk_init(ANativeWindow* window, const std::string& custom_driver_path) { return g_vk.init(window, custom_driver_path); }
 void vk_resize(int w, int h) { g_vk.resize(w, h); }
 void vk_render(const uint32_t* rgba, int w, int h, int vp_x, int vp_y, int vp_w, int vp_h, bool linear_filter, int rotation_deg) {

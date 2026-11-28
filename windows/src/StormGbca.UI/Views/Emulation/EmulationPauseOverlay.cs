@@ -429,11 +429,57 @@ public class EmulationPauseOverlay : Border
             s.ColorCorrectionMode = (StormColorCorrectionMode)idx;
             StormGbcaUiState.Instance.SaveSettings();
         }));
-        _bodyPanel.Children.Add(CreateCombo("Видеофильтр:", Enum.GetNames<StormVideoFilter>(), (int)s.VideoFilter, idx =>
+        _bodyPanel.Children.Add(CreateCombo("Видеофильтр:",
+        [
+            "Nearest",
+            "Bilinear",
+            "LCD Grid",
+            "RGB Subpixel",
+            "xBRZ Lite",
+            "CRT Scanlines",
+            "Sharp Bilinear",
+            GbcaLoc.T("FilterFsr1"),
+            GbcaLoc.T("FilterFsr3")
+        ], (int)s.VideoFilter, idx =>
         {
-            s.VideoFilter = (StormVideoFilter)idx;
+            var filter = (StormVideoFilter)idx;
+            s.VideoFilter = filter;
+            var plat = StormGbcaUiState.Instance.Emulator.ActivePlatform;
+            if (plat == StormPlatform.None) plat = StormPlatform.Gba;
+            s.GetOverlayProfileForPlatform(plat).LcdFilter = filter;
             StormGbcaUiState.Instance.SaveSettings();
         }));
+        _bodyPanel.Children.Add(CreateCombo(GbcaLoc.T("FsrQualityLabel"),
+        [
+            GbcaLoc.T("FsrQuality0"),
+            GbcaLoc.T("FsrQuality1"),
+            GbcaLoc.T("FsrQuality2"),
+            GbcaLoc.T("FsrQuality3")
+        ], Math.Clamp(s.FsrQualityMode, 0, 3), idx =>
+        {
+            s.FsrQualityMode = idx;
+            StormGbcaUiState.Instance.SaveSettings();
+        }));
+        _bodyPanel.Children.Add(CreateSlider(GbcaLoc.T("FsrSharpnessLabel"), 0, 100, s.FsrSharpness, "%", v =>
+        {
+            s.FsrSharpness = Math.Clamp((int)Math.Round(v), 0, 100);
+            StormGbcaUiState.Instance.SaveSettings();
+        }));
+        var fgCheck = new AuroraNeonCheckBox { Label = GbcaLoc.T("FrameGenToggle"), IsChecked = s.FrameGeneration };
+        fgCheck.IsCheckedChanged += (_, v) =>
+        {
+            s.FrameGeneration = v;
+            StormGbcaUiState.Instance.SaveSettings();
+        };
+        _bodyPanel.Children.Add(fgCheck);
+        _bodyPanel.Children.Add(new TextBlock
+        {
+            Text = GbcaLoc.T("FrameGenNote"),
+            FontSize = 10.5,
+            Foreground = StormThemeBrushes.SecondaryText,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(24, -4, 0, 4)
+        });
         var palNames = GbcaEmulatorSession.GetDmgPaletteNames().ToArray();
         _bodyPanel.Children.Add(CreateCombo("Палитра DMG (28 пресетов):", palNames, Math.Clamp(s.DmgPaletteIndex, 0, palNames.Length - 1), idx =>
         {

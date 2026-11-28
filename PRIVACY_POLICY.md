@@ -2,7 +2,7 @@
 
 **Effective Date:** 2026-11-28
 **Developer:** STORM TEAM
-**Application:** STORM GBCA (Android & Windows x64, version 1.7.1)
+**Application:** STORM GBCA (Android & Windows x64, version 1.8.0)
 **Repository:** https://github.com/ReiKatari/STORM_GBCA
 **Website:** https://stormgamesworld.ru/programs?repo=STORM_GBCA
 
@@ -45,7 +45,7 @@ STORM GBCA makes zero telemetry or tracking connections. By default, **automatic
 | Service / Endpoint | Server Location | When Connected | Data Transmitted | Governing Policy |
 | --- | --- | --- | --- | --- |
 | **RetroAchievements** (`retroachievements.org`, `media.retroachievements.org`) | United States | ONLY when signed in to RetroAchievements or fetching RA game cover art / badges | HTTPS POST login credentials (password sent once during login to obtain an API token, never saved), username, API token, loaded ROM MD5 hash, unlocked achievement IDs, leaderboard scores, Rich Presence status, and cover/badge image requests | https://retroachievements.org/terms |
-| **GitHub** (`api.github.com`, `github.com`, `raw.githubusercontent.com`) | United States (GitHub, Inc. / Microsoft) | Automatic update checks on startup (enabled by default, disableable via `Check for updates on launch` in Settings), manual update checks, release package downloads, and optional Libretro Thumbnails cover-art index / image lookup | Standard HTTPS GET request (`User-Agent`, release metadata, or public boxart filename); zero personal data or device identifiers | https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement |
+| **GitHub** (`api.github.com`, `github.com`, `raw.githubusercontent.com`) | United States (GitHub, Inc. / Microsoft) | Automatic update checks on startup (enabled by default, disableable via `Check for updates on launch` in Settings), manual update checks, release package downloads, optional Libretro Thumbnails cover-art index / image lookup, and optional user-initiated custom Vulkan GPU driver catalog lookup and downloads (Turnip / Adreno / Mali releases from GitHub on Android) | Standard HTTPS GET request (`User-Agent`, release metadata, public boxart filename, or public GPU driver release asset); zero personal data or device identifiers | https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement |
 | **jsDelivr CDN** (`cdn.jsdelivr.net`, `fastly.jsdelivr.net`) | Global CDN (ProspectOne / Fastly) | ONLY when the user enables Libretro cover downloads or triggers cover fetching | Public game title / platform path to fetch Libretro Thumbnails boxart PNGs; zero personal identifiers | https://www.jsdelivr.com/terms/privacy-policy-jsdelivr-net |
 | **STORM GAMES WORLD** (`stormgamesworld.ru`, `storm-games.world`) | Russian Federation / Global mirror | Fallback release update mirror during startup/manual update checks (disableable via `Check for updates on launch` in Settings) and optional metadata | Standard HTTPS GET request for public release metadata; zero personal identifiers or telemetry | https://stormgamesworld.ru |
 

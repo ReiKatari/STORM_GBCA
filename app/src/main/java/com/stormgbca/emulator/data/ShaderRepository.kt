@@ -30,6 +30,8 @@ object ShaderRepository {
         BuiltInDef("crt-scanlines.slangp", "CRT Scanlines", R.string.shader_desc_crt),
         BuiltInDef("vibrant-hd.slangp", "Vibrant HD", R.string.shader_desc_vibrant),
         BuiltInDef("grayscale-pocket.slangp", "Game Boy Pocket", R.string.shader_desc_pocket),
+        BuiltInDef("fsr1-easu-rcas.slangp", "AMD FSR 1 (EASU + RCAS)", R.string.shader_desc_fsr1),
+        BuiltInDef("fsr3-temporal-rcas.slangp", "AMD FSR 3 (Temporal + RCAS)", R.string.shader_desc_fsr3),
     )
 
     fun shadersDir(context: Context): File = File(context.filesDir, "shaders").apply { mkdirs() }
@@ -38,15 +40,19 @@ object ShaderRepository {
     fun ensureExtracted(context: Context) {
         val dir = shadersDir(context)
         runCatching {
+            val verFile = File(dir, ".extracted_ver")
+            val curVer = com.stormgbca.emulator.BuildConfig.VERSION_CODE.toString()
+            val forceRefresh = !verFile.isFile || verFile.readText().trim() != curVer
             val assetFiles = context.assets.list("shaders") ?: emptyArray()
             for (name in assetFiles) {
                 val dst = File(dir, name)
-                if (!dst.exists() || dst.length() == 0L) {
+                if (forceRefresh || !dst.exists() || dst.length() == 0L) {
                     context.assets.open("shaders/$name").use { input ->
                         FileOutputStream(dst).use { output -> input.copyTo(output) }
                     }
                 }
             }
+            verFile.writeText(curVer)
         }
     }
 

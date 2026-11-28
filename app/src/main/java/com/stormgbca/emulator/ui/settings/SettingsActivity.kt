@@ -108,6 +108,9 @@ import com.stormgbca.emulator.update.StormUpdateDialog
 import com.stormgbca.emulator.update.StormUpdateMirrorClient
 import com.stormgbca.emulator.update.UpdateDownloadState
 import com.stormgbca.emulator.update.UpdateReleaseInfo
+import com.stormgbca.emulator.vulkandriver.VulkanDriverManager
+import com.stormgbca.emulator.vulkandriver.VulkanDriverManagerSheet
+import com.stormgbca.emulator.vulkandriver.VulkanDriverRepository
 import kotlinx.coroutines.launch
 import ru.stormgames.gbca.NativeCore
 
@@ -148,18 +151,6 @@ class SettingsActivity : AppCompatActivity() {
                         }
                     }
                     Toast.makeText(this@SettingsActivity, "BIOS: ${f.name}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    private val driverPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            lifecycleScope.launch {
-                val f = RomRepository.materializeUriToCache(this@SettingsActivity, uri, "vulkan_drivers")
-                if (f != null) {
-                    GbcaPrefs.updateCoreConfig { it.copy(customVulkanDriverPath = f.absolutePath) }
-                    Toast.makeText(this@SettingsActivity, "Vulkan: ${f.name}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -220,7 +211,6 @@ class SettingsActivity : AppCompatActivity() {
                         pendingBiosTarget = target
                         biosPicker.launch(arrayOf("*/*"))
                     },
-                    onPickVulkanDriver = { driverPicker.launch(arrayOf("*/*")) },
                     onImportShader = { sys ->
                         pendingShaderSystem = sys
                         shaderImportPicker.launch(arrayOf("*/*"))
@@ -276,7 +266,6 @@ private fun SettingsScreen(
     shaderTick: Int,
     onCloseActivity: () -> Unit,
     onPickBios: (String) -> Unit,
-    onPickVulkanDriver: () -> Unit,
     onImportShader: (ConsoleSystem) -> Unit,
     onOpenLayoutEditor: (ConsoleSystem) -> Unit,
     onStartBindKey: (PhysicalAction) -> Unit,
@@ -293,12 +282,14 @@ private fun SettingsScreen(
     var skinDialogSystem by remember { mutableStateOf<ConsoleSystem?>(null) }
     var overlayDialogSystem by remember { mutableStateOf<ConsoleSystem?>(null) }
     var shaderTabSystem by remember { mutableStateOf(ConsoleSystem.GBA) }
+    var showVulkanDriverSheet by remember { mutableStateOf(false) }
     var foundUpdate by remember { mutableStateOf<UpdateReleaseInfo?>(null) }
     var downloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
 
-    val vkSupported = remember { runCatching { NativeCore.nativeIsVulkanSupported() }.getOrDefault(false) }
-    val vkGpuName = remember { runCatching { NativeCore.nativeGetVulkanDeviceName() }.getOrDefault("") }
+    val gfxTelemetry = remember { VulkanDriverRepository.readGraphicsTelemetry(context) }
+    val vkSupported = gfxTelemetry.vulkanSupported
+    val vkGpuName = gfxTelemetry.gpuName
     val librashaderReady = remember { runCatching { NativeCore.nativeIsLibrashaderAvailable() }.getOrDefault(false) }
     val shaderPresets = remember(shaderTick) { ShaderRepository.listPresets(context) }
 
@@ -575,40 +566,109 @@ private fun SettingsScreen(
                     WatermelonCard {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                GridSelectChip("OpenGL ES 3.2", cfg.graphicsBackend == 0, Modifier.weight(1f)) {
+                                GridSelectChip("OpenGL ES", cfg.graphicsBackend == 0, Modifier.weight(1f)) {
                                     GbcaPrefs.updateCoreConfig { it.copy(graphicsBackend = 0) }
                                 }
-                                GridSelectChip("Vulkan 1.1", cfg.graphicsBackend == 1, Modifier.weight(1f), enabled = vkSupported) {
+                                GridSelectChip("Vulkan", cfg.graphicsBackend == 1, Modifier.weight(1f), enabled = vkSupported) {
                                     GbcaPrefs.updateCoreConfig { it.copy(graphicsBackend = 1) }
                                 }
                             }
-                            if (vkGpuName.isNotBlank()) {
-                                Text("GPU Vulkan: $vkGpuName", color = if (vkSupported) Color(0xFF22C55E) else colors.text2, fontFamily = WatermelonMono, fontSize = 11.sp)
+
+                            // Real Graphics API & GPU Info Card
+                            val vkVer = gfxTelemetry.vulkanDeviceApi.ifBlank { gfxTelemetry.vulkanInstanceApi }.ifBlank { "1.1" }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(colors.surface2)
+                                    .border(1.dp, colors.line, RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.vid_gpu_info_title),
+                                    color = colors.text2,
+                                    fontFamily = WatermelonMono,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                if (vkGpuName.isNotBlank()) {
+                                    Text(
+                                        text = vkGpuName,
+                                        color = colors.text,
+                                        fontFamily = SpaceGrotesk,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                                Text(
+                                    text = stringResource(R.string.vid_min_gles_fmt, gfxTelemetry.glesVersion),
+                                    color = colors.green,
+                                    fontFamily = WatermelonMono,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = if (vkSupported) {
+                                        stringResource(R.string.vid_min_vk_fmt, vkVer)
+                                    } else {
+                                        stringResource(R.string.vid_vk_not_supported)
+                                    },
+                                    color = if (vkSupported) Color(0xFF22C55E) else colors.text2,
+                                    fontFamily = WatermelonMono,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
                             }
-                            if (cfg.graphicsBackend == 1) {
+
+                            if (vkSupported || cfg.graphicsBackend == 1) {
+                                val installedDrivers = GbcaPrefs.installedVulkanDriversState.value
+                                val activeDriverObj = cfg.customVulkanDriverPath.takeIf { it.isNotBlank() }?.let { path ->
+                                    installedDrivers.firstOrNull { it.soPath == path }
+                                }
+                                val activeDriverSub = if (cfg.customVulkanDriverPath.isBlank()) {
+                                    stringResource(R.string.vid_driver_active_system)
+                                } else {
+                                    val name = activeDriverObj?.displayName ?: java.io.File(cfg.customVulkanDriverPath).name
+                                    stringResource(R.string.vid_driver_active_custom_fmt, name)
+                                }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier
                                             .weight(1f)
-                                            .clip(RoundedCornerShape(9.dp))
-                                            .background(colors.surface2)
-                                            .border(1.dp, colors.line, RoundedCornerShape(9.dp))
-                                            .clickable(onClick = onPickVulkanDriver)
-                                            .padding(horizontal = 10.dp, vertical = 9.dp),
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(colors.greenDim)
+                                            .border(1.dp, colors.green.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
+                                            .clickable { showVulkanDriverSheet = true }
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
                                     ) {
-                                        Text(
-                                            text = if (cfg.customVulkanDriverPath.isBlank()) stringResource(R.string.vid_turnip_pick) else java.io.File(cfg.customVulkanDriverPath).name,
-                                            color = colors.text,
-                                            fontSize = 12.sp,
-                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = stringResource(R.string.vid_driver_mgr_btn),
+                                                color = colors.green,
+                                                fontFamily = SpaceGrotesk,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                            Text(
+                                                text = activeDriverSub,
+                                                color = colors.text2,
+                                                fontFamily = WatermelonMono,
+                                                fontSize = 11.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = colors.green, modifier = Modifier.size(18.dp))
                                     }
                                     if (cfg.customVulkanDriverPath.isNotBlank()) {
                                         Box(
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(9.dp))
+                                                .clip(RoundedCornerShape(10.dp))
                                                 .background(colors.red.copy(alpha = 0.2f))
-                                                .clickable { GbcaPrefs.updateCoreConfig { it.copy(customVulkanDriverPath = "") } }
-                                                .padding(horizontal = 10.dp, vertical = 9.dp),
+                                                .clickable { VulkanDriverManager.setSystemDriver() }
+                                                .padding(horizontal = 10.dp, vertical = 14.dp),
                                         ) {
                                             Text(stringResource(R.string.reset), color = colors.red, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                                         }
@@ -662,6 +722,114 @@ private fun SettingsScreen(
                                         GbcaPrefs.updateCoreConfig { it.copy(aspectMode = id) }
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    // AMD FSR 1/3, RCAS Sharpness & Frame Generation (60 -> 120 FPS)
+                    WatermelonSectionLabel(stringResource(R.string.vid_fsr_section))
+                    WatermelonCard {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(stringResource(R.string.vid_builtin_filter), color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            val builtinFilters = listOf(
+                                NativeCore.FILTER_RGB_SUBPIXEL to R.string.filter_rgb_subpixel,
+                                NativeCore.FILTER_LCD_GRID to R.string.filter_lcd_grid,
+                                NativeCore.FILTER_SHARP_BILINEAR to R.string.filter_sharp_bilinear,
+                                NativeCore.FILTER_CRT_SCANLINES to R.string.filter_crt_scanlines,
+                                NativeCore.FILTER_XBRZ_LITE to R.string.filter_xbrz_lite,
+                                NativeCore.FILTER_NEAREST to R.string.filter_nearest,
+                                NativeCore.FILTER_BILINEAR to R.string.filter_bilinear,
+                                NativeCore.FILTER_FSR1 to R.string.filter_fsr1,
+                                NativeCore.FILTER_FSR3 to R.string.filter_fsr3,
+                            )
+                            builtinFilters.forEach { (filterId, titleRes) ->
+                                val selected = cfg.videoFilter == filterId
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (selected) colors.green else colors.surface2)
+                                        .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            GbcaPrefs.updateCoreConfig { it.copy(videoFilter = filterId) }
+                                            ConsoleSystem.entries.forEach { sys ->
+                                                GbcaPrefs.updateOverlayProfile(sys) { it.copy(shaderOverlay = filterId) }
+                                            }
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(titleRes),
+                                        color = if (selected) Color(0xFF05060A) else colors.text,
+                                        fontFamily = SpaceGrotesk,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+
+                            Text(stringResource(R.string.vid_fsr_quality), color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            val fsrQualities = listOf(
+                                NativeCore.FSR_QUALITY_QUALITY to R.string.vid_fsr_q_quality,
+                                NativeCore.FSR_QUALITY_BALANCED to R.string.vid_fsr_q_balanced,
+                                NativeCore.FSR_QUALITY_PERFORMANCE to R.string.vid_fsr_q_performance,
+                                NativeCore.FSR_QUALITY_ULTRA_PERFORMANCE to R.string.vid_fsr_q_ultra,
+                            )
+                            fsrQualities.forEach { (qId, qRes) ->
+                                val selected = cfg.fsrQualityMode == qId
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (selected) colors.green else colors.surface2)
+                                        .border(1.dp, if (selected) colors.green else colors.line, RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            GbcaPrefs.updateCoreConfig { it.copy(fsrQualityMode = qId) }
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(qRes),
+                                        color = if (selected) Color(0xFF05060A) else colors.text,
+                                        fontFamily = SpaceGrotesk,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(stringResource(R.string.vid_fsr_sharpness), color = colors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${cfg.fsrSharpness}%", color = colors.green, fontFamily = WatermelonMono, fontSize = 12.sp)
+                            }
+                            Slider(
+                                value = cfg.fsrSharpness.toFloat(),
+                                onValueChange = { v ->
+                                    GbcaPrefs.updateCoreConfig { it.copy(fsrSharpness = v.toInt().coerceIn(0, 100)) }
+                                },
+                                valueRange = 0f..100f,
+                                colors = SliderDefaults.colors(thumbColor = colors.green, activeTrackColor = colors.green),
+                            )
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        GbcaPrefs.updateCoreConfig { it.copy(frameGenerationEnabled = !cfg.frameGenerationEnabled) }
+                                    }
+                                    .padding(vertical = 4.dp),
+                            ) {
+                                Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                                    Text(stringResource(R.string.vid_frame_gen_title), color = colors.text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(stringResource(R.string.vid_frame_gen_sub), color = colors.text2, fontSize = 11.sp)
+                                }
+                                WatermelonSwitch(
+                                    checked = cfg.frameGenerationEnabled,
+                                    onCheckedChange = { c ->
+                                        GbcaPrefs.updateCoreConfig { it.copy(frameGenerationEnabled = c) }
+                                    },
+                                )
                             }
                         }
                     }
@@ -1162,6 +1330,10 @@ private fun SettingsScreen(
 
     overlayDialogSystem?.let { sys ->
         OverlayPickerDialog(initialSystem = sys, onDismiss = { overlayDialogSystem = null })
+    }
+
+    if (showVulkanDriverSheet) {
+        VulkanDriverManagerSheet(onDismiss = { showVulkanDriverSheet = false })
     }
 
     foundUpdate?.let { rel ->

@@ -426,6 +426,7 @@ static LibrashaderHost g_libra;
 } // namespace
 
 bool librashader_is_available() { return g_libra.is_available(); }
+bool librashader_has_preset() { return g_libra.is_available() && !g_libra.get_preset().empty(); }
 std::string librashader_status() { return g_libra.status(); }
 void librashader_set_preset(const std::string& path) { g_libra.set_preset(path); }
 void librashader_reset_gl() { g_libra.reset_gl(); }

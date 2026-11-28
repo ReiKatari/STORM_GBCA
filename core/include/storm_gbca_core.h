@@ -20,7 +20,7 @@ extern "C" {
   #define STORM_GBCA_API __attribute__((visibility("default")))
 #endif
 
-#define STORM_GBCA_VERSION_STRING "1.7.1"
+#define STORM_GBCA_VERSION_STRING "1.8.0"
 
 /* Key bitmask */
 enum {
@@ -89,6 +89,16 @@ enum {
     STORM_VIDEO_FILTER_XBRZ_LITE      = 4,
     STORM_VIDEO_FILTER_CRT_SCANLINES  = 5,
     STORM_VIDEO_FILTER_SHARP_BILINEAR = 6,
+    STORM_VIDEO_FILTER_FSR1           = 7,
+    STORM_VIDEO_FILTER_FSR3           = 8,
+};
+
+/* FSR quality modes */
+enum {
+    STORM_FSR_QUALITY_QUALITY           = 0, /* 67% - 1.5x */
+    STORM_FSR_QUALITY_BALANCED          = 1, /* 59% - 1.7x */
+    STORM_FSR_QUALITY_PERFORMANCE       = 2, /* 50% - 2.0x */
+    STORM_FSR_QUALITY_ULTRA_PERFORMANCE = 3, /* 33% - 3.0x */
 };
 
 /* Audio high-pass filter modes */
@@ -209,7 +219,7 @@ typedef struct StormGbcaConfig {
     int      dmg_palette_index;       /* 0..27, or -1 for custom_dmg_palette */
     uint32_t custom_dmg_palette[4];   /* 0x00RRGGBB */
     int      lcd_ghosting;            /* 0..100 */
-    int      video_filter;            /* 0..6 */
+    int      video_filter;            /* 0..8 */
     int      audio_highpass_mode;     /* 0..2 */
     int      audio_interp_mode;       /* 0..2 */
     float    channel_volumes[6];      /* PSG1-4, DMA A, DMA B */
