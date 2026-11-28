@@ -1,5 +1,5 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
 
 using System.Runtime.InteropServices;
 using System.Text;
@@ -557,6 +557,9 @@ public static unsafe class NativeCoreBindings
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern int storm_gbca_compute_ra_hash_buffer(void* data, nuint size, int platform, byte* out_hash_33);
 
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int storm_gbca_get_loaded_ra_hash(nint ctx, byte[] outHash33);
+
     // Palette Info
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern int storm_gbca_get_dmg_palette_count();
@@ -727,6 +730,18 @@ public static unsafe class NativeCoreBindings
         byte* buf = stackalloc byte[512];
         int len = storm_gbca_ra_get_rich_presence(ctx, buf, 512);
         return len > 0 ? StormGbcaRomInfo.ReadFixedUtf8(buf, 512) : string.Empty;
+    }
+
+    public static string? GetLoadedRaHash(nint ctx)
+    {
+        if (ctx == nint.Zero || !IsAvailable) return null;
+        byte[] buf = new byte[33];
+        if (storm_gbca_get_loaded_ra_hash(ctx, buf) != 0) return null;
+        int len = Array.IndexOf(buf, (byte)0);
+        if (len < 0) len = buf.Length;
+        if (len <= 0) return null;
+        string hash = Encoding.UTF8.GetString(buf, 0, len);
+        return hash.Length == 32 ? hash : null;
     }
 
     public static byte[] SerializeRaProgress(nint ctx)

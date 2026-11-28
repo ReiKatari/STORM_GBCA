@@ -169,6 +169,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
     private val raMeasuredMapState = androidx.compose.runtime.mutableStateOf<Map<Int, RaMeasuredProgress>>(emptyMap())
     private val raRichPresenceState = androidx.compose.runtime.mutableStateOf("")
     @Volatile private var activeRaHash: String = ""
+    @Volatile private var lastRaLoggedInState = false
     private var raPollJob: Job? = null
     private var raPingJob: Job? = null
     private var raBannerJob: Job? = null
@@ -537,13 +538,18 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                         MultiplayerDialog(
                             nativeHandle = nativeHandle,
                             onStartLink = { mode, ip, port, clockPort, rname ->
-                                val rc = coreLock.withLock {
-                                    if (nativeHandle != 0L) {
-                                        NativeCore.nativeLinkStart(nativeHandle, mode, ip, port, clockPort, rname)
-                                    } else -1
+                                if (raHardcoreActive.get() && mode != NativeCore.LINK_GB_PRINTER && mode != NativeCore.LINK_NONE) {
+                                    showToast(getString(R.string.ra_hardcore_blocked_link))
+                                    NativeCore.STORM_ERR_HARDCORE_BLOCKED
+                                } else {
+                                    val rc = coreLock.withLock {
+                                        if (nativeHandle != 0L) {
+                                            NativeCore.nativeLinkStart(nativeHandle, mode, ip, port, clockPort, rname)
+                                        } else -1
+                                    }
+                                    refreshLinkStatus()
+                                    rc
                                 }
-                                refreshLinkStatus()
-                                rc
                             },
                             onStopLink = {
                                 coreLock.withLock {
@@ -620,6 +626,9 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                             onHardcoreChanged = { wantsHardcore ->
                                 if (raSessionState.value != null || RetroAchievementsClient.isLoggedIn()) {
                                     requestRaModeSwitch(wantsHardcore)
+                                } else {
+                                    GbcaPrefs.setRaHardcore(wantsHardcore)
+                                    if (wantsHardcore) GbcaPrefs.setRaRichPresence(true)
                                 }
                             },
                             onDismiss = {
@@ -834,8 +843,13 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             startEmulationLoop()
 
             // Lookup RetroAchievements & activate live rcheevos runtime if signed in
-            if (RetroAchievementsClient.isLoggedIn()) {
-                val raHash = NativeCore.nativeComputeRaHash(cachedRom.absolutePath, rom.platform)
+            lastRaLoggedInState = RetroAchievementsClient.isLoggedIn()
+            if (lastRaLoggedInState) {
+                val loadedHash = coreLock.withLock {
+                    if (nativeHandle != 0L) NativeCore.raGetLoadedRomHash(nativeHandle) else null
+                }
+                val raHash = loadedHash?.takeIf { it.isNotBlank() }
+                    ?: NativeCore.nativeComputeRaHash(cachedRom.absolutePath, rom.platform)
                 if (!raHash.isNullOrBlank()) {
                     activeRaHash = raHash
                     val session = RetroAchievementsClient.lookupGameSession(raHash)
@@ -875,8 +889,14 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
             return
         }
         activityScope.launch(Dispatchers.IO) {
-            val cachedRom = RomRepository.materializeRomToCache(this@EmulatorActivity, rom) ?: return@launch
-            val raHash = NativeCore.nativeComputeRaHash(cachedRom.absolutePath, rom.platform) ?: return@launch
+            val loadedHash = coreLock.withLock {
+                if (nativeHandle != 0L) NativeCore.raGetLoadedRomHash(nativeHandle) else null
+            }
+            val raHash = loadedHash?.takeIf { it.isNotBlank() }
+                ?: RomRepository.materializeRomToCache(this@EmulatorActivity, rom)?.let { cachedRom ->
+                    NativeCore.nativeComputeRaHash(cachedRom.absolutePath, rom.platform)
+                }
+                ?: return@launch
             activeRaHash = raHash
             val session = RetroAchievementsClient.lookupGameSession(raHash) ?: return@launch
             val wasNull = raSessionState.value == null
@@ -1362,6 +1382,19 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             registerThermalListenerApi29()
         }
+        val isLoggedInNow = RetroAchievementsClient.isLoggedIn()
+        val wantHardcore = isLoggedInNow && GbcaPrefs.isRaHardcore()
+        val wasHardcore = raHardcoreActive.get()
+        if (wantHardcore && !wasHardcore) {
+            executeSwitchToHardcore()
+        } else if (!wantHardcore && wasHardcore) {
+            performSwitchToCasual(persistPref = false)
+        } else if (!isLoggedInNow && raSessionState.value != null) {
+            refreshRaSessionAsync()
+        } else if (isLoggedInNow && !lastRaLoggedInState && raSessionState.value == null) {
+            refreshRaSessionAsync()
+        }
+        lastRaLoggedInState = isLoggedInNow
         applyCoreConfig()
         NativeCore.nativeSetRetroArchShader(GbcaPrefs.getOverlayProfile(activeSystem).retroArchShaderPath)
         if (!showPauseMenuState.value) {
@@ -1409,6 +1442,7 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         vulkanReady.set(false)
         vkLock.withLock { NativeCore.nativeVkDestroy() }
         NativeCore.nativeGlesDestroy()
+        RetroAchievementsClient.currentCoreName = null
         activityScope.cancel()
         super.onDestroy()
     }
@@ -1719,21 +1753,46 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         }
         if (!targetHardcore) {
             // Hardcore -> Casual allowed immediately without console reset
-            GbcaPrefs.setRaHardcore(false)
-            raHardcoreActive.set(false)
-            raHardcoreActiveState.value = false
-            coreLock.withLock {
-                if (nativeHandle != 0L) {
-                    NativeCore.setHardcoreMode(nativeHandle, false)
-                    romEntry?.let { applyCoreConfigLocked(nativeHandle, it) }
-                    raSessionState.value?.let { activateRaRuntimeLocked(nativeHandle, it, false) }
-                }
-            }
-            showToast(getString(R.string.ra_switched_casual_toast))
-            raSessionState.value?.let { showRaStartupBanner(it, false) }
+            performSwitchToCasual(persistPref = true)
         } else {
             // Casual -> Hardcore MUST confirm full console reset
             showSwitchToHardcoreDialogState.value = true
+        }
+    }
+
+    private fun performSwitchToCasual(persistPref: Boolean = true) {
+        if (persistPref) {
+            GbcaPrefs.setRaHardcore(false)
+        }
+        raHardcoreActive.set(false)
+        raHardcoreActiveState.value = false
+        coreLock.withLock {
+            if (nativeHandle != 0L) {
+                NativeCore.setHardcoreMode(nativeHandle, false)
+                romEntry?.let { rom ->
+                    applyCoreConfigLocked(nativeHandle, rom)
+                    val cheats = GbcaPrefs.getCheatsForRom(RomRepository.getRomStorageKey(rom))
+                    applyCheatsLocked(nativeHandle, cheats)
+                }
+                raSessionState.value?.let { activateRaRuntimeLocked(nativeHandle, it, false) }
+            }
+        }
+        showToast(getString(R.string.ra_switched_casual_toast))
+        val sess = raSessionState.value
+        if (RetroAchievementsClient.isLoggedIn()) {
+            if (sess != null) {
+                showRaStartupBanner(sess, false)
+                val hash = activeRaHash.ifBlank { sess.gameHash }
+                if (hash.isNotBlank()) {
+                    activityScope.launch(Dispatchers.IO) {
+                        RetroAchievementsClient.startSession(sess.gameId, hash, false)
+                    }
+                }
+            } else {
+                refreshRaSessionAsync()
+            }
+        } else {
+            refreshRaSessionAsync()
         }
     }
 
@@ -1749,16 +1808,24 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
         coreLock.withLock {
             if (nativeHandle != 0L) {
                 NativeCore.nativeCheatsClear(nativeHandle)
+                val currentLinkMode = parseLinkStatus(NativeCore.nativeLinkGetStatus(nativeHandle)).mode
+                if (currentLinkMode != NativeCore.LINK_NONE && currentLinkMode != NativeCore.LINK_GB_PRINTER) {
+                    NativeCore.nativeLinkStop(nativeHandle)
+                }
                 if (fastForward.get()) {
                     val clamped = GbcaPrefs.coreConfigState.value.fastForwardMultiplier.coerceAtLeast(1.0f)
                     NativeCore.nativeSetFastForward(nativeHandle, clamped)
                 }
                 romEntry?.let { applyCoreConfigLocked(nativeHandle, it) }
                 NativeCore.setHardcoreMode(nativeHandle, true)
+                NativeCore.nativeReset(nativeHandle)
+                NativeCore.raReset(nativeHandle)
                 raSessionState.value?.let { activateRaRuntimeLocked(nativeHandle, it, true) }
             }
         }
 
+        refreshLinkStatus()
+        requestVideoRender()
         showToast(getString(R.string.ra_switched_hardcore_toast))
         val sess = raSessionState.value
         if (sess != null) {
@@ -1770,6 +1837,8 @@ class EmulatorActivity : AppCompatActivity(), SensorEventListener {
                 }
             }
             startRaLoops()
+        } else if (RetroAchievementsClient.isLoggedIn()) {
+            refreshRaSessionAsync()
         }
     }
 }

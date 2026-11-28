@@ -425,6 +425,7 @@
     <string name="ra_hardcore_blocked_ram_finder">Поиск RAM отключен в режиме Hardcore</string>
     <string name="ra_hardcore_blocked_patch">Применение патчей во время игры заблокировано в режиме Hardcore</string>
     <string name="ra_hardcore_blocked_overclock">Разгон CPU зафиксирован на 100% в режиме Hardcore</string>
+    <string name="ra_hardcore_blocked_link">Сетевой Link Cable отключен в режиме Hardcore</string>
     <string name="ra_switch_to_hardcore_title">Переключить в режим Hardcore?</string>
     <string name="ra_switch_to_hardcore_msg">Переход в режим Hardcore во время игры выполнит полный перезапуск консоли и очистит активные читы и историю перемотки. Продолжить?</string>
     <string name="ra_switched_casual_toast">Активирован режим Casual</string>

@@ -425,6 +425,7 @@
     <string name="ra_hardcore_blocked_ram_finder">Ricerca RAM disattivata in modalita Hardcore</string>
     <string name="ra_hardcore_blocked_patch">Patch in sessione bloccata in modalita Hardcore</string>
     <string name="ra_hardcore_blocked_overclock">Overclock CPU bloccato al 100% in modalita Hardcore</string>
+    <string name="ra_hardcore_blocked_link">Il cavo Link di rete e disattivato in modalita Hardcore</string>
     <string name="ra_switch_to_hardcore_title">Passare alla modalita Hardcore?</string>
     <string name="ra_switch_to_hardcore_msg">Il passaggio alla modalita Hardcore durante la partita eseguira un reset completo della console cancellando trucchi e riavvolgimento. Continuare?</string>
     <string name="ra_switched_casual_toast">Modalita Casual attiva</string>

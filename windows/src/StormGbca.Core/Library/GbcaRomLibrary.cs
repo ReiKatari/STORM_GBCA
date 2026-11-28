@@ -1,5 +1,5 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
 
 using System.Globalization;
 using System.IO.Compression;
@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using StormGbca.Core.Configuration;
 using StormGbca.Core.Native;
 using StormGbca.Core.Paths;
+using StormGbca.Core.Subsystems;
 
 namespace StormGbca.Core.Library;
 
@@ -65,7 +66,7 @@ public sealed partial class GbcaRomLibrary
 
     public GbcaRomLibrary()
     {
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.7.0 (Windows)");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("STORM-GBCA/1.7.1 (Windows)");
         try
         {
             var initial = GbcaSettingsStore.Load();
@@ -737,10 +738,18 @@ public sealed partial class GbcaRomLibrary
                 rom.RaHash = ComputeRaHashSafe(rom);
             }
 
+            string raUa = RetroAchievementsService.BuildUserAgent();
             if (rom.RaGameId <= 0 && !string.IsNullOrWhiteSpace(rom.RaHash))
             {
-                string idUrl = $"https://retroachievements.org/dorequest.php?r=gameid&m={Uri.EscapeDataString(rom.RaHash)}";
-                using var idResp = await _httpClient.GetAsync(idUrl, ct).ConfigureAwait(false);
+                using var idReq = new HttpRequestMessage(HttpMethod.Post, "https://retroachievements.org/dorequest.php");
+                idReq.Headers.UserAgent.Clear();
+                idReq.Headers.UserAgent.ParseAdd(raUa);
+                idReq.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["r"] = "gameid",
+                    ["m"] = rom.RaHash,
+                });
+                using var idResp = await _httpClient.SendAsync(idReq, ct).ConfigureAwait(false);
                 if (idResp.IsSuccessStatusCode)
                 {
                     string idJson = await idResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -757,11 +766,21 @@ public sealed partial class GbcaRomLibrary
                 return false;
             }
 
-            string patchUrl = $"https://retroachievements.org/dorequest.php?r=patch&u={Uri.EscapeDataString(raUser)}&t={Uri.EscapeDataString(raToken)}&g={rom.RaGameId}";
-            using var pResp = await _httpClient.GetAsync(patchUrl, ct).ConfigureAwait(false);
+            using var pReq = new HttpRequestMessage(HttpMethod.Post, "https://retroachievements.org/dorequest.php");
+            pReq.Headers.UserAgent.Clear();
+            pReq.Headers.UserAgent.ParseAdd(raUa);
+            pReq.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["r"] = "patch",
+                ["u"] = raUser,
+                ["t"] = raToken,
+                ["g"] = rom.RaGameId.ToString(CultureInfo.InvariantCulture),
+            });
+            using var pResp = await _httpClient.SendAsync(pReq, ct).ConfigureAwait(false);
             if (!pResp.IsSuccessStatusCode) return false;
             string pJson = await pResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             using var pDoc = JsonDocument.Parse(pJson);
+            if (pDoc.RootElement.TryGetProperty("Success", out var okEl) && okEl.ValueKind == JsonValueKind.False) return false;
             if (!pDoc.RootElement.TryGetProperty("PatchData", out var patchData)) return false;
 
             string boxArt = patchData.TryGetProperty("ImageBoxArt", out var baEl) ? (baEl.GetString() ?? string.Empty) : string.Empty;
@@ -773,7 +792,7 @@ public sealed partial class GbcaRomLibrary
                 string fullUrl = relPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                     ? relPath
                     : $"https://media.retroachievements.org{relPath}";
-                if (await TryDownloadCoverAsync(fullUrl, localPath, ct).ConfigureAwait(false))
+                if (await TryDownloadCoverAsync(fullUrl, localPath, ct, raUa).ConfigureAwait(false))
                 {
                     return true;
                 }
@@ -834,11 +853,17 @@ public sealed partial class GbcaRomLibrary
         ];
     }
 
-    private async Task<bool> TryDownloadCoverAsync(string url, string localPath, CancellationToken ct)
+    private async Task<bool> TryDownloadCoverAsync(string url, string localPath, CancellationToken ct, string? userAgentOverride = null)
     {
         try
         {
-            using var resp = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrWhiteSpace(userAgentOverride))
+            {
+                req.Headers.UserAgent.Clear();
+                req.Headers.UserAgent.ParseAdd(userAgentOverride);
+            }
+            using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode) return false;
             byte[] bytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
             if (!IsValidImageBytes(bytes)) return false;

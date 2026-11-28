@@ -315,4 +315,5 @@ object NativeCore {
     @JvmStatic external fun raBuildAwardRequest(username: String, apiToken: String, achievementId: Int, hardcore: Boolean, gameHash: String): Array<String>?
     @JvmStatic external fun raBuildLboardRequest(username: String, apiToken: String, lboardId: Int, score: Int, gameHash: String): Array<String>?
     @JvmStatic external fun raBuildPingRequest(username: String, apiToken: String, gameId: Int, richPresence: String, gameHash: String, hardcore: Boolean): Array<String>?
+    @JvmStatic external fun raGetLoadedRomHash(ctx: Long): String?
 }

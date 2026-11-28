@@ -425,6 +425,7 @@
     <string name="ra_hardcore_blocked_ram_finder">Buscador de RAM desativado no modo Hardcore</string>
     <string name="ra_hardcore_blocked_patch">Patch em sessao bloqueado no modo Hardcore</string>
     <string name="ra_hardcore_blocked_overclock">Overclock de CPU travado em 100% no modo Hardcore</string>
+    <string name="ra_hardcore_blocked_link">O cabo Link de rede esta desativado no modo Hardcore</string>
     <string name="ra_switch_to_hardcore_title">Mudar para o modo Hardcore?</string>
     <string name="ra_switch_to_hardcore_msg">Mudar para o modo Hardcore no meio da sessao reiniciara completamente o console e limpara trapacas e retrocesso. Continuar?</string>
     <string name="ra_switched_casual_toast">Modo Casual ativado</string>

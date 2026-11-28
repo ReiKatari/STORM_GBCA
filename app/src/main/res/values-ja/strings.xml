@@ -425,6 +425,7 @@
     <string name="ra_hardcore_blocked_ram_finder">ハードコアモードではRAM検索は無効です</string>
     <string name="ra_hardcore_blocked_patch">ハードコアモードではプレイ中のパッチ適用は禁止されています</string>
     <string name="ra_hardcore_blocked_overclock">ハードコアモードではCPUオーバークロックは100%に固定されます</string>
+    <string name="ra_hardcore_blocked_link">ハードコアモードではネットワーク通信ケーブルは無効です</string>
     <string name="ra_switch_to_hardcore_title">ハードコアモードに切り替えますか？</string>
     <string name="ra_switch_to_hardcore_msg">プレイ中にハードコアモードへ切り替えるとコンソールが完全リセットされ、チートや巻き戻し履歴が消去されます。続行しますか？</string>
     <string name="ra_switched_casual_toast">カジュアルモードに切り替えました</string>

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
 
 using System.Diagnostics;
 using Avalonia;
@@ -1269,12 +1269,22 @@ public class SettingsView : Grid
             p.Children.Add(confirmCard);
         }
 
-        p.Children.Add(CreateCheck("Rich Presence статус активности (в Hardcore активен всегда)", s.RetroAchievementsRichPresence, v => s.RetroAchievementsRichPresence = v));
+        bool isHardcore = s.RetroAchievementsHardcoreMode;
+        var rpCheck = CreateCheck("Rich Presence статус активности (в Hardcore активен всегда)", isHardcore || s.RetroAchievementsRichPresence, v => s.RetroAchievementsRichPresence = v);
+        rpCheck.IsEnabled = !isHardcore;
+        rpCheck.Opacity = isHardcore ? 0.55 : 1.0;
+        p.Children.Add(rpCheck);
         p.Children.Add(CreateCheck("Enable RetroAchievements", s.RetroAchievementsEnabled, v => s.RetroAchievementsEnabled = v));
         p.Children.Add(CreateCheck("Encore Mode (re-trigger unlocked trophies)", s.RetroAchievementsEncoreMode, v => s.RetroAchievementsEncoreMode = v));
-        p.Children.Add(CreateCheck("Unofficial Achievements", s.RetroAchievementsUnofficial, v => s.RetroAchievementsUnofficial = v));
+        var unoffCheck = CreateCheck("Unofficial Achievements", !isHardcore && s.RetroAchievementsUnofficial, v => s.RetroAchievementsUnofficial = v);
+        unoffCheck.IsEnabled = !isHardcore;
+        unoffCheck.Opacity = isHardcore ? 0.55 : 1.0;
+        p.Children.Add(unoffCheck);
         p.Children.Add(CreateCheck("In-Game Unlock Notifications", s.RetroAchievementsNotifications, v => s.RetroAchievementsNotifications = v));
-        p.Children.Add(CreateCheck("Leaderboards Evaluation (в Hardcore активна всегда)", s.RetroAchievementsLeaderboards, v => s.RetroAchievementsLeaderboards = v));
+        var lbCheck = CreateCheck("Leaderboards Evaluation (в Hardcore активна всегда)", isHardcore || s.RetroAchievementsLeaderboards, v => s.RetroAchievementsLeaderboards = v);
+        lbCheck.IsEnabled = !isHardcore;
+        lbCheck.Opacity = isHardcore ? 0.55 : 1.0;
+        p.Children.Add(lbCheck);
         p.Children.Add(CreateCheck("Show Leaderboard Popups (OSD-уведомления таблиц лидеров)", s.RetroAchievementsShowLeaderboardPopups, v => s.RetroAchievementsShowLeaderboardPopups = v));
         p.Children.Add(CreateCheck("Progress & Challenge Indicators", s.RetroAchievementsProgressIndicators, v => { s.RetroAchievementsProgressIndicators = v; s.RetroAchievementsChallengeIndicators = v; }));
 

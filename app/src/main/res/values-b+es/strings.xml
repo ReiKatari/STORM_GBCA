@@ -425,6 +425,7 @@
     <string name="ra_hardcore_blocked_ram_finder">El buscador de RAM esta desactivado en modo Hardcore</string>
     <string name="ra_hardcore_blocked_patch">Los parches en sesion estan bloqueados en modo Hardcore</string>
     <string name="ra_hardcore_blocked_overclock">El overclock de CPU esta bloqueado al 100% en modo Hardcore</string>
+    <string name="ra_hardcore_blocked_link">El cable Link de red esta desactivado en modo Hardcore</string>
     <string name="ra_switch_to_hardcore_title">Cambiar a modo Hardcore?</string>
     <string name="ra_switch_to_hardcore_msg">Cambiar al modo Hardcore durante la partida reiniciara por completo la consola y borrara trucos e historial de rebobinado. Continuar?</string>
     <string name="ra_switched_casual_toast">Modo Casual activado</string>

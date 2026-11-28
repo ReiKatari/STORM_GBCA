@@ -133,6 +133,9 @@ fun RetroAchievementsSettingsContent(
 
     var raEnabled by remember { mutableStateOf(GbcaPrefs.isRaEnabled()) }
     var hardcore by remember { mutableStateOf(GbcaPrefs.isRaHardcore()) }
+    LaunchedEffect(GbcaPrefs.raHardcoreState.value) {
+        hardcore = GbcaPrefs.raHardcoreState.value
+    }
     var richPresence by remember { mutableStateOf(GbcaPrefs.isRaRichPresence()) }
     var encore by remember { mutableStateOf(GbcaPrefs.isRaEncore()) }
     var unofficial by remember { mutableStateOf(GbcaPrefs.isRaUnofficial()) }
@@ -337,10 +340,18 @@ fun RetroAchievementsSettingsContent(
                 raEnabled = it; GbcaPrefs.setRaEnabled(it)
             }
             WatermelonRowSeparator()
-            RaToggleRow(stringResource(R.string.ra_hardcore), stringResource(R.string.ra_hardcore_sub), hardcore) {
-                hardcore = it; GbcaPrefs.setRaHardcore(it)
-                if (it) { richPresence = true; GbcaPrefs.setRaRichPresence(true) }
-                onHardcoreChanged?.invoke(it)
+            RaToggleRow(stringResource(R.string.ra_hardcore), stringResource(R.string.ra_hardcore_sub), hardcore) { wantsHardcore ->
+                if (onHardcoreChanged != null && wantsHardcore) {
+                    onHardcoreChanged.invoke(true)
+                } else {
+                    hardcore = wantsHardcore
+                    GbcaPrefs.setRaHardcore(wantsHardcore)
+                    if (wantsHardcore) {
+                        richPresence = true
+                        GbcaPrefs.setRaRichPresence(true)
+                    }
+                    onHardcoreChanged?.invoke(wantsHardcore)
+                }
             }
             WatermelonRowSeparator()
             RaToggleRow(stringResource(R.string.ra_rich_presence), stringResource(R.string.ra_rich_presence_sub), if (hardcore) true else richPresence) {

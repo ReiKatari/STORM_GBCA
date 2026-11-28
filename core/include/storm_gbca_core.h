@@ -20,7 +20,7 @@ extern "C" {
   #define STORM_GBCA_API __attribute__((visibility("default")))
 #endif
 
-#define STORM_GBCA_VERSION_STRING "1.7.0"
+#define STORM_GBCA_VERSION_STRING "1.7.1"
 
 /* Key bitmask */
 enum {
@@ -319,6 +319,7 @@ STORM_GBCA_API size_t storm_gbca_read_memory(const StormGbcaContext* ctx, int re
 STORM_GBCA_API int storm_gbca_write_memory(StormGbcaContext* ctx, int region, uint32_t addr, const uint8_t* src, size_t len);
 STORM_GBCA_API int storm_gbca_compute_ra_hash(const char* rom_path, int platform, char* out_hash_33);
 STORM_GBCA_API int storm_gbca_compute_ra_hash_buffer(const void* data, size_t size, int platform, char* out_hash_33);
+STORM_GBCA_API int storm_gbca_get_loaded_ra_hash(const StormGbcaContext* ctx, char* out_hash_33);
 
 /* Resolution Upscaling & Performance (1.1.0) */
 STORM_GBCA_API void storm_gbca_set_upscale(StormGbcaContext* ctx, int scale_1_to_4, int upscale_mode);

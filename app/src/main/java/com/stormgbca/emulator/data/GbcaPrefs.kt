@@ -39,6 +39,7 @@ object GbcaPrefs {
     val gbcOverlayState = mutableStateOf(defaultOverlayFor(ConsoleSystem.GBC))
     val gbaOverlayState = mutableStateOf(defaultOverlayFor(ConsoleSystem.GBA))
     val romFoldersState = mutableStateOf<List<String>>(emptyList())
+    val raHardcoreState = mutableStateOf(false)
     private var romFoldersDirty: Boolean = false
 
     fun consumeRomFoldersDirty(): Boolean {
@@ -124,6 +125,7 @@ object GbcaPrefs {
         gbcOverlayState.value = loadOverlayProfile(ConsoleSystem.GBC)
         gbaOverlayState.value = loadOverlayProfile(ConsoleSystem.GBA)
         romFoldersState.value = loadRomFolders()
+        raHardcoreState.value = prefs.getBoolean("ra_hardcore", false)
     }
 
     private fun detectDeviceCapabilities(context: Context) {
@@ -439,7 +441,10 @@ object GbcaPrefs {
             .apply()
     }
     fun setRaEnabled(v: Boolean) { prefs.edit().putBoolean("ra_enabled", v).apply() }
-    fun setRaHardcore(v: Boolean) { prefs.edit().putBoolean("ra_hardcore", v).apply() }
+    fun setRaHardcore(v: Boolean) {
+        raHardcoreState.value = v
+        prefs.edit().putBoolean("ra_hardcore", v).apply()
+    }
     fun setRaRichPresence(v: Boolean) { prefs.edit().putBoolean("ra_rich_presence", v).apply() }
     fun setRaEncore(v: Boolean) { prefs.edit().putBoolean("ra_encore", v).apply() }
     fun setRaUnofficial(v: Boolean) { prefs.edit().putBoolean("ra_unofficial", v).apply() }

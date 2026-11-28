@@ -425,6 +425,7 @@
     <string name="ra_hardcore_blocked_ram_finder">RAM-Suche ist im Hardcore-Modus deaktiviert</string>
     <string name="ra_hardcore_blocked_patch">Soft-Patching waehrend der Sitzung ist im Hardcore-Modus gesperrt</string>
     <string name="ra_hardcore_blocked_overclock">CPU-Uebertaktung ist im Hardcore-Modus auf 100% gesperrt</string>
+    <string name="ra_hardcore_blocked_link">Netzwerk-Link-Kabel ist im Hardcore-Modus deaktiviert</string>
     <string name="ra_switch_to_hardcore_title">In den Hardcore-Modus wechseln?</string>
     <string name="ra_switch_to_hardcore_msg">Der Wechsel in den Hardcore-Modus fuehrt einen vollstaendigen Konsolen-Reset durch und loescht aktive Cheats und den Ruecklauf. Fortfahren?</string>
     <string name="ra_switched_casual_toast">Casual-Modus aktiv</string>

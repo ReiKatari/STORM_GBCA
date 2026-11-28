@@ -832,6 +832,14 @@ Java_ru_stormgames_gbca_NativeCore_isHardcoreMode(JNIEnv*, jclass, jlong handle)
     return storm_gbca_get_hardcore_mode(reinterpret_cast<StormGbcaContext*>(handle)) != 0 ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jstring JNICALL
+Java_ru_stormgames_gbca_NativeCore_raGetLoadedRomHash(JNIEnv* env, jclass, jlong handle) {
+    auto* ctx = reinterpret_cast<StormGbcaContext*>(handle);
+    char hash[33] = {};
+    if (storm_gbca_get_loaded_ra_hash(ctx, hash) != 0) return nullptr;
+    return env->NewStringUTF(hash);
+}
+
 JNIEXPORT void JNICALL
 Java_ru_stormgames_gbca_NativeCore_raReset(JNIEnv*, jclass, jlong handle) {
     storm_gbca_ra_reset(reinterpret_cast<StormGbcaContext*>(handle));

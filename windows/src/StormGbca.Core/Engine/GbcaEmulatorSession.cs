@@ -1,5 +1,5 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
 
 using System.Buffers.Binary;
 using System.Diagnostics;
@@ -108,6 +108,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
     public StormPlatform ActivePlatform { get; private set; } = StormPlatform.None;
     public StormHwFlags ActiveHardwareFlags { get; private set; } = StormHwFlags.None;
     public string ActiveRomKey => _activeRomKey;
+    public string LoadedRaHash { get; private set; } = string.Empty;
     public string CurrentRichPresence => _currentRichPresence;
     public XInputGamepadService Gamepad => _gamepad;
 
@@ -226,6 +227,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
         _raService = raService;
         _hardcoreMode = raService.IsEnabled && raService.IsHardcoreMode;
+        LoadedRaHash = string.Empty;
         ApplySettings(settings, _hardcoreMode);
 
         int rc = -1;
@@ -235,7 +237,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
         lock (_coreLock)
         {
             NativeCoreBindings.storm_gbca_ra_clear_all(_ctx);
-            NativeCoreBindings.storm_gbca_set_hardcore_mode(_ctx, _hardcoreMode ? 1 : 0);
+            NativeCoreBindings.storm_gbca_set_hardcore_mode(_ctx, 0);
 
             if (isZip)
             {
@@ -262,14 +264,21 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             }
             if (rc != 0) return false;
 
-            // Auto-apply matching .ips / .ups / .bps soft patch if present alongside ROM (pre-boot)
+            // Auto-apply matching .ips / .ups / .bps soft patch if present alongside ROM (pre-boot only, before Hardcore lock)
             TryAutoApplyAdjacentPatchLocked(rom.FilePath);
+
+            NativeCoreBindings.storm_gbca_set_hardcore_mode(_ctx, _hardcoreMode ? 1 : 0);
 
             NativeCoreBindings.storm_gbca_get_rom_info(_ctx, &info);
             ActivePlatform = (StormPlatform)info.platform;
             ActiveHardwareFlags = (StormHwFlags)info.hw_flags;
             _activeCoreName = info.GetActiveCore();
             _raService.SetActiveCore(_activeCoreName);
+
+            string? loadedHash = NativeCoreBindings.GetLoadedRaHash(_ctx);
+            LoadedRaHash = !string.IsNullOrWhiteSpace(loadedHash)
+                ? loadedHash
+                : raService.ComputeRomHash(rom.FilePath, ActivePlatform);
             _activeRomKey = !string.IsNullOrWhiteSpace(rom.FileName) ? rom.FileName : rom.GameCode;
             _activeSramPath = StormGbcaPaths.GetSaveFilePath(_activeRomKey);
 
@@ -376,6 +385,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             _measuredProgress.Clear();
             _primedAchievements.Clear();
         }
+        LoadedRaHash = string.Empty;
 
         lock (_coreLock)
         {
@@ -760,6 +770,12 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
 
     public bool StartLink(StormLinkMode mode, string hostIp, int port, int clockPort, string roomName)
     {
+        if (_hardcoreMode && mode != StormLinkMode.None && mode != StormLinkMode.GbPrinter)
+        {
+            StatusMessage?.Invoke("Сетевая игра, Link Cable и Dolphin JoyBus отключены в режиме Hardcore RetroAchievements");
+            return false;
+        }
+
         if (mode is StormLinkMode.LanClient or StormLinkMode.WirelessClient or StormLinkMode.IrClient or StormLinkMode.DolphinJoyBus)
         {
             string targetIp = string.IsNullOrWhiteSpace(hostIp) ? "127.0.0.1" : hostIp.Trim();
@@ -783,6 +799,16 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
                 roomName ?? "STORM GBCA Room");
             if (rc == 0)
             {
+                StormGbcaRomInfo info = default;
+                if (NativeCoreBindings.storm_gbca_get_rom_info(_ctx, &info) == 0)
+                {
+                    string nextCore = info.GetActiveCore();
+                    if (!string.IsNullOrWhiteSpace(nextCore))
+                    {
+                        _activeCoreName = nextCore;
+                        _raService?.SetActiveCore(_activeCoreName);
+                    }
+                }
                 StatusMessage?.Invoke($"Link active: {mode}");
                 return true;
             }
@@ -1150,7 +1176,7 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
             foreach (var ach in session.Achievements)
             {
                 bool isCore = ach.Flags == 3 || ach.Flags == 0;
-                if (!isCore && !raService.IsUnofficialEnabled) continue;
+                if (!isCore && (hardcore || !raService.IsUnofficialEnabled)) continue;
 
                 bool alreadyEarned = hardcore ? ach.UnlockedHardcore : (ach.Unlocked || ach.UnlockedHardcore);
                 if (alreadyEarned && !raService.IsEncoreMode) continue;
@@ -1235,13 +1261,18 @@ public sealed unsafe class GbcaEmulatorSession : IDisposable
                     var ach = session?.Achievements.FirstOrDefault(a => a.Id == (int)ev.id)
                         ?? new RaAchievementInfo((int)ev.id, $"Achievement #{ev.id}", string.Empty, 0, string.Empty, string.Empty, false, false);
                     bool hc = _hardcoreMode;
+                    if (hc && ach.Flags != 3 && ach.Flags != 0) break;
+                    bool alreadyEarned = hc ? ach.UnlockedHardcore : (ach.Unlocked || ach.UnlockedHardcore);
                     lock (_raStateLock)
                     {
                         _primedAchievements.Remove(ev.id);
                     }
                     RaChallengePrimedChanged?.Invoke(ev.id, ach.Title, false);
                     RaAchievementUnlocked?.Invoke(ach, hc);
-                    _ = Task.Run(() => _raService.AwardAchievementAsync((int)ev.id, hc, gameHash));
+                    if (!alreadyEarned)
+                    {
+                        _ = Task.Run(() => _raService.AwardAchievementAsync((int)ev.id, hc, gameHash));
+                    }
                     break;
                 }
                 case StormRaEventType.AchPrimed:

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
 
 using Avalonia;
 using Avalonia.Controls;
@@ -653,13 +653,14 @@ public class SingleScreenSessionView : Grid
             e.Handled = true;
             return;
         }
-        if (e.Key == Key.F5)
+        var settings = StormGbcaUiState.Instance.Settings;
+        if (MatchesBindingOrDefault(e.Key, settings.KeyBindings, "QuickSave", Key.F5))
         {
             PerformQuickSave(_activeSlot);
             e.Handled = true;
             return;
         }
-        if (e.Key == Key.F8)
+        if (MatchesBindingOrDefault(e.Key, settings.KeyBindings, "QuickLoad", Key.F8))
         {
             PerformQuickLoad(_activeSlot);
             e.Handled = true;
@@ -672,13 +673,13 @@ public class SingleScreenSessionView : Grid
             return;
         }
 
-        var settings = StormGbcaUiState.Instance.Settings;
         if (MatchesBinding(e.Key, settings.KeyBindings, "FastForward"))
         {
-            if (!StormGbcaUiState.Instance.Emulator.IsFastForward)
+            var emu = StormGbcaUiState.Instance.Emulator;
+            if (!emu.IsFastForward)
             {
-                StormGbcaUiState.Instance.Emulator.SetFastForward(true, settings.FastForwardMultiplier);
-                _ffText.Text = $"Ускорение ({settings.FastForwardMultiplier:0.#}x)";
+                emu.SetFastForward(true, settings.FastForwardMultiplier);
+                _ffText.Text = emu.IsFastForward ? $"Ускорение ({emu.FastForwardMultiplier:0.#}x)" : "Ускорение (1x)";
             }
             e.Handled = true;
             return;
@@ -724,6 +725,15 @@ public class SingleScreenSessionView : Grid
         return map.TryGetValue(action, out string? name) &&
                Enum.TryParse<Key>(name, true, out var parsed) &&
                parsed == key;
+    }
+
+    private static bool MatchesBindingOrDefault(Key key, Dictionary<string, string> map, string action, Key fallback)
+    {
+        if (map.TryGetValue(action, out string? name) && Enum.TryParse<Key>(name, true, out var parsed))
+        {
+            return parsed == key;
+        }
+        return key == fallback;
     }
 
     private static uint MapKeyToMask(Key key, Dictionary<string, string> map)
@@ -780,7 +790,7 @@ public class SingleScreenSessionView : Grid
         bool next = !emu.IsFastForward;
         float mult = StormGbcaUiState.Instance.Settings.FastForwardMultiplier;
         emu.SetFastForward(next, mult);
-        _ffText.Text = next ? $"Ускорение ({mult:0.#}x)" : "Ускорение (1x)";
+        _ffText.Text = emu.IsFastForward ? $"Ускорение ({emu.FastForwardMultiplier:0.#}x)" : "Ускорение (1x)";
         Focus();
     }
 

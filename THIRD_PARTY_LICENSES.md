@@ -1,6 +1,6 @@
 # Third-Party Licenses & Open-Source Attributions - STORM GBCA
 
-**STORM GBCA (version 1.7.0)** is distributed under the **Mozilla Public License Version 2.0 (MPL-2.0)**. See [LICENSE](LICENSE) for the full project license notice.
+**STORM GBCA (version 1.7.1)** is distributed under the **Mozilla Public License Version 2.0 (MPL-2.0)**. See [LICENSE](LICENSE) for the full project license notice.
 
 ---
 
@@ -20,7 +20,9 @@
 
 | Component | Version | License | Copyright Holder | Upstream Repository |
 | --- | --- | --- | --- | --- |
-| **mGBA** | 0.10.5 | **MPL-2.0** | Jeffrey Pfau (endrift) & mGBA contributors | https://github.com/mgba-emu/mgba |
+| **mGBA** | 0.11.0-dev | **MPL-2.0** | Jeffrey Pfau (endrift) & mGBA contributors | https://github.com/mgba-emu/mgba |
+| **zlib** (bundled in mGBA) | 1.3.2 | **zlib License** | Jean-loup Gailly & Mark Adler | https://github.com/madler/zlib |
+| **LZMA SDK** (bundled in mGBA) | 19.00 | **Public Domain** | Igor Pavlov | https://7-zip.org/sdk.html |
 | **SameBoy** | 1.0.5 | **MIT (Expat)** | Lior Halphon (LIJI32) | https://github.com/LIJI32/SameBoy |
 | **rcheevos** | 12.5.0 | **MIT** | RetroAchievements.org (Jamiras & contributors) | https://github.com/RetroAchievements/rcheevos |
 | **librashader** | 0.8+ | **MPL-2.0 / MIT** | Ronny Chan (SnowflakePowered) | https://github.com/SnowflakePowered/librashader |
@@ -29,7 +31,8 @@
 ### MPL-2.0 Source Availability Notice (mGBA & librashader)
 
 In compliance with **MPL-2.0 Section 3.2**:
-- The complete source code of **mGBA** and **librashader** integration headers, along with all modifications and CMake build scripts used by STORM GBCA, are included directly in this public repository under [`core/third_party/mgba`](core/third_party/mgba) and [`core/third_party/librashader`](core/third_party/librashader).
+- The complete source code of **mGBA** (including bundled `zlib` and `LZMA SDK`), along with all modifications and CMake build scripts used by STORM GBCA, is included directly in this public repository under [`core/third_party/mgba`](core/third_party/mgba).
+- For **librashader**, the MIT C integration headers (`librashader.h`, `librashader_ld.h`) are vendored in [`core/third_party/librashader`](core/third_party/librashader), and the complete upstream source code for the prebuilt Android `liblibrashader.so` binaries (MPL-2.0 / MIT) is publicly available at https://github.com/SnowflakePowered/librashader.
 - All original STORM GBCA core wrapper code (`core/src/`, `core/include/`) is also licensed under **MPL-2.0**.
 
 ---
@@ -76,6 +79,6 @@ The following open-source projects served as technical references and inspiratio
 - **SkyEmu** (MIT - https://github.com/skylersaleh/SkyEmu) - LCD subpixel shader concepts and delta-compressed rewind ring ideas.
 - **NanoBoyAdvance (`phoenix`)** (BSD-2-Clause - https://codeberg.org/nba-emu/NanoBoyAdvance) - Hermite GBA audio resampling and AGB-001 / AGS-101 color matrices.
 - **ares** (ISC - https://github.com/ares-emulator/ares) - Dynamic Rate Control (DRC) audio synchronization and Run-Ahead latency reduction concepts.
-- **Gambatte-libretro** (GPL-2.0 reference / public color palettes - https://github.com/libretro/gambatte-libretro) - Classic DMG / GBC / SGB color palette values.
+- **Standard Public DMG / GBC / SGB LCD Palettes** - Classic monochrome DMG olive, Pocket, Light, GBC, and SGB public color palette definitions implemented independently in C (`storm_gbca_core`).
 - **VisualBoyAdvance-M, MesenCE, GBE+** - Cheat format specifications and peripheral documentation.
-- **Libretro Thumbnails** (https://github.com/libretro-thumbnails) - Optional public cover art repository.
+- **Libretro Thumbnails** (https://github.com/libretro-thumbnails) - Optional public cover art repository (fetched via GitHub Raw and jsDelivr CDN mirrors).

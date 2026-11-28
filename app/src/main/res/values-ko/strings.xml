@@ -425,6 +425,7 @@
     <string name="ra_hardcore_blocked_ram_finder">하드코어 모드에서는 RAM 검색이 비활성화됩니다</string>
     <string name="ra_hardcore_blocked_patch">하드코어 모드에서는 세션 중 패치 적용이 차단됩니다</string>
     <string name="ra_hardcore_blocked_overclock">하드코어 모드에서는 CPU 오버클럭이 100%로 고정됩니다</string>
+    <string name="ra_hardcore_blocked_link">하드코어 모드에서는 네트워크 링크 케이블이 비활성화됩니다</string>
     <string name="ra_switch_to_hardcore_title">하드코어 모드로 전환할까요?</string>
     <string name="ra_switch_to_hardcore_msg">플레이 중 하드코어 모드로 전환하면 콘솔이 완전히 재설정되고 활성 치트와 되감기 기록이 초기화됩니다. 계속할까요?</string>
     <string name="ra_switched_casual_toast">캐주얼 모드로 전환되었습니다</string>

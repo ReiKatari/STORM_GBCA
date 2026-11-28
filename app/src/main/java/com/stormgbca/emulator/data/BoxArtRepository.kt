@@ -14,6 +14,7 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URI
 import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.concurrent.ConcurrentHashMap
@@ -30,7 +31,7 @@ import java.util.concurrent.TimeUnit
  */
 object BoxArtRepository {
     private const val TAG = "BoxArtRepository"
-    private const val USER_AGENT = "STORM-GBCA/1.7.0 (Android)"
+    private const val USER_AGENT = "STORM-GBCA/1.7.1 (Android)"
 
     private const val REPO_GB = "Nintendo_-_Game_Boy"
     private const val REPO_GBC = "Nintendo_-_Game_Boy_Color"
@@ -450,9 +451,15 @@ object BoxArtRepository {
 
     private fun downloadImageToFile(url: String, outFile: File): String? {
         return runCatching {
+            val host = runCatching { URI(url).host.orEmpty().lowercase() }.getOrDefault("")
+            val ua = if (host == "retroachievements.org" || host.endsWith(".retroachievements.org")) {
+                RetroAchievementsClient.buildUserAgent()
+            } else {
+                USER_AGENT
+            }
             val req = Request.Builder()
                 .url(url)
-                .header("User-Agent", USER_AGENT)
+                .header("User-Agent", ua)
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@use null

@@ -451,7 +451,14 @@ int main() {
             ra_ok &= (std::strstr(post, "h=1") != nullptr);
             ra_ok &= (std::strstr(post, "&v=") != nullptr);
 
-            // e) Enable Hardcore -> returns 1 (mandatory reset), blocks cheats/loadstate/rewind/memwrite/search/deserialize, allows save_state
+            // e) Verify loaded RA hash matches compute_ra_hash_buffer
+            char loaded_hash[33] = {};
+            char expected_hash[33] = {};
+            ra_ok &= (storm_gbca_get_loaded_ra_hash(ra_ctx, loaded_hash) == 0);
+            ra_ok &= (storm_gbca_compute_ra_hash_buffer(gba_rom.data(), gba_rom.size(), STORM_PLATFORM_GBA, expected_hash) == 0);
+            ra_ok &= (std::strlen(loaded_hash) == 32 && std::strcmp(loaded_hash, expected_hash) == 0);
+
+            // f) Enable Hardcore -> returns 1 (mandatory reset), blocks cheats/loadstate/rewind/memwrite/search/deserialize/link, allows save_state
             int hc_rc = storm_gbca_set_hardcore_mode(ra_ctx, 1);
             ra_ok &= (hc_rc == 1);
             ra_ok &= (storm_gbca_get_hardcore_mode(ra_ctx) == 1);
@@ -463,12 +470,30 @@ int main() {
             ra_ok &= (storm_gbca_write_memory(ra_ctx, STORM_MEM_IWRAM, 0x10, &val42, 1) == STORM_ERR_HARDCORE_BLOCKED);
             ra_ok &= (storm_gbca_mem_search_reset(ra_ctx, STORM_MEM_IWRAM, 1) == STORM_ERR_HARDCORE_BLOCKED);
             ra_ok &= (storm_gbca_ra_deserialize_progress(ra_ctx, prog_buf.data(), wrote) == STORM_ERR_HARDCORE_BLOCKED);
+            ra_ok &= (storm_gbca_link_start(ra_ctx, STORM_LINK_LAN_HOST, "127.0.0.1", 8888, 0, "test") == STORM_ERR_HARDCORE_BLOCKED);
+            storm_gbca_set_rtc(ra_ctx, 0, 123456789);
+            storm_gbca_set_fast_forward(ra_ctx, std::nanf(""));
+            ra_ok &= (storm_gbca_run_frame(ra_ctx) == 0);
         }
 
-        // f) Disable Hardcore -> returns 0 and load_state works again
+        // g) Disable Hardcore -> returns 0 and load_state works again
         ra_ok &= (storm_gbca_set_hardcore_mode(ra_ctx, 0) == 0);
         ra_ok &= (storm_gbca_get_hardcore_mode(ra_ctx) == 0);
         ra_ok &= (storm_gbca_load_state_buffer(ra_ctx, st_buf.data(), st_sz) == 0);
+
+        // h) GB ROM-patching cheat (GameGenie) in Casual -> Hardcore activation must reload clean unpatched ROM
+        StormGbcaConfig gb_cfg{};
+        storm_gbca_get_default_config(&gb_cfg);
+        gb_cfg.preferred_core_gb = STORM_CORE_SAMEBOY;
+        ra_ok &= (storm_gbca_set_config(ra_ctx, &gb_cfg) == 0);
+        ra_ok &= (storm_gbca_load_rom_buffer(ra_ctx, gb_rom.data(), gb_rom.size(), "hc_gg.gb") == 0);
+        uint8_t rom_byte = 0xFF;
+        ra_ok &= (storm_gbca_read_memory(ra_ctx, STORM_MEM_CART_ROM, 0x0200, &rom_byte, 1) == 1 && rom_byte == 0x00);
+        ra_ok &= (storm_gbca_cheat_add(ra_ctx, "GGPatch", "AA2-00F", 1) == 0);
+        ra_ok &= (storm_gbca_run_frame(ra_ctx) == 0);
+        ra_ok &= (storm_gbca_read_memory(ra_ctx, STORM_MEM_CART_ROM, 0x0200, &rom_byte, 1) == 1 && rom_byte == 0xAA);
+        ra_ok &= (storm_gbca_set_hardcore_mode(ra_ctx, 1) == 1);
+        ra_ok &= (storm_gbca_read_memory(ra_ctx, STORM_MEM_CART_ROM, 0x0200, &rom_byte, 1) == 1 && rom_byte == 0x00);
 
         storm_gbca_destroy(ra_ctx);
         if (!ra_ok) {

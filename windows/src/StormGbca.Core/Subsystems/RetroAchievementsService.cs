@@ -1,5 +1,5 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
 
 using System.Text;
 using System.Text.Json;
@@ -63,7 +63,7 @@ public sealed class RetroAchievementsService
     private readonly HttpClient _httpClient;
     private readonly List<RetroAchievementsQueueItem> _offlineQueue = [];
     private readonly object _lock = new();
-    private string _activeCoreSegment = "mgba/0.10.5";
+    private static volatile string s_activeCoreSegment = "mgba/0.11.0";
 
     public string Username { get; set; } = string.Empty;
     public string Token { get; set; } = string.Empty;
@@ -99,19 +99,20 @@ public sealed class RetroAchievementsService
         string next = !string.IsNullOrWhiteSpace(coreName) &&
                       coreName.Contains("SameBoy", StringComparison.OrdinalIgnoreCase)
             ? "sameboy/1.0.5"
-            : "mgba/0.10.5";
-        if (!string.Equals(_activeCoreSegment, next, StringComparison.Ordinal))
+            : "mgba/0.11.0";
+        if (!string.Equals(s_activeCoreSegment, next, StringComparison.Ordinal))
         {
-            _activeCoreSegment = next;
+            s_activeCoreSegment = next;
             RefreshDefaultUserAgent();
         }
     }
 
-    public string BuildUserAgent()
+    public static string BuildUserAgent(string? coreOverride = null)
     {
         string appVer = GbcaLoc.AppVersion.Trim().TrimStart('v', 'V');
         var osVer = Environment.OSVersion.Version;
-        return $"STORM-GBCA/{appVer} (Windows {osVer.Major}.{osVer.Minor}) {_activeCoreSegment}";
+        string coreSeg = string.IsNullOrWhiteSpace(coreOverride) ? s_activeCoreSegment : coreOverride.Trim();
+        return $"STORM-GBCA/{appVer} (Windows {osVer.Major}.{osVer.Minor}) {coreSeg}";
     }
 
     private void RefreshDefaultUserAgent()
@@ -330,8 +331,8 @@ public sealed class RetroAchievementsService
 
         try
         {
-            string idUrl = $"{RaDoRequestUrl}?r=gameid&m={Uri.EscapeDataString(ActiveGameHash)}";
-            using var idResp = await SendRaRequestAsync(idUrl, string.Empty, ct).ConfigureAwait(false);
+            string idPost = $"r=gameid&m={Uri.EscapeDataString(ActiveGameHash)}";
+            using var idResp = await SendRaRequestAsync(RaDoRequestUrl, idPost, ct).ConfigureAwait(false);
             string idJson = await idResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             using var idDoc = JsonDocument.Parse(idJson);
             int gameId = ReadInt(idDoc.RootElement, "GameID");
@@ -442,8 +443,12 @@ public sealed class RetroAchievementsService
             using var resp = await SendRaRequestAsync(url, postBody, ct).ConfigureAwait(false);
             if (resp.IsSuccessStatusCode)
             {
-                _ = FlushOfflineQueueAsync(ct);
-                return true;
+                string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (IsRaJsonSuccess(body, out _))
+                {
+                    _ = FlushOfflineQueueAsync(ct);
+                    return true;
+                }
             }
         }
         catch
@@ -460,13 +465,27 @@ public sealed class RetroAchievementsService
             if (!NativeCoreBindings.BuildPingRequest(Username, Token, (uint)gameId, richPresence ?? string.Empty, gameHash ?? string.Empty, hardcore, out string url, out string postBody))
             {
                 url = RaDoRequestUrl;
-                postBody = $"r=ping&u={Uri.EscapeDataString(Username)}&t={Uri.EscapeDataString(Token)}&g={gameId}&m={Uri.EscapeDataString(richPresence ?? string.Empty)}";
+                var sb = new StringBuilder();
+                sb.Append($"r=ping&u={Uri.EscapeDataString(Username)}&t={Uri.EscapeDataString(Token)}&g={gameId}");
+                if (!string.IsNullOrEmpty(richPresence))
+                {
+                    sb.Append($"&m={Uri.EscapeDataString(richPresence)}");
+                }
+                if (!string.IsNullOrEmpty(gameHash))
+                {
+                    sb.Append($"&h={(hardcore ? 1 : 0)}&x={Uri.EscapeDataString(gameHash)}");
+                }
+                postBody = sb.ToString();
             }
             using var resp = await SendRaRequestAsync(url, postBody, ct).ConfigureAwait(false);
             if (resp.IsSuccessStatusCode)
             {
-                if (PendingOfflineCount > 0) _ = FlushOfflineQueueAsync(ct);
-                return true;
+                string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (IsRaJsonSuccess(body, out _))
+                {
+                    if (PendingOfflineCount > 0) _ = FlushOfflineQueueAsync(ct);
+                    return true;
+                }
             }
         }
         catch
@@ -516,10 +535,19 @@ public sealed class RetroAchievementsService
                 if (response.IsSuccessStatusCode)
                 {
                     string respBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                    using var doc = JsonDocument.Parse(respBody);
-                    if (doc.RootElement.TryGetProperty("Score", out _)) Points = ReadInt(doc.RootElement, "Score");
-                    if (doc.RootElement.TryGetProperty("SoftcoreScore", out _)) SoftcorePoints = ReadInt(doc.RootElement, "SoftcoreScore");
-                    return true;
+                    if (IsRaJsonSuccess(respBody, out bool alreadyUnlocked) || alreadyUnlocked)
+                    {
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(respBody);
+                            if (doc.RootElement.TryGetProperty("Score", out _)) Points = ReadInt(doc.RootElement, "Score");
+                            if (doc.RootElement.TryGetProperty("SoftcoreScore", out _)) SoftcorePoints = ReadInt(doc.RootElement, "SoftcoreScore");
+                        }
+                        catch
+                        {
+                        }
+                        return true;
+                    }
                 }
             }
         }
@@ -551,7 +579,11 @@ public sealed class RetroAchievementsService
             if (NativeCoreBindings.BuildLboardRequest(Username, Token, (uint)lboardId, score, gameHash ?? ActiveGameHash, out string url, out string postBody))
             {
                 using var response = await SendRaRequestAsync(url, postBody, ct).ConfigureAwait(false);
-                if (response.IsSuccessStatusCode) return true;
+                if (response.IsSuccessStatusCode)
+                {
+                    string respBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    if (IsRaJsonSuccess(respBody, out _)) return true;
+                }
             }
         }
         catch
@@ -626,8 +658,12 @@ public sealed class RetroAchievementsService
                     using var response = await SendRaRequestAsync(url, postBody, ct).ConfigureAwait(false);
                     if (response.IsSuccessStatusCode)
                     {
-                        submitted++;
-                        continue;
+                        string respBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                        if (IsRaJsonSuccess(respBody, out bool alreadyUnlocked) || alreadyUnlocked)
+                        {
+                            submitted++;
+                            continue;
+                        }
                     }
                 }
             }
@@ -644,6 +680,35 @@ public sealed class RetroAchievementsService
         }
         SaveOfflineQueue();
         return submitted;
+    }
+
+    private static bool IsRaJsonSuccess(string body, out bool alreadyUnlocked)
+    {
+        alreadyUnlocked = false;
+        if (string.IsNullOrWhiteSpace(body)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("Success", out var sProp) &&
+                (sProp.ValueKind == JsonValueKind.True ||
+                 (sProp.ValueKind == JsonValueKind.Number && sProp.TryGetInt32(out int sv) && sv != 0)))
+            {
+                return true;
+            }
+            if (root.TryGetProperty("Error", out var eProp) && eProp.ValueKind == JsonValueKind.String)
+            {
+                string err = eProp.GetString() ?? string.Empty;
+                if (err.Contains("already unlocked", StringComparison.OrdinalIgnoreCase))
+                {
+                    alreadyUnlocked = true;
+                }
+            }
+        }
+        catch
+        {
+        }
+        return false;
     }
 
     private static int ReadInt(JsonElement root, string name)

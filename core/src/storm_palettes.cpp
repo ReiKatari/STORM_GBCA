@@ -3,7 +3,7 @@
 
 namespace storm {
 
-// 28 curated palettes ported from Gambatte gbcpalettes.h + SameBoy hardware palettes.
+// 28 standard public DMG/GBC/SGB hardware LCD and boot-ROM color palettes.
 // Colors stored as 0x00RRGGBB.
 static const DmgPaletteEntry kDmgPalettes[] = {
     { "DMG Olive (Classic)",       {0x9BBC0F, 0x8BAC0F, 0x306230, 0x0F380F}, {0x9BBC0F, 0x8BAC0F, 0x306230, 0x0F380F}, {0x9BBC0F, 0x8BAC0F, 0x306230, 0x0F380F} },

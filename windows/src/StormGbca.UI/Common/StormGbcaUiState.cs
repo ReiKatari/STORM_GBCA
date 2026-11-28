@@ -1,5 +1,5 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
 
 using Avalonia.Media;
 using StormGbca.Core.Configuration;
@@ -123,7 +123,13 @@ public sealed class StormGbcaUiState
     public void SetHardcoreModeFromUi(bool enabled)
     {
         Settings.RetroAchievementsHardcoreMode = enabled;
-        RetroAchievements.IsHardcoreMode = enabled;
+        if (enabled)
+        {
+            Settings.RetroAchievementsRichPresence = true;
+            Settings.RetroAchievementsLeaderboards = true;
+            Settings.RetroAchievementsUnofficial = false;
+        }
+        SyncServicesFromSettings();
         GbcaSettingsStore.Save(Settings);
         if (IsEmulationActive)
         {
@@ -227,13 +233,19 @@ public sealed class StormGbcaUiState
         }
 
         Library.RecordPlay(target, Settings);
-        if (string.IsNullOrWhiteSpace(target.RaHash))
+        string raHash = !string.IsNullOrWhiteSpace(Emulator.LoadedRaHash)
+            ? Emulator.LoadedRaHash
+            : target.RaHash;
+        if (string.IsNullOrWhiteSpace(raHash))
         {
-            target.RaHash = RetroAchievements.ComputeRomHash(target.FilePath, target.Platform);
+            raHash = RetroAchievements.ComputeRomHash(target.FilePath, target.Platform);
         }
-        if (RetroAchievements.IsEnabled && RetroAchievements.IsLoggedIn && !string.IsNullOrWhiteSpace(target.RaHash))
+        if (!string.IsNullOrWhiteSpace(raHash))
         {
-            string raHash = target.RaHash;
+            target.RaHash = raHash;
+        }
+        if (RetroAchievements.IsEnabled && RetroAchievements.IsLoggedIn && !string.IsNullOrWhiteSpace(raHash))
+        {
             _ = Task.Run(async () =>
             {
                 var session = await RetroAchievements.FetchGameSessionAsync(raHash).ConfigureAwait(false);

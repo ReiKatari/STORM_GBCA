@@ -425,6 +425,7 @@
     <string name="ra_hardcore_blocked_ram_finder">硬核模式下已禁用内存搜索</string>
     <string name="ra_hardcore_blocked_patch">硬核模式下禁止在游戏过程中应用补丁</string>
     <string name="ra_hardcore_blocked_overclock">硬核模式下CPU超频锁定为100%</string>
+    <string name="ra_hardcore_blocked_link">硬核模式下已禁用网络联机线</string>
     <string name="ra_switch_to_hardcore_title">切换到硬核模式？</string>
     <string name="ra_switch_to_hardcore_msg">在游戏中途切换到硬核模式将完全重置主机，并清除当前金手指与倒带历史。是否继续？</string>
     <string name="ra_switched_casual_toast">已切换到休闲模式 (Casual)</string>

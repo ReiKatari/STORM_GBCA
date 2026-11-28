@@ -1,5 +1,5 @@
 // Copyright (c) 2026 STORM TEAM. All rights reserved.
-// Licensed under the Apache License, Version 2.0.
+// Licensed under the Mozilla Public License, Version 2.0 (MPL-2.0).
 
 using System.Globalization;
 
@@ -8,12 +8,12 @@ namespace StormGbca.Core.Localization;
 public sealed record GbcaLanguageInfo(string Code, string NativeName, string EnglishName);
 
 /// <summary>
-/// Complete 11-language localization dictionary for STORM GBCA 1.7.0.
+/// Complete 11-language localization dictionary for STORM GBCA 1.7.1.
 /// Enforces 100% key parity across all 11 languages, full words, and zero em-dashes.
 /// </summary>
 public static class GbcaLoc
 {
-    public const string AppVersion = "1.7.0";
+    public const string AppVersion = "1.7.1";
 
     public static event Action<string>? LanguageChanged;
 

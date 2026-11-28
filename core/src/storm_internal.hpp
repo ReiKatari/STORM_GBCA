@@ -23,7 +23,7 @@ struct DmgPaletteEntry {
     uint32_t obj1[4];
 };
 
-// Palettes (ported from Gambatte gbcpalettes.h + SameBoy)
+// Standard public DMG/GBC/SGB hardware LCD color palettes
 int get_dmg_palette_count();
 const char* get_dmg_palette_name(int index);
 const DmgPaletteEntry* get_dmg_palette(int index);

@@ -135,7 +135,7 @@ object RetroAchievementsClient {
         val coreSegment = if (activeCoreName?.contains("sameboy", ignoreCase = true) == true) {
             "sameboy/1.0.5"
         } else {
-            "mgba/0.10.5"
+            "mgba/0.11.0"
         }
         return "STORM-GBCA/$cleanVersion (Android ${Build.VERSION.RELEASE}) $coreSegment"
     }
@@ -376,6 +376,9 @@ object RetroAchievementsClient {
         ok
     }
 
+    private fun pendingItemFingerprint(item: JSONObject): String =
+        "${item.optString("kind", "achievement")}|${item.optInt("id", 0)}|${item.optBoolean("hardcore", false)}|${item.optInt("score", 0)}|${item.optString("hash", "")}|${item.optLong("timestamp", 0L)}"
+
     suspend fun awardAchievement(achId: Int, hardcore: Boolean, gameHash: String): Boolean =
         withContext(Dispatchers.IO) {
             val user = GbcaPrefs.getRaUsername()
@@ -400,7 +403,8 @@ object RetroAchievementsClient {
                     return@withContext true
                 }
                 // Explicit non-transient rejection from RA (e.g. already unlocked)
-                if (outcome.httpCode in 200..499 && outcome.httpCode != 429 && json.has("Error")) {
+                val errMsg = if (!json.isNull("Error")) json.optString("Error", "") else ""
+                if (outcome.httpCode in 200..499 && outcome.httpCode != 429 && errMsg.isNotBlank()) {
                     return@withContext false
                 }
             }
@@ -429,7 +433,8 @@ object RetroAchievementsClient {
             if (json.optBoolean("Success", false)) {
                 return@withContext true
             }
-            if (outcome.httpCode in 200..499 && outcome.httpCode != 429 && json.has("Error")) {
+            val errMsg = if (!json.isNull("Error")) json.optString("Error", "") else ""
+            if (outcome.httpCode in 200..499 && outcome.httpCode != 429 && errMsg.isNotBlank()) {
                 return@withContext false
             }
         }
@@ -443,49 +448,55 @@ object RetroAchievementsClient {
         val token = GbcaPrefs.getRaToken()
         if (user.isBlank() || token.isBlank()) return@withContext 0
 
-        val snapshot: JSONArray = synchronized(queueLock) {
-            runCatching { JSONArray(GbcaPrefs.getRaPendingQueueJson()) }.getOrDefault(JSONArray())
+        val snapshotItems: List<JSONObject> = synchronized(queueLock) {
+            val arr = runCatching { JSONArray(GbcaPrefs.getRaPendingQueueJson()) }.getOrDefault(JSONArray())
+            (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
         }
-        if (snapshot.length() == 0) return@withContext 0
+        if (snapshotItems.isEmpty()) return@withContext 0
 
-        val remaining = JSONArray()
+        val completedFingerprints = HashSet<String>()
         var flushed = 0
-        for (i in 0 until snapshot.length()) {
-            val item = snapshot.optJSONObject(i) ?: continue
+        for (item in snapshotItems) {
+            val fp = pendingItemFingerprint(item)
             val kind = item.optString("kind", "achievement")
             val id = item.optInt("id", 0)
             val hardcore = item.optBoolean("hardcore", false)
             val score = item.optInt("score", 0)
             val hash = item.optString("hash", "")
-            if (id <= 0) continue
+            if (id <= 0 || (kind == "leaderboard" && !hardcore)) {
+                completedFingerprints.add(fp)
+                continue
+            }
 
             val reqPair = when (kind) {
-                "leaderboard" -> if (hardcore) {
-                    NativeCore.raBuildLboardRequest(user, token, id, score, hash)
-                } else {
-                    null
-                }
+                "leaderboard" -> NativeCore.raBuildLboardRequest(user, token, id, score, hash)
                 else -> NativeCore.raBuildAwardRequest(user, token, id, hardcore, hash)
-            }
-            if (kind == "leaderboard" && !hardcore) {
-                continue
             }
 
             val outcome = executeNativePost(reqPair)
             val json = outcome.json
-            val handled = outcome.reachable && json != null && (
-                json.optBoolean("Success", false) ||
-                    (outcome.httpCode in 200..499 && outcome.httpCode != 429 && json.has("Error"))
-                )
-            if (handled) {
-                if (json?.optBoolean("Success", false) == true) flushed++
-            } else {
-                remaining.put(item)
+            val isSuccess = outcome.reachable && json != null && json.optBoolean("Success", false)
+            val errMsg = json?.takeIf { !it.isNull("Error") }?.optString("Error", "").orEmpty()
+            val isAlreadyUnlocked = outcome.reachable && json != null &&
+                errMsg.contains("already unlocked", ignoreCase = true)
+            if (isSuccess || isAlreadyUnlocked) {
+                completedFingerprints.add(fp)
+                if (isSuccess) flushed++
             }
         }
 
-        synchronized(queueLock) {
-            GbcaPrefs.saveRaPendingQueueJson(remaining.toString())
+        if (completedFingerprints.isNotEmpty()) {
+            synchronized(queueLock) {
+                val currentArr = runCatching { JSONArray(GbcaPrefs.getRaPendingQueueJson()) }.getOrDefault(JSONArray())
+                val remaining = JSONArray()
+                for (i in 0 until currentArr.length()) {
+                    val curItem = currentArr.optJSONObject(i) ?: continue
+                    if (!completedFingerprints.contains(pendingItemFingerprint(curItem))) {
+                        remaining.put(curItem)
+                    }
+                }
+                GbcaPrefs.saveRaPendingQueueJson(remaining.toString())
+            }
         }
         flushed
     }

@@ -136,6 +136,7 @@ fun MultiplayerPanelContent(
     val colors = watermelon
     val scope = rememberCoroutineScope()
     val cfg = GbcaPrefs.coreConfigState.value
+    val blockedLinkMsg = stringResource(R.string.ra_hardcore_blocked_link)
 
     var selectedCategory by remember { mutableIntStateOf(0) } // 0=LAN Link, 1=Wireless RFU, 2=IR, 3=Dolphin, 4=GB Printer, 5=Loopback
     var roomName by remember { mutableStateOf(cfg.mpRoomName) }
@@ -312,7 +313,11 @@ fun MultiplayerPanelContent(
                                         if (onStartLink != null) {
                                             val rc = onStartLink(hostMode, "", p, 49420, roomName)
                                             status = onStatusRefresh?.invoke() ?: status
-                                            feedback = if (rc == 0) "Room hosted on :$p" else "Failed to host on :$p"
+                                            feedback = when (rc) {
+                                                0 -> "Room hosted on :$p"
+                                                NativeCore.STORM_ERR_HARDCORE_BLOCKED -> blockedLinkMsg
+                                                else -> "Failed to host on :$p"
+                                            }
                                         } else {
                                             feedback = "Saved! Launch a game and open Pause -> Link / Net to start."
                                         }
@@ -335,7 +340,11 @@ fun MultiplayerPanelContent(
                                             scope.launch {
                                                 val rc = withContext(Dispatchers.IO) { onStartLink(clientMode, hostIp.trim(), p, 49420, "") }
                                                 status = onStatusRefresh?.invoke() ?: status
-                                                feedback = if (rc == 0) "Connected to $hostIp:$p" else "Could not connect to $hostIp:$p"
+                                                feedback = when (rc) {
+                                                    0 -> "Connected to $hostIp:$p"
+                                                    NativeCore.STORM_ERR_HARDCORE_BLOCKED -> blockedLinkMsg
+                                                    else -> "Could not connect to $hostIp:$p"
+                                                }
                                             }
                                         } else {
                                             feedback = "Saved! Launch a game and open Pause -> Link / Net to connect."
@@ -401,7 +410,11 @@ fun MultiplayerPanelContent(
                                                     }
                                                     val rc = withContext(Dispatchers.IO) { onStartLink(joinMode, r.hostIp, r.port, 49420, "") }
                                                     status = onStatusRefresh?.invoke() ?: status
-                                                    feedback = if (rc == 0) "Joined ${r.roomName}" else "Connection failed"
+                                                    feedback = when (rc) {
+                                                        0 -> "Joined ${r.roomName}"
+                                                        NativeCore.STORM_ERR_HARDCORE_BLOCKED -> blockedLinkMsg
+                                                        else -> "Connection failed"
+                                                    }
                                                 }
                                             }
                                         }
@@ -461,7 +474,11 @@ fun MultiplayerPanelContent(
                                         scope.launch {
                                             val rc = withContext(Dispatchers.IO) { onStartLink(NativeCore.LINK_DOLPHIN_JOYBUS, dolphinIp.trim(), dp, cp, "") }
                                             status = onStatusRefresh?.invoke() ?: status
-                                            feedback = if (rc == 0) "Dolphin JoyBus connected!" else "Dolphin refused connection (enable GBA JoyBus in Dolphin)"
+                                            feedback = when (rc) {
+                                                0 -> "Dolphin JoyBus connected!"
+                                                NativeCore.STORM_ERR_HARDCORE_BLOCKED -> blockedLinkMsg
+                                                else -> "Dolphin refused connection (enable GBA JoyBus in Dolphin)"
+                                            }
                                         }
                                     } else {
                                         feedback = "Saved! Start GBA game and open Pause -> Link / Net."
@@ -518,7 +535,11 @@ fun MultiplayerPanelContent(
                                     if (onStartLink != null) {
                                         val rc = onStartLink(NativeCore.LINK_LOCAL_LOOPBACK, "127.0.0.1", 0, 0, "Local")
                                         status = onStatusRefresh?.invoke() ?: status
-                                        feedback = if (rc == 0) "Local Loopback Link active!" else "Failed"
+                                        feedback = when (rc) {
+                                            0 -> "Local Loopback Link active!"
+                                            NativeCore.STORM_ERR_HARDCORE_BLOCKED -> blockedLinkMsg
+                                            else -> "Failed"
+                                        }
                                     } else {
                                         feedback = "Launch a game and activate Local Loopback from Pause -> Link / Net."
                                     }

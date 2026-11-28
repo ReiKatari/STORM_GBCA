@@ -425,6 +425,7 @@
     <string name="ra_hardcore_blocked_ram_finder">RAM Finder is disabled in Hardcore mode</string>
     <string name="ra_hardcore_blocked_patch">Mid-session soft-patching is blocked in Hardcore mode</string>
     <string name="ra_hardcore_blocked_overclock">CPU Overclock is locked to 100% in Hardcore mode</string>
+    <string name="ra_hardcore_blocked_link">Network Link Cable is disabled in Hardcore mode</string>
     <string name="ra_switch_to_hardcore_title">Switch to Hardcore Mode?</string>
     <string name="ra_switch_to_hardcore_msg">Switching to Hardcore mode mid-session will perform a full console reset and clear active cheats and rewind history. Continue?</string>
     <string name="ra_switched_casual_toast">Switched to Casual mode</string>

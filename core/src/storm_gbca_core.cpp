@@ -28,6 +28,7 @@ extern "C" {
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -832,12 +833,16 @@ STORM_GBCA_API int storm_gbca_set_config(StormGbcaContext* ctx, const StormGbcaC
 
     if (ctx->rom_loaded) {
         if (core_choice_changed) {
+            ctx->has_runahead_fb = false;
+            ctx->runahead_state.clear();
             std::vector<uint8_t> rom_copy = ctx->rom_data;
             std::string name_copy = ctx->rom_virtual_name;
             unload_active_cores(ctx);
             ctx->rom_data = std::move(rom_copy);
             ctx->rom_virtual_name = std::move(name_copy);
-            return init_core_with_loaded_rom(ctx);
+            int rc = init_core_with_loaded_rom(ctx);
+            storm_gbca_ra_reset(ctx);
+            return rc;
         }
         if (ctx->using_sameboy) apply_sameboy_config(ctx);
         else apply_mgba_config(ctx);
@@ -1022,6 +1027,7 @@ STORM_GBCA_API int storm_gbca_run_frame(StormGbcaContext* ctx) {
 STORM_GBCA_API void storm_gbca_set_fast_forward(StormGbcaContext* ctx, float mult) {
     if (!ctx) return;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (!std::isfinite(mult)) mult = 1.0f;
     if (ctx->hardcore_mode && mult < 1.0f) mult = 1.0f;
     ctx->fast_forward.store(std::clamp(mult, 0.25f, 16.0f), std::memory_order_release);
 }
@@ -1258,6 +1264,11 @@ STORM_GBCA_API float storm_gbca_get_rumble(const StormGbcaContext* ctx) {
 
 STORM_GBCA_API void storm_gbca_set_rtc(StormGbcaContext* ctx, int use_host, int64_t epoch) {
     if (!ctx) return;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode && !use_host) {
+        ctx->rtc_periph.use_host = true;
+        return;
+    }
     ctx->rtc_periph.use_host = (use_host != 0);
     ctx->rtc_periph.fixed_epoch = epoch;
 }
@@ -1379,6 +1390,14 @@ STORM_GBCA_API int storm_gbca_compute_ra_hash_buffer(const void* data, size_t si
     if (console_id == RC_CONSOLE_UNKNOWN) return -1;
     return rc_hash_generate_from_buffer(out_hash_33, console_id,
                                         static_cast<const uint8_t*>(data), size) ? 0 : -1;
+}
+
+STORM_GBCA_API int storm_gbca_get_loaded_ra_hash(const StormGbcaContext* ctx, char* out_hash_33) {
+    if (!ctx || !out_hash_33) return -1;
+    std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (!ctx->rom_loaded || ctx->rom_data.empty()) return -1;
+    return storm_gbca_compute_ra_hash_buffer(ctx->rom_data.data(), ctx->rom_data.size(),
+                                             ctx->rom_info.platform, out_hash_33);
 }
 
 STORM_GBCA_API int storm_gbca_write_memory(StormGbcaContext* ctx, int region, uint32_t addr, const uint8_t* src, size_t len) {
@@ -1615,9 +1634,14 @@ STORM_GBCA_API int storm_gbca_link_start(StormGbcaContext* ctx, int mode, const 
                                          int port, int clock_port, const char* room_name) {
     if (!ctx) return -1;
     std::lock_guard<std::recursive_mutex> lock(ctx->core_mu);
+    if (ctx->hardcore_mode && mode != STORM_LINK_NONE && mode != STORM_LINK_GB_PRINTER) {
+        return STORM_ERR_HARDCORE_BLOCKED;
+    }
     // If SameBoy is active for GB/GBC and user attaches Link Cable or GB Printer,
     // transparently switch active session to mGBA so SIO hardware drivers attach seamlessly.
     if (ctx->rom_loaded && ctx->using_sameboy && mode != STORM_LINK_NONE) {
+        ctx->has_runahead_fb = false;
+        ctx->runahead_state.clear();
         std::vector<uint8_t> rom_copy = ctx->rom_data;
         std::string name_copy = ctx->rom_virtual_name;
         int prev_gb = ctx->cfg.preferred_core_gb;
@@ -1630,6 +1654,7 @@ STORM_GBCA_API int storm_gbca_link_start(StormGbcaContext* ctx, int mode, const 
         init_core_with_loaded_rom(ctx);
         ctx->cfg.preferred_core_gb = prev_gb;
         ctx->cfg.preferred_core_gbc = prev_gbc;
+        storm_gbca_ra_reset(ctx);
     }
     int plat = ctx->rom_loaded ? ctx->rom_info.platform : STORM_PLATFORM_GBA;
     const char* title = ctx->rom_loaded ? ctx->rom_info.title : "STORM GBCA";
@@ -1668,13 +1693,29 @@ STORM_GBCA_API int storm_gbca_set_hardcore_mode(StormGbcaContext* ctx, int enabl
         storm_gbca_cheats_clear(ctx);
         ctx->rewind.configure(false, ctx->cfg.rewind_buffer_mb, ctx->cfg.rewind_interval);
         ctx->rewind.reset();
-        if (ctx->fast_forward.load(std::memory_order_acquire) < 1.0f) {
+        ctx->rtc_periph.use_host = true;
+        float ff = ctx->fast_forward.load(std::memory_order_acquire);
+        if (!std::isfinite(ff) || ff < 1.0f) {
             ctx->fast_forward.store(1.0f, std::memory_order_release);
         }
         ctx->cpu_overclock_pct = 100;
         ctx->mem_search = storm::MemSearchSession{};
+        int link_mode = ctx->mp.active_mode();
+        if (link_mode != STORM_LINK_NONE && link_mode != STORM_LINK_GB_PRINTER) {
+            storm_gbca_link_stop(ctx);
+        }
         if (!was && ctx->rom_loaded) {
-            storm_gbca_reset(ctx);
+            ctx->has_runahead_fb = false;
+            ctx->runahead_state.clear();
+            std::vector<uint8_t> rom_copy = ctx->rom_data;
+            std::string name_copy = ctx->rom_virtual_name;
+            unload_active_cores(ctx);
+            ctx->rom_data = std::move(rom_copy);
+            ctx->rom_virtual_name = std::move(name_copy);
+            if (init_core_with_loaded_rom(ctx) != 0) {
+                return -1;
+            }
+            storm_gbca_ra_reset(ctx);
             return 1;
         }
     } else {

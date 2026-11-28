@@ -2,7 +2,7 @@
 
 **Effective Date:** 2026-11-28
 **Developer:** STORM TEAM
-**Application:** STORM GBCA (Android & Windows x64, version 1.7.0)
+**Application:** STORM GBCA (Android & Windows x64, version 1.7.1)
 **Repository:** https://github.com/ReiKatari/STORM_GBCA
 **Website:** https://stormgamesworld.ru/programs?repo=STORM_GBCA
 
@@ -25,10 +25,12 @@ STORM TEAM does not operate any telemetry servers and does not collect, sell, re
 All emulation and configuration data is stored exclusively on your local device:
 
 - **ROM Library & Paths:** References to user-selected ROM folders, ROM metadata cache (`rom_library.json`), and favorites/recent history.
-- **Gameplay Data:** Cartridge SRAM saves (`.sav`), save states (`.st0`..`.st9`), save-state screenshots (`.png`), BIOS paths, cheats (`.json`), and user preferences (`settings.json` on Windows / SharedPreferences on Android).
+- **Gameplay Data:** Cartridge SRAM saves (`.sav`), save states (`.st0`..`.st9`), save-state screenshots (`.png`), BIOS paths, cheats (`.json`), and user preferences (`settings.json` on Windows / `SharedPreferences` on Android).
 - **Cover Art Cache:** Optional locally cached game cover images downloaded only when the user enables Libretro or RetroAchievements cover fetching.
-- **Offline RetroAchievements Queue (`ra_offline_queue.json`):** Pending achievement or leaderboard submissions stored locally if a network error occurs while offline, automatically cleared once successfully delivered to RetroAchievements.
-- **RetroAchievements Session Credentials:** When signed in to RetroAchievements, ONLY your **username** and **API session token** are stored locally on your device. **Your plaintext password is NEVER stored on disk, in logs, or in URL query parameters** (login uses HTTPS POST with `application/x-www-form-urlencoded`).
+- **Offline RetroAchievements Queue:** Pending achievement or leaderboard submissions stored locally if a network error occurs while offline, automatically cleared once successfully delivered to RetroAchievements:
+  - **Android:** `SharedPreferences` (`ra_pending_queue`)
+  - **Windows:** `%APPDATA%/STORM_GBCA/ra_offline_queue.json`
+- **RetroAchievements Session Credentials:** When signed in to RetroAchievements, ONLY your **username** and **API session token** are stored locally on your device. **Your plaintext password is NEVER stored on disk, in logs, or in URL query parameters** (all RetroAchievements authentication and API calls use HTTPS POST with `application/x-www-form-urlencoded`).
 
 **Retention Period:**
 - Local gameplay files, settings, and caches remain on your device only until you delete them, clear application data, or uninstall STORM GBCA.
@@ -36,16 +38,16 @@ All emulation and configuration data is stored exclusively on your local device:
 
 ---
 
-## 3. Optional External Network Connections & Server Locations
+## 3. External Network Connections & Server Locations
 
-STORM GBCA makes network requests **ONLY** when explicitly initiated or enabled by the user. No background connections are made without user-enabled features.
+STORM GBCA makes zero telemetry or tracking connections. By default, **automatic update checks on startup** are enabled (sending only anonymous standard HTTPS GET requests to GitHub / STORM GAMES WORLD release feeds with zero personal data or device identifiers) and can be disabled with one switch in Settings (`Check for updates on launch`). All other network requests occur **only** when explicitly initiated or enabled by the user (such as RetroAchievements sign-in or optional cover art downloads).
 
 | Service / Endpoint | Server Location | When Connected | Data Transmitted | Governing Policy |
 | --- | --- | --- | --- | --- |
-| **RetroAchievements** (`retroachievements.org`, `media.retroachievements.org`) | United States | ONLY when the user explicitly signs in and enables RetroAchievements | HTTPS POST login credentials (password sent once during login to obtain an API token, never saved), username, API token, ROM MD5 hash, unlocked achievement IDs, leaderboard scores, and Rich Presence status | https://retroachievements.org/terms |
-| **GitHub** (`api.github.com`, `github.com`) | United States (GitHub, Inc. / Microsoft) | ONLY when checking for app updates or downloading release packages | Standard HTTPS GET request (`User-Agent` and release tag metadata); no personal identifiers | https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement |
-| **Libretro Thumbnails** (`thumbnails.libretro.com`) | Global CDN / United States | ONLY when the user enables Libretro cover downloads or triggers cover fetching | Game title / platform path to fetch public boxart PNGs; no personal identifiers | https://www.libretro.com/index.php/privacy-policy/ |
-| **STORM GAMES WORLD** (`stormgamesworld.ru`) | Russian Federation | ONLY when checking the fallback update feed or optional Russian game metadata | Standard HTTPS request for public release metadata; no personal identifiers or telemetry | https://stormgamesworld.ru |
+| **RetroAchievements** (`retroachievements.org`, `media.retroachievements.org`) | United States | ONLY when signed in to RetroAchievements or fetching RA game cover art / badges | HTTPS POST login credentials (password sent once during login to obtain an API token, never saved), username, API token, loaded ROM MD5 hash, unlocked achievement IDs, leaderboard scores, Rich Presence status, and cover/badge image requests | https://retroachievements.org/terms |
+| **GitHub** (`api.github.com`, `github.com`, `raw.githubusercontent.com`) | United States (GitHub, Inc. / Microsoft) | Automatic update checks on startup (enabled by default, disableable via `Check for updates on launch` in Settings), manual update checks, release package downloads, and optional Libretro Thumbnails cover-art index / image lookup | Standard HTTPS GET request (`User-Agent`, release metadata, or public boxart filename); zero personal data or device identifiers | https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement |
+| **jsDelivr CDN** (`cdn.jsdelivr.net`, `fastly.jsdelivr.net`) | Global CDN (ProspectOne / Fastly) | ONLY when the user enables Libretro cover downloads or triggers cover fetching | Public game title / platform path to fetch Libretro Thumbnails boxart PNGs; zero personal identifiers | https://www.jsdelivr.com/terms/privacy-policy-jsdelivr-net |
+| **STORM GAMES WORLD** (`stormgamesworld.ru`, `storm-games.world`) | Russian Federation / Global mirror | Fallback release update mirror during startup/manual update checks (disableable via `Check for updates on launch` in Settings) and optional metadata | Standard HTTPS GET request for public release metadata; zero personal identifiers or telemetry | https://stormgamesworld.ru |
 
 ---
 
@@ -54,7 +56,7 @@ STORM GBCA makes network requests **ONLY** when explicitly initiated or enabled 
 Under the General Data Protection Regulation (GDPR) and equivalent privacy laws, users have rights of access, rectification, portability, and erasure:
 
 - **Local Device Data:** Because STORM TEAM collects and retains zero personal data on its own servers, you exercise 100% direct control over all local data on your device:
-  - **Access & Portability:** All saves, states, screenshots, and config files are stored in standard user-accessible directories (`%APPDATA%\STORM_GBCA` or portable `./data` on Windows; app storage / SAF folders on Android).
+  - **Access & Portability:** All saves, states, screenshots, and config files are stored in standard user-accessible directories (`%APPDATA%/STORM_GBCA` or portable `./data` on Windows; app storage / SAF folders on Android).
   - **Instant Erasure:** Click **Sign Out** in RetroAchievements settings to erase stored RA tokens immediately, clear the cover cache in settings, or uninstall STORM GBCA / delete its data folder to remove all local data permanently.
 - **RetroAchievements Server Data:** Data submitted to your RetroAchievements account (unlocked trophies, points, leaderboard entries, Rich Presence) is stored on RetroAchievements servers and managed directly through your RetroAchievements account settings at https://retroachievements.org/settings.
 
